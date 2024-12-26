@@ -8,7 +8,6 @@ You can think of this script as padding between the user created scripts and the
 If you develop scripts with this script as base, then if (when) Hexrays change something in their API, instead of fixing EVERY script out there
 the community can fix this script and all the user created scripts (that depends on this script) will work again.
 
-Most functions are wrappers around IDAs API with some smart default values and type handling.
 Everywhere an EA (Effective Address) is expected you can also send in a label/name/register.
 Everywhere a tinfo_t (type info) is expected, you can also send in a C-type string.
 
@@ -34,22 +33,20 @@ Things that this script helps you with:
 1. Cancel scripts that take to long. You can copy the the string "abort.ida" into the clipboard and within 30 seconds, the script will stop. Check out the function _check_if_long_running_script_should_abort()
 2. Easy bug reporting. See the function bug_report()
 3. Get some good links to helpful resources. See the function help()
-4. reload_module
-5. load_file_into_memory
-6. win_LoadLibraryA
-7. help()
-8. msdn()
-
-TODO: write here
+4. reload_module, when developing, it's nice to have a fast and easy way to reload the script and all it's dependencies
+5. Load shellcode into the running process. See load_file_into_memory()
+6. Help with AppCall to call functions that are inside the executable. (Think of decrypt functions) See win_LoadLibraryA()
+7. Simple way to search on APIs, see msdn()
 
 Tested with:
 IDA 8.4 + Python 3.8
 IDA 9.0 + Python 3.12
 
-Hack to import it anywhere: import sys;sys.path.append(r"C:\download");import community_base as cb
+Hack to import a python script from a path not in PATH nor in PYTHONPATH:
+import sys;sys.path.append(r"C:\download");import community_base as cb
 '''
-__version__ = "2024-12-26 17:35:31"
-__author__ = "Harding"
+__version__ = "2024-12-26 20:56:02"
+__author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2024"
 __credits__ = ["https://www.youtube.com/@allthingsida", 
@@ -59,9 +56,10 @@ __credits__ = ["https://www.youtube.com/@allthingsida",
                "https://github.com/synacktiv/bip/", 
                "https://github.com/tmr232/Sark"]
 __license__ = "GPL"
-__maintainer__ = "Harding"
+__maintainer__ = "Harding (https://github.com/Harding-Stardust)"
 __email__ = "not.at.the.moment@example.com"
 __status__ = "Development"
+__url__ = "https://github.com/Harding-Stardust/community_base/blob/main/community_base.py"
 
 import os, sys, re, time, datetime, json, ctypes
 import json # TODO: Change to json5?
