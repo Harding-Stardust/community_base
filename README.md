@@ -59,5 +59,11 @@ This script:
 - use easy to read code. I have written the code as easy I can to READ (hopefully), it might not be the most Pythonic way (or the fastest) but I have focused on readability. However, I do understand that this is subjective.
 - do _NOT_ conflict with other plugins. I am very careful to only overwrite things like docstrings, otherwise I add to the classes that are already in the IDAPython
 
-Tested with:
+# Tested
 ```IDA 8.4 + Python 3.8``` and ```IDA 9.0 + Python 3.12```
+
+# Future
+- All functions that are named ```_experimental_XX``` are not to be used, they are my playground and are not done
+- I have not had the time to polish everything as much as I would ahve liked. Keep an eye on this repo and things will get updated!
+- I'm planning on doing some short clips on how the script is thought to be used, this takes time and video editing is not my strong side
+- More of everything
