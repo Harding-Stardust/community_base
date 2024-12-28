@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-r''' Functions that will help you develop scripts for Hexrays IDA Pro.
-community_base turns IDA Python into a DWIM (Do What I Mean) style and I try to follow "Principle of least astonishment"
+r''' This text is easier to read when the markdown is parsed: <https://github.com/Harding-Stardust/community_base/blob/main/README.md>
 
-You can think of this script as padding between the user created scripts and the IDA API.
+# Summary
+Code that will help you develop scripts for Hexrays IDA Pro.
+community_base turns IDA Python into a [DWIM (Do What I Mean)](https://en.wikipedia.org/wiki/DWIM) style and I try to follow ["Principle of least astonishment"](https://en.wikipedia.org/wiki/Principle_of_least_astonishment)
+
+You can think of this script as padding between the user created scripts and the IDA Python API.
 If you develop scripts with this script as base, then if (when) Hexrays change something in their API, instead of fixing EVERY script out there
 the community can fix this script and all the user created scripts (that depends on this script) will work again.
+
+I try to have a low cognitive load. "What matters is the amount of confusion developers feel when going through the code." Quote from <https://minds.md/zakirullin/cognitive>
 
 Everywhere an EA (Effective Address) is expected you can also send in a label/name/register.
 Everywhere a tinfo_t (type info) is expected, you can also send in a C-type string.
@@ -14,36 +19,60 @@ Everywhere a tinfo_t (type info) is expected, you can also send in a C-type stri
 I have written a comment on my functions that replace the IDA API ones so if you know what API that is not working as you want,
 you can search for that name in this file and hopefully you will find a replacement function
 
-This script:
-1. use Pydantic to force types. This makes the code much easier to read since you have an idea what a function expects and what it returns. I try to follow PEP 484 as much as I can.
-2. use full names. This makes variables and functions easy to read at a glance.
-3. check types. We can do different things if the user gives different types.
-4. is properly documented. I try to document as extensive I can without making redundent comments.
-5. is easy to debug (hopefully!). All functions that are non-trivial have the last argument named "arg_debug" which is a bool that if set, prints out helpful information that is happening in the code.
-6. have good default values set. E.g. ida_idp.assemble(ea, 0, ea, True, 'mov eax, 1') have many arguments you don't know that they should be.
-7. use full imported named. I do _NOT_ use any "from <module> import *" I have "import community_base" and if you don't like long names: "import community_base as cb"
-8. understands what the user wants. I have type checks and treat input different depending on what you send in. Ex. addresses vs labels. In my scripts everywhere you are expecting an address, you can send in a label (or register) that is then resolved.
-9. use easy to read code. I have written the code as easy I can to READ (hopefully), it might not be the most Pythonic way (or the fastest) but I have focused on readability. However I do understand that this is subjective.
-10. do _NOT_ conflict with other plugins. I am very careful to only overwrite things like docstrings, otherwise I add to the classes that are already in the IDAPython
-
-It is strongly advised to edit your os.path.join(idaapi.get_user_idadir(), "idapythonrc.py") and add the line "import community_base as cb" to get easy access to this script
+# Installation
+To use this script, put is somewhere that IDA can find it. A good place is this filename:
+```python
+import idaapi
+import os
+print(os.path.join(os.path.dirname(idaapi.__file__), "community_base.py"))
+```
+It is strongly advised to edit your idapythonrc.py which can be found by typing the following in IDA:
+```python
+import idaapi
+import os
+print(os.path.join(idaapi.get_user_idadir(), "idapythonrc.py"))
+```
+and to get easy access to this script, add the line:
+```python
+import community_base as cb
+```
 Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directory-idausr>
 
+# Why
 Things that this script helps you with:
-1. Cancel scripts that take to long. You can copy the the string "abort.ida" into the clipboard and within 30 seconds, the script will stop. Check out the function _check_if_long_running_script_should_abort()
-2. Easy bug reporting. See the function bug_report()
-3. Get some good links to helpful resources. See the function help()
-4. reload_module, when developing, it's nice to have a fast and easy way to reload the script and all it's dependencies
-5. Load shellcode into the running process. See load_file_into_memory()
-6. Help with AppCall to call functions that are inside the executable. (Think of decrypt functions) See win_LoadLibraryA()
-7. Simple way to search on APIs, see msdn()
+- Easier to write plugins and scripts for IDA Python
+- Cancel scripts that take to long. You can copy the the string "abort.ida" into the clipboard and within 30 seconds, the script will stop. Check out the function ```_check_if_long_running_script_should_abort()```
+- Easy bug reporting. See the function ```bug_report()```
+- Get some good links to helpful resources. See the function ```help()```
+- when developing, it's nice to have a fast and easy way to reload the script and all it's dependencies, see the function ```reload_module()```
+- Load shellcode into the running process. See ```load_file_into_memory()```
+- Help with AppCall to call functions that are inside the executable. (Think of decrypt functions) See ```win_LoadLibraryA()```
+- Simple way to search on APIs, see ```google()```
+- 3 new hotkeys: w --> marked bytes will be dumped to disk, alt+Ins --> copy current address into clipboard (just like x64dbg), shift+c --> Copy selected bytes into clipboard as hex text (just like x64dbg)
 
-Tested with:
-IDA 8.4 + Python 3.8
-IDA 9.0 + Python 3.12
 
-Hack to import a python script from a path not in PATH nor in PYTHONPATH:
-import sys;sys.path.append(r"C:\download");import community_base as cb
+# What
+This script:
+- use [Pydantic](https://docs.pydantic.dev/latest/) to force types. This makes the code much easier to read since you have an idea what a function expects and what it returns. I try to follow [PEP 484](https://peps.python.org/pep-0484/) as much as I can.
+- use full names. This makes variables and functions easy to read at a glance.
+- check types. We can do different things if the user gives different types.
+- is properly documented. I try to document as extensive I can without making redundent comments.
+- is easy to debug (hopefully!). All functions that are non-trivial have the last argument named ```arg_debug``` which is a bool that if set, prints out helpful information that is happening in the code.
+- have good default values set. E.g. ```ida_idp.assemble(ea, 0, ea, True, 'mov eax, 1')``` have many arguments you don't know that they should be.
+- use full imported named. I do _NOT_ use any ```from <module> import *``` I have ```import community_base``` and if you don't like long names: ```import community_base as cb```
+- understands what the user wants. I have type checks and treat input different depending on what you send in. Ex. addresses vs labels. In my scripts everywhere you are expecting an address, you can send in a label (or register) that is then resolved.
+- use easy to read code. I have written the code as easy I can to READ (hopefully), it might not be the most Pythonic way (or the fastest) but I have focused on readability. However, I do understand that this is subjective.
+- do _NOT_ conflict with other plugins. I am very careful to only overwrite things like docstrings, otherwise I add to the classes that are already in the IDAPython
+
+# Tested
+```IDA 8.4 + Python 3.8``` and ```IDA 9.0 + Python 3.12```
+
+# Future
+- All functions that are named ```_experimental_XX``` are not to be used, they are my playground and are not done
+- I have not had the time to polish everything as much as I would ahve liked. Keep an eye on this repo and things will get updated!
+- I'm planning on doing some short clips on how the script is thought to be used, this takes time and video editing is not my strong side
+- More of everything
+
 '''
 __version__ = "2024-12-26 20:56:02"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
@@ -59,7 +88,7 @@ __license__ = "GPL"
 __maintainer__ = "Harding (https://github.com/Harding-Stardust)"
 __email__ = "not.at.the.moment@example.com"
 __status__ = "Development"
-__url__ = "https://github.com/Harding-Stardust/community_base/blob/main/community_base.py"
+__url__ = "https://github.com/Harding-Stardust/community_base"
 
 import os, sys, re, time, datetime, json, ctypes
 import json # TODO: Change to json5?
@@ -76,7 +105,7 @@ except ImportError:
 import ida_allins as _ida_allins # type: ignore[import-untyped]
 import ida_auto as _ida_auto # type: ignore[import-untyped]
 import ida_bytes as _ida_bytes # type: ignore[import-untyped]
-import ida_dbg as _ida_dbg # type: ignore [import-untyped]
+import ida_dbg as _ida_dbg # type: ignore[import-untyped]
 import ida_funcs as _ida_funcs # type: ignore[import-untyped]
 import ida_hexrays as _ida_hexrays # type: ignore[import-untyped]
 import ida_idaapi as _ida_idaapi # type: ignore[import-untyped]
@@ -112,7 +141,7 @@ EvaluateType = Union[str, int, _ida_idp.reg_info_t, _ida_ua.insn_t, _ida_hexrays
 __GLOBAL_LOG_EVERYTHING = False # If this is set to True, then all calls to log_print() will be printed, this can cause massive logs but good for hard to find bugs
 
 # HELPERS ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def help(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, Dict[str, str]]:
     ''' Various information to help you develop your own scripts '''
     l_abbreviations = {
@@ -159,7 +188,7 @@ def help(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, Di
 
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleType, None] = None) -> str:
     ''' If you find a bug in IDA or community_base (or any other plugin) you can easy save info about the bug by using this function.
     It will save what file you have open, the version of IDA pro, version of community_base and the bug description 
@@ -173,12 +202,11 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
     l_timestamp: str = time.strftime("%Y_%m_%d_%H_%M_%S", datetime.datetime.timetuple(datetime.datetime.now()))
     l_bug_report_file: str = f"{input_file.idb_path}.{l_timestamp}.bug_report.json"
     l_bug_report: Dict[str, str] = {}
-
     l_bug_report["bug_in_module"] = _python_module_to_str(arg_module_to_blame)
     l_bug_report["IDA_version"] = str(ida_version())
     l_bug_report["decompiler_version"] = ida_decompiler_version()
     l_bug_report["community_base_version"] = __version__
-    l_bug_report["python_version"] = str(python_version()[0]) + "." + str(python_version()[1]) # Tuple[major: int,minor: int] --> "3.12"
+    l_bug_report["python_version"] = str(python_version()[0]) + "." + str(python_version()[1]) # Tuple[major: int, minor: int] --> "3.12"
     l_bug_report["datetime"] = _timestamped_line("").strip()
     for key, value in input_file._as_dict().items():
         l_bug_report["input_file_" + key] = value
@@ -189,10 +217,16 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
 
     log_print(f"Wrote bug report in {l_bug_report_file}", arg_type="INFO")
     log_print("Please post this bug report to the creator of the module so they can fix it. Thank you!", arg_type="INFO")
+
+    l_github_issues: str = __url__ + "/issues/new"
+    # First argument is the default button that will be pressed if the user press ENTER as soon as the box popups
+    if _ida_kernwin.ask_yn(_ida_kernwin.ASKBTN_YES , f"Open a new issue on Github? ( {l_github_issues} )") == _ida_kernwin.ASKBTN_YES:
+        _ida_kernwin.open_url(l_github_issues)
+    
     return l_bug_report_file
 
 _g_timestamp_of_last_checked = time.time()
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
     ''' Scripts that take long time to run can be aborted by copying any of the following strings into the clipboard: "abort.ida", "ida.abort", "ida.stop", "stop.ida"
         This is checked every 30 seconds and raises a TimeoutError() exception
@@ -214,7 +248,7 @@ def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
 
     return
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _dict_sort(arg_dict: dict, arg_sort_by_value: bool = False, arg_descending: bool = False) -> dict:
     ''' Internal function. Returns a new sorted dictionary, can sort by value and can sort ascending or descending '''
     res = {}
@@ -229,19 +263,18 @@ def _dict_sort(arg_dict: dict, arg_sort_by_value: bool = False, arg_descending: 
         res = {k: res[k] for k in reversed(res)} # Just reverse the dict
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _int_to_str_dict_from_module(arg_module: Union[ModuleType, str], arg_regexp: str) -> Dict[int, str]:
     ''' Internal function. Used to build dict from module enums.
-        Example: _int_to_str_dict_from_module(ida_ua, 'o_.*')
+        e.g. _int_to_str_dict_from_module(ida_ua, 'o_.*')
     '''
     l_module: ModuleType = sys.modules[arg_module] if isinstance(arg_module, str) else arg_module
-    res = {getattr(l_module, key): key for key in dir(l_module) if re.fullmatch(arg_regexp, key)}
-    return res
+    return {getattr(l_module, key): key for key in dir(l_module) if re.fullmatch(arg_regexp, key)}
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _dict_swap_key_and_value(arg_dict: dict) -> dict:
     ''' Internal function. Used with _int_to_str_dict_from_module to make dict that behaves as an enum.
-        Example:
+        e.g.
         ofile_type_t = _int_to_str_dict_from_module("ida_loader", "OFILE_.*")
         ofile_type_t_enum = _dict_swap_key_and_value(ofile_type_t)
     '''
@@ -250,26 +283,26 @@ def _dict_swap_key_and_value(arg_dict: dict) -> dict:
         res[v] = k
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_version() -> int:
     ''' Returns the version of IDA currently running. 7.7 --> 770, 8.4 --> 840, 9.0 --> 900 '''
     return _ida_pro.IDA_SDK_VERSION
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_user_dir() -> str:
     ''' Returns the path IDA is using as base when it looks for files
      Read more <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directory-idausr>
     '''
     return _ida_diskio.get_user_idadir()
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_plugin_dirs() -> List[str]:
     ''' Returns a list of directories where IDA looks for plugins
     For more info, see <https://hex-rays.com/blog/igors-tip-of-the-week-103-sharing-plugins-between-ida-installs>
     '''
     return _ida_diskio.get_ida_subdirs("plugins")
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_is_running_in_batch_mode() -> bool:
     ''' Are we running in batch mode? a.k.a. headless 
      OBS! I could not find a good way to check this so this is the best I could come up with
@@ -277,7 +310,7 @@ def ida_is_running_in_batch_mode() -> bool:
     '''
     return _ida_kernwin.get_current_widget() is None
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_save_and_exit(arg_exit_code: int = 0) -> None:
     ''' Save the IDB and clean exit IDA 
     A good use for this function is as the last call in a script run in batch mode.
@@ -291,7 +324,7 @@ def ida_save_and_exit(arg_exit_code: int = 0) -> None:
     _ida_pro.qexit(arg_exit_code)
     return # We will never reach this line
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _get_ida_notepad_text() -> str:
     ''' Wrapper around ida_nalt.get_ida_notepad_text() that actually honors the type hints 
     Read more: <https://python.docs.hex-rays.com/namespaceida__nalt.html#afbce150733a7444c14e83db7411cf3c9>
@@ -300,7 +333,7 @@ def _get_ida_notepad_text() -> str:
     '''
     return _ida_nalt.get_ida_notepad_text() or ""
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def notepad_text(arg_text: Optional[str] = None, arg_debug: bool = False) -> str:
     ''' IDA has a text field that the user can write whatever they want in.
     This function can read and write this text field. '''
@@ -310,9 +343,9 @@ def notepad_text(arg_text: Optional[str] = None, arg_debug: bool = False) -> str
     log_print(f"_ida_nalt.get_ida_notepad_text() returned {res}", arg_debug)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_decompiler_version() -> str:
-    ''' What version of Hexrays decompiler you are running '''
+    ''' What version of Hexrays decompiler we are running '''
     l_arch = f"{input_file.format}, {input_file.bits} bits, {input_file.endian} endian"
     l_error_str: str = f"<<< No decompiler for {l_arch} is loaded >>>"
     if not _ida_hexrays.init_hexrays_plugin():
@@ -324,19 +357,19 @@ def ida_decompiler_version() -> str:
         return l_error_str
     return l_temp
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def python_version() -> Tuple[int, int]:
     ''' Find the Python version we are running.
     Returns a tuple with (major_version: int, minor_version: int)
     '''
     return (sys.version_info.major, sys.version_info.minor)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _python_module_to_str(arg_module: Union[str, ModuleType, None] = None) -> str:
     ''' Internal function. Get a Python module name from the argument. If argument is None, then return the module name of ourself '''
     return arg_module if isinstance(arg_module, str) else getattr(arg_module, '__name__', __name__)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def reload_module(arg_module: Union[str, ModuleType, None] = None) -> bool:
     '''  During development, it's nice to have an easy way to reload the file and update all changes
     Read more: <https://hex-rays.com/blog/loading-your-own-modules-from-your-idapython-scripts-with-idaapi-require>
@@ -344,10 +377,11 @@ def reload_module(arg_module: Union[str, ModuleType, None] = None) -> bool:
     @param arg_module if this is set to None, then reload ourself
     
     @return Returns True if we reloaded successful, False otherwise
+
     Replacement for ida_idaapi.require()
     '''
     l_module_name: str = _python_module_to_str(arg_module)
-    log_print(f"Reloading '{l_module_name}' using ida_idaapi.require('{l_module_name}')", arg_type="INFO")
+    log_print(f"Reloading '{l_module_name}' ( {getattr(sys.modules.get(l_module_name, ''), '__file__', '<<< no file found >>>')} ) using ida_idaapi.require('{l_module_name}')", arg_type="INFO")
     try:
         res = _ida_idaapi.require(l_module_name)
         res = True
@@ -356,14 +390,14 @@ def reload_module(arg_module: Union[str, ModuleType, None] = None) -> bool:
         res = False
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _timestamped_line(arg_str: str) -> str:
     ''' Add a timestamp at the beginning of the line
-     e.g. 2024-12-31 13:59:59
+     e.g. 2024-12-31 13:59:59 This is the string I send in as argument
     '''
     return time.strftime("%Y-%m-%d %H:%M:%S", datetime.datetime.timetuple(datetime.datetime.now())) + " " + arg_str
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _file_and_line_number(arg_num_function_away: int = 2) -> Optional[_inspect.Traceback]:
     ''' Internal function. Used in log_print() 
     Returns the file the script is called from and what line in that script file
@@ -378,7 +412,7 @@ def _file_and_line_number(arg_num_function_away: int = 2) -> Optional[_inspect.T
         print(_timestamped_line(f"Caught exception: {exc}"))
         return None
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def log_print(arg_string: str, arg_actually_print: bool = True, arg_type: str = "DEBUG", arg_num_function_away: int = 6) -> None:
     ''' Used for code trace while developing the project '''
     _check_if_long_running_script_should_abort(arg_actually_print)
@@ -398,12 +432,12 @@ def log_print(arg_string: str, arg_actually_print: bool = True, arg_type: str = 
         print(log_line, flush=True)
     return
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_is_64bit() -> bool:
     ''' Is the IDA process you are running in a 64 bit process? '''
     return _ida_idaapi.__EA64__
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _ida_DLL() -> Union[ctypes.CDLL, ctypes.WinDLL]:
     ''' Load correct version of ida.dll. Work on IDA 8.4 and 9.0. Example of how to use ctypes. '''
     
@@ -419,22 +453,22 @@ def _ida_DLL() -> Union[ctypes.CDLL, ctypes.WinDLL]:
         res = ctypes.cdll[f'libida{l_bits}.dylib'] # Not tested, cdll is CDECL
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _loader_name() -> str:
     ''' Internal function. Example of how to use ctypes to call IDA C api.
     Read more: <https://hex-rays.com/blog/calling-ida-apis-from-idapython-with-ctypes> 
     get_loader_name: <https://cpp.docs.hex-rays.com/loader_8hpp.html#a9c79e47be0a36e47363409f3ce9ce6c5>
     '''
-    l_dll = _ida_DLL()
+    l_IDA_dll = _ida_DLL()
     l_buf_size: int = 256
     l_buf = ctypes.create_string_buffer(l_buf_size)
     l_exported_function_name = 'get_loader_name'
-    l_dll[l_exported_function_name].argtypes = ctypes.c_char_p, ctypes.c_size_t
-    l_dll[l_exported_function_name].restype = ctypes.c_size_t
-    l_dll[l_exported_function_name](l_buf, l_buf_size) # This is the weird way ctypes calls functions
+    l_IDA_dll[l_exported_function_name].argtypes = ctypes.c_char_p, ctypes.c_size_t
+    l_IDA_dll[l_exported_function_name].restype = ctypes.c_size_t
+    l_IDA_dll[l_exported_function_name](l_buf, l_buf_size) # This is the weird way ctypes calls functions
     return l_buf.value.decode('utf-8') # buf.raw gives the whole buffer
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def hex_dump(arg_ea: Union[EvaluateType, bytes, bytearray], arg_len: Optional[EvaluateType] = None, arg_width: int = 0x10, arg_unprintable_char: str = '.', arg_debug: bool = False) -> None:
     ''' Prints the given data as <address> <byte value> <text> in the same style as IDAs hex view does. '''
 
@@ -453,11 +487,11 @@ def hex_dump(arg_ea: Union[EvaluateType, bytes, bytearray], arg_len: Optional[Ev
 
         l_len = 0x10 if arg_len is None else eval_expression(arg_len, arg_debug=arg_debug)
         if l_len is None:
-            log_print(f'eval_expression(arg_len) failed')
+            log_print(f'eval_expression(arg_len) failed', arg_type="ERROR")
             return
         l_bytes_temp = read_bytes(arg_ea=l_addr, arg_len=l_len, arg_debug=arg_debug)
         if l_bytes_temp is None:
-            log_print(f'read_bytes() failed')
+            log_print(f'read_bytes() failed', arg_type="ERROR")
             return
         l_bytes = l_bytes_temp
 
@@ -476,12 +510,12 @@ def hex_dump(arg_ea: Union[EvaluateType, bytes, bytearray], arg_len: Optional[Ev
     _ida_kernwin.request_refresh(_ida_kernwin.IWID_ALL)
     return
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def hex_parse(arg_list_of_strs: BufferType, arg_debug: bool = False) -> List[str]:
     ''' Parse data that can be very messed up as good as I can
     @return List[hex_as_text: str]
 
-    examples:
+    e.g.
     hex_parse('aa bb cc') --> ['aa', 'bb', 'cc']
     '''
     if not arg_list_of_strs: # ida_nalt.retrieve_input_file_crc32() for some reason return 0 when no file is loaded, ida_nalt.retrieve_input_file_md5() returns None
@@ -497,7 +531,7 @@ def hex_parse(arg_list_of_strs: BufferType, arg_debug: bool = False) -> List[str
             l_list_of_strs.append(hex_line)
         l_list_of_strs
     else:
-        l_list_of_strs = l_list_of_inputs # type: ignore [assignment] # I think this is correct bu mypy does not like it
+        l_list_of_strs = l_list_of_inputs # type: ignore[assignment] # I think this is correct bu mypy does not like it
 
     log_print(f'l_list_of_strs is now: {l_list_of_strs}', arg_debug)
 
@@ -527,7 +561,7 @@ def hex_parse(arg_list_of_strs: BufferType, arg_debug: bool = False) -> List[str
     log_print(f'res: {res}', arg_debug)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _signed_hex_text(arg_expression: EvaluateType, arg_nbits: int = 0, arg_debug: bool = False) -> Optional[str]:
     ''' Easy way to get nice formatting on signed values.
         @param arg_nbits: The bit width of the variable. Since Python has no fixed bit width int types, you have to specify this. If you don't specify it, I assume it's the input_file.bits width
@@ -535,14 +569,14 @@ def _signed_hex_text(arg_expression: EvaluateType, arg_nbits: int = 0, arg_debug
     l_nbits = arg_nbits if arg_nbits else input_file.bits
     l_value: Optional[int] = eval_expression(arg_expression=arg_expression, arg_debug=arg_debug)
     if l_value is None:
-        log_print(f"arg_expression: '{arg_expression}' failed in eval_expression", arg_type="ERROR")
+        log_print(f"'{arg_expression}' failed in eval_expression", arg_type="ERROR")
         return None
     res = hex(_ida_idaapi.as_signed(l_value, nbits=l_nbits))
     if not res.startswith('-'):
         res = '+' + res
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _operand_parser(arg_operand: _ida_ua.op_t, arg_debug: bool = False) -> Optional[dict]:
     ''' Internal function. Split the operand into a dict with info about the parts of the operand '''
     res = {}
@@ -599,7 +633,7 @@ def _operand_parser(arg_operand: _ida_ua.op_t, arg_debug: bool = False) -> Optio
         return None
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _hex_str_if_int(arg_in: Any, arg_debug: bool = False) -> str:
     ''' If arg_in is an int, then return the string with the hex value, the decimal value and if the int is an valid address: the name of that address
     e.g. '0x400000 (4194304) name: main'
@@ -616,13 +650,13 @@ def _hex_str_if_int(arg_in: Any, arg_debug: bool = False) -> str:
         res += f" name: {name(arg_in, arg_debug=arg_debug)}"
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def copy_hex_text_to_clipboard(arg_ea_start: EvaluateType = 0, arg_len: EvaluateType = 0, arg_debug: bool = False) -> None:
     ''' Selected bytes will be copied as hex text to the clipboard '''
     _ = dump_to_disk(arg_ea_start=arg_ea_start, arg_len=arg_len, arg_filename="|clipboard|", arg_debug=arg_debug) # "|clipboard|" --> We don't actually dump to disk
     return
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _whitespace_zapper(arg_in_string: str) -> str:
     ''' Internal function. If there are multiple spaces in a row in the input line, they are replaced by only 1 space. '''
     res = arg_in_string
@@ -630,55 +664,53 @@ def _whitespace_zapper(arg_in_string: str) -> str:
         res = res.replace('  ', ' ')
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _lnot(arg_expression: _ida_hexrays.cexpr_t) -> _ida_hexrays.cexpr_t:
     ''' Logical NOT of expression. See <https://github.com/tmr232/idapython/blob/0028bac2975e9cfd68ce39e908d1fc923e94000b/examples/vds3.py#L94> 
     a cexpr_t with "x == y" will return "x != y"
     '''
     return _ida_hexrays.lnot(_ida_hexrays.cexpr_t(arg_expression))
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _retrieve_input_file_md5() -> bytes:
     ''' Wrapper around ida_nalt.retrieve_input_file_md5() but this one honors the type hint. 
     
     Tags: Community fix, IDA Bug
     '''
     l_temp: Optional[bytes] = _ida_nalt.retrieve_input_file_md5()
-    return l_temp if l_temp else bytes()
+    return l_temp or bytes()
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _retrieve_input_file_sha256() -> bytes:
     ''' Wrapper around ida_nalt.retrieve_input_file_sha256() but this one honors the type hint. 
     
     Tags: Community fix, IDA Bug
     '''
     l_temp: Optional[bytes] = _ida_nalt.retrieve_input_file_sha256()
-    return l_temp if l_temp else bytes()
+    return l_temp or bytes()
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
-def _pretty_print_size(arg_input_size: int, arg_debug: bool = False) -> Optional[str]:
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _pretty_print_size(arg_input_size: int) -> Optional[str]:
     ''' Convert a large number to the correct postfix (KB, MB, GB, TB)
     e.g. _pretty_print_size(1231231332) --> '1.15G'
     Read more: <https://cpp.docs.hex-rays.com/group__conv.html#gab6147a3e263d08eb2b9c2439b4653526>
     Example on how to use the C api from Python.
     '''
 
-    l_dll = _ida_DLL()
+    l_IDA_dll = _ida_DLL()
     l_buf_size = 8 # Enough according to the official docs
     l_buf = ctypes.create_string_buffer(l_buf_size)
     l_exported_function_name = "pretty_print_size"
-    l_dll[l_exported_function_name].argtypes = ctypes.c_char_p, ctypes.c_size_t, ctypes.c_uint64
-    l_dll[l_exported_function_name].restype = ctypes.c_size_t
-    l_dll[l_exported_function_name](l_buf, l_buf_size, arg_input_size)
-    res = l_buf.value.decode('utf-8') # buf.raw gives the whole buffer
-    log_print(f"res: {res}", arg_debug)
-    return res
+    l_IDA_dll[l_exported_function_name].argtypes = ctypes.c_char_p, ctypes.c_size_t, ctypes.c_uint64
+    l_IDA_dll[l_exported_function_name].restype = ctypes.c_size_t
+    l_IDA_dll[l_exported_function_name](l_buf, l_buf_size, arg_input_size)
+    return l_buf.value.decode('utf-8') # buf.raw gives the whole buffer
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
-def msdn(arg_api_name: str) -> str:
-    ''' Search on MSDN for the given API '''
-    l_search_engine_base: str = "https://www.google.com/search?q=msdn+"
-    res = l_search_engine_base + arg_api_name
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def google(arg_search: str) -> str:
+    ''' Fast track to search '''
+    l_search_engine_base: str = "https://www.google.com/search?q="
+    res = l_search_engine_base + arg_search
     _ida_kernwin.open_url(res)
     return res
 
@@ -739,7 +771,7 @@ class _input_file_object(object):
 
 input_file = _input_file_object() # Recreated in the "new_file_opened_notification_callback" function
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def current_address() -> int:
     ''' Returns the address where cursor is. (OBS! Cursor in IDA is NOT the mouse cursor but where the blinking line is)
     Replacement for ida_kernwin.get_screen_ea()
@@ -748,7 +780,7 @@ def current_address() -> int:
 
 here = current_address
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _str2ea(arg_expression: str, arg_screen_ea: int = _ida_idaapi.BADADDR) -> int:
     '''  wrapper around ida_kernwin_str2ea (without the exception)
     IDA < 8.3: _ida_kernwin.str2ea returns BADADDR, IDA >= 8.3: returns None
@@ -766,7 +798,7 @@ def _str2ea(arg_expression: str, arg_screen_ea: int = _ida_idaapi.BADADDR) -> in
         return _ida_idaapi.BADADDR
     return res
     
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def eval_expression(arg_expression: EvaluateType, arg_supress_error: bool = False, arg_debug: bool = False) -> Optional[int]:
     ''' This function tries to evaluate whatever you give it into an int. E.g. "esi + edx * 0x10 + 3" (if the debugger is running) or "0x11 + 0x11"
 
@@ -876,7 +908,7 @@ def eval_expression(arg_expression: EvaluateType, arg_supress_error: bool = Fals
         log_print(f"arg_expression cannot be parsed in any meaningful way. You gave me {type(arg_expression)}", arg_type="ERROR")
     return None
    
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def address(arg_label_or_address: EvaluateType, arg_supress_error: bool = False, arg_debug: bool = False) -> int:
     ''' Takes a name/label or register name (if the debugger is active)
     or address (int) and try to resolve it into an address (int) in a smart way.
@@ -900,7 +932,7 @@ def address(arg_label_or_address: EvaluateType, arg_supress_error: bool = False,
     log_print(f"arg_label_or_address resolved to 0x{res:x}", arg_debug) # WARNING! Do NOT evalutate the arg_label_or_address variable in the string, this cause circular references
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def relative_virtual_address(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
     ''' Returns the offset from imagebase to the given address a.k.a RVA '''
     l_addr: int = address(arg_ea, arg_debug=arg_debug)
@@ -911,7 +943,7 @@ def relative_virtual_address(arg_ea: EvaluateType, arg_debug: bool = False) -> O
 
 rva = relative_virtual_address
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def function(arg_ea: EvaluateType,
              arg_create_function: bool = False,
              arg_debug: bool = False) -> Optional[_ida_funcs.func_t]:
@@ -944,7 +976,7 @@ def function(arg_ea: EvaluateType,
 
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _is_lumina_name(arg_function: EvaluateType, arg_debug: bool = False) -> Optional[bool]:
     l_func = function(arg_function, arg_debug=arg_debug)
     if l_func is None:
@@ -952,7 +984,7 @@ def _is_lumina_name(arg_function: EvaluateType, arg_debug: bool = False) -> Opti
         return None
     return bool(l_func.flags & _ida_funcs.FUNC_LUMINA)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def decompile(arg_ea: EvaluateType,
               arg_hf: Optional[_ida_hexrays.hexrays_failure_t] = None,
               arg_flags: int = _ida_hexrays.DECOMP_GXREFS_DEFLT, # https://www.hex-rays.com/products/ida/support/idapython_docs/ida_hexrays.html#ida_hexrays.DECOMP_GXREFS_DEFLT
@@ -996,7 +1028,7 @@ def decompile(arg_ea: EvaluateType,
         log_print(str(exc), arg_debug, arg_type="ERROR")
         return None
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def decompile_many(arg_outfile: str = input_file.idb_path + '.c',
                    arg_functions: Optional[List[EvaluateType]] = None,
                    arg_flags: int = _ida_hexrays.VDRUN_MAYSTOP, # The user can cancel decompilation. <https://www.hex-rays.com/products/ida/support/idapython_docs/ida_hexrays.html#ida_hexrays.VDRUN_MAYSTOP>
@@ -1021,8 +1053,10 @@ def decompile_many(arg_outfile: str = input_file.idb_path + '.c',
     log_print(f"done: Decompiling to {arg_outfile}", arg_type="INFO")
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
-def pseudocode(arg_ea: EvaluateType, arg_force_fresh_decompilation: bool = True, arg_debug: bool = False) -> str:
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def pseudocode(arg_ea: EvaluateType, 
+               arg_force_fresh_decompilation: bool = True, 
+               arg_debug: bool = False) -> str:
     ''' Get the pseudo code for a function. To work with the object (cfunc_t) use decompile() '''
 
     l_cfunc = decompile(arg_ea, arg_force_fresh_decompilation=arg_force_fresh_decompilation, arg_debug=arg_debug)
@@ -1031,10 +1065,14 @@ def pseudocode(arg_ea: EvaluateType, arg_force_fresh_decompilation: bool = True,
         return f"<<< Could NOT decompile function at {_hex_str_if_int(arg_ea)} >>>"
     return str(l_cfunc.get_pseudocode())
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
-def decompiler_comments(arg_regexp: str = "", arg_allow_library_functions: bool = True, arg_debug: bool = False) -> Dict[int, str]:
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def decompiler_comments(arg_regexp: str = "", 
+                        arg_allow_library_functions: bool = True, 
+                        arg_debug: bool = False) -> Dict[int, str]:
     ''' Returns all user set comments from decompiler view 
-    @param arg_regexp Filter to only include comments that match this regexp. If arg_regexp == "" then include all comments
+    @param arg_regexp Filter to only include comments that match this regexp. 
+    If arg_regexp == "" then include all comments
+    
     @return Dict[ea: int, comment: str] 
     '''
     res = {}
@@ -1049,7 +1087,7 @@ def decompiler_comments(arg_regexp: str = "", arg_allow_library_functions: bool 
         _ida_hexrays.user_cmts_free(l_comments)    
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def decompiler_variable(arg_function: EvaluateType,
                         arg_variable_name: Union[str, _ida_hexrays.lvar_t],
                         arg_debug: bool = False
@@ -1069,7 +1107,7 @@ def decompiler_variable(arg_function: EvaluateType,
     log_print(f"Could not find any variable with the name '{arg_variable_name}'", arg_type="ERROR")
     return None
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def decompiler_variable_set_name(arg_function: EvaluateType,
                                  arg_variable: Union[str, _ida_hexrays.lvar_t],
                                  arg_new_variable_name: str,
@@ -1091,7 +1129,7 @@ def decompiler_variable_set_name(arg_function: EvaluateType,
     l_lvar_saved_info.name = arg_new_variable_name
     return _ida_hexrays.modify_user_lvar_info(l_function_address, _ida_hexrays.MLI_NAME, l_lvar_saved_info)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def decompiler_variable_set_type(arg_function: EvaluateType,
                                  arg_variable: Union[str, _ida_hexrays.lvar_t],
                                  arg_new_type: Union[str, _ida_typeinf.tinfo_t],
@@ -1116,7 +1154,7 @@ def decompiler_variable_set_type(arg_function: EvaluateType,
     l_lvar_saved_info.type = l_type
     return _ida_hexrays.modify_user_lvar_info(l_function_address, _ida_hexrays.MLI_TYPE, l_lvar_saved_info)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _read_range_selection(arg_v: Any = None) -> Tuple[bool, int, int]:
     ''' Reads the selected addresses that you selected with your mouse (or keyboard) 
   
@@ -1131,7 +1169,7 @@ def _read_range_selection(arg_v: Any = None) -> Tuple[bool, int, int]:
     
     return (valid_selection, start_address, end_address)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def dump_to_disk(arg_ea_start: EvaluateType = 0,
                  arg_len: EvaluateType = 0,
                  arg_filename: Optional[str] = None,
@@ -1202,7 +1240,7 @@ def dump_to_disk(arg_ea_start: EvaluateType = 0,
     log_print(f"{'selected bytes' if valid_selection else 'function call'} dumped 0x{l_len:x} bytes from 0x{arg_ea_start:x} to '{arg_filename}' XORed with '{' '.join(arg_xor_key)}' ", arg_type="INFO")
     return arg_filename
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def bookmark(arg_ea: EvaluateType, arg_description: Optional[str] = None, arg_debug: bool = False) -> Optional[str]:
     ''' Get bookmark at given EA (Effective Address), returns an empty str "" if there is no bookmark on that EA
     IDA has started to call these "marked positions" 
@@ -1257,7 +1295,7 @@ def bookmark(arg_ea: EvaluateType, arg_description: Optional[str] = None, arg_de
     
     return None # We should never get there
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def bookmarks(arg_debug: bool = False) -> Optional[List[Tuple[int, str]]]:
     ''' Get all bookmarks as a list of tuples. The tuple looks like: (ea: int, description: str) 
     Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-80-bookmarks>
@@ -1275,15 +1313,15 @@ def bookmarks(arg_debug: bool = False) -> Optional[List[Tuple[int, str]]]:
 
 # ---- Hotkey: w --> Dump selected bytes to a file on disk ----------------------------------------------------------------------------------------
 _ACTION_NAME_DUMP_SELECTED_BYTES = f"{__name__}:dump_selected_bytes_to_disk"
-for _registered_action in _ida_kernwin.get_registered_actions():
-    if _registered_action == _ACTION_NAME_DUMP_SELECTED_BYTES:
-        if _ida_kernwin.unregister_action(_ACTION_NAME_DUMP_SELECTED_BYTES):
-            log_print(f"unregister_action(): '{_ACTION_NAME_DUMP_SELECTED_BYTES}' OK")
-        else:
-            log_print(f"unregister_action(): '{_ACTION_NAME_DUMP_SELECTED_BYTES}' failed")
+
+if _ACTION_NAME_DUMP_SELECTED_BYTES in _ida_kernwin.get_registered_actions():
+    if _ida_kernwin.unregister_action(_ACTION_NAME_DUMP_SELECTED_BYTES):
+        log_print(f"unregister_action(): '{_ACTION_NAME_DUMP_SELECTED_BYTES}' OK", arg_type="INFO")
+    else:
+        log_print(f"unregister_action(): '{_ACTION_NAME_DUMP_SELECTED_BYTES}' failed", arg_type="ERROR")
 
 class ActionHandlerDumpToDisk(_ida_kernwin.action_handler_t):
-    @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
         ''' This code is run when the hotkey is pressed '''
         del ctx # Not used but needed in prototype
@@ -1292,7 +1330,7 @@ class ActionHandlerDumpToDisk(_ida_kernwin.action_handler_t):
         _ = dump_to_disk(arg_debug=l_debug) # Without arguments --> selected bytes
         return 1
     
-    @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def update(self, ctx: _ida_kernwin.action_ctx_base_t):
         ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
         del ctx # Not used but needed in prototype
@@ -1305,15 +1343,14 @@ else:
 
 # ---- Hotkey: Shift + C --> Copy selected bytes as hex text to clipboard ----------------------------------------------------------------------------------------
 _ACTION_NAME_COPY_HEX_TEXT = f"{__name__}:copy_hex_text"
-for _registered_action in _ida_kernwin.get_registered_actions():
-    if _registered_action == _ACTION_NAME_COPY_HEX_TEXT:
-        if _ida_kernwin.unregister_action(_ACTION_NAME_COPY_HEX_TEXT):
-            log_print(f"unregister_action(): '{_ACTION_NAME_COPY_HEX_TEXT}' OK")
-        else:
-            log_print(f"unregister_action(): '{_ACTION_NAME_COPY_HEX_TEXT}' failed")
+if _ACTION_NAME_COPY_HEX_TEXT in _ida_kernwin.get_registered_actions():
+    if _ida_kernwin.unregister_action(_ACTION_NAME_COPY_HEX_TEXT):
+        log_print(f"unregister_action(): '{_ACTION_NAME_COPY_HEX_TEXT}' OK", arg_type="INFO")
+    else:
+        log_print(f"unregister_action(): '{_ACTION_NAME_COPY_HEX_TEXT}' failed", arg_type="ERROR")
 
 class ActionHandlerCopyHexText(_ida_kernwin.action_handler_t):
-    @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
         ''' This code is run when the hotkey is pressed '''
         del ctx # Not used but needed in prototype
@@ -1322,7 +1359,7 @@ class ActionHandlerCopyHexText(_ida_kernwin.action_handler_t):
         copy_hex_text_to_clipboard() # Without arguments --> Copy selected bytes as hex text
         return 1
     
-    @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def update(self, ctx: _ida_kernwin.action_ctx_base_t):
         ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
         del ctx # Not used but needed in prototype
@@ -1335,15 +1372,14 @@ else:
 
 # ---- Hotkey: Alt + Ins --> Copy current address ----------------------------------------------------------------------------------------
 _ACTION_NAME_COPY_CURRENT_ADDRESS = f"{__name__}:copy_current_address"
-for _registered_action in _ida_kernwin.get_registered_actions():
-    if _registered_action == _ACTION_NAME_COPY_CURRENT_ADDRESS:
-        if _ida_kernwin.unregister_action(_ACTION_NAME_COPY_CURRENT_ADDRESS):
-            log_print(f"unregister_action(): '{_ACTION_NAME_COPY_CURRENT_ADDRESS}' OK")
-        else:
-            log_print(f"unregister_action(): '{_ACTION_NAME_COPY_CURRENT_ADDRESS}' failed")
+if _ACTION_NAME_COPY_CURRENT_ADDRESS in _ida_kernwin.get_registered_actions():
+    if _ida_kernwin.unregister_action(_ACTION_NAME_COPY_CURRENT_ADDRESS):
+        log_print(f"unregister_action(): '{_ACTION_NAME_COPY_CURRENT_ADDRESS}' OK", arg_type="INFO")
+    else:
+        log_print(f"unregister_action(): '{_ACTION_NAME_COPY_CURRENT_ADDRESS}' failed", arg_type="ERROR")
 
 class ActionHandlerCopyCurrentAddress(_ida_kernwin.action_handler_t):
-    @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
         ''' This code is run when the hotkey is pressed '''
         del ctx # Not used but needed in prototype
@@ -1352,7 +1388,7 @@ class ActionHandlerCopyCurrentAddress(_ida_kernwin.action_handler_t):
         _ = clipboard_copy(f'0x{current_address():x}')
         return 1
     
-    @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def update(self, ctx: _ida_kernwin.action_ctx_base_t):
         ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
         del ctx # Not used but needed in prototype
@@ -1363,9 +1399,8 @@ if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_COPY_CUR
 else:
     log_print(f"register_action('{_ACTION_NAME_COPY_CURRENT_ADDRESS}') failed", arg_type="ERROR")
 
-del _registered_action
 # -------------------------------------------------------------------------------------------------------------------------------------------------------
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _ea_to_hexrays_insn(arg_ea: EvaluateType,
                         arg_cached_cfunc: Optional[_ida_hexrays.cfuncptr_t] = None,
                         arg_force_fresh_decompilation: bool = False,
@@ -1407,7 +1442,7 @@ def _ea_to_hexrays_insn(arg_ea: EvaluateType,
 
     return None
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def decompiled_line(arg_ea: EvaluateType, arg_cached_cfunc: Optional[_ida_hexrays.cfuncptr_t] = None, arg_debug: bool = False) -> str:
     ''' Sometimes you want only 1 line from the decompilation. See example in my plugins show_global_xrefs_hx.py and xor_finder.py '''
 
@@ -1438,7 +1473,7 @@ def decompiled_line(arg_ea: EvaluateType, arg_cached_cfunc: Optional[_ida_hexray
     res = _whitespace_zapper(res).strip()
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def function_prototype(arg_function_name_or_ea: EvaluateType,
                        arg_cached_cfunc: Optional[_ida_hexrays.cfuncptr_t] = None,
                        arg_allow_comments: bool = True,
@@ -1453,7 +1488,7 @@ def function_prototype(arg_function_name_or_ea: EvaluateType,
         # log_print(f"Calling decompile({arg_function_name_or_ea})")
         arg_cached_cfunc = decompile(arg_function_name_or_ea, arg_force_fresh_decompilation=arg_force_fresh_decompilation, arg_debug=arg_debug)
     if not arg_cached_cfunc:
-        log_print(f"Since we failed to decompile {_hex_str_if_int(arg_function_name_or_ea)}, we are calling str(get_type({_hex_str_if_int(arg_function_name_or_ea)}, arg_debug={arg_debug}))")
+        log_print(f"Since we failed to decompile {_hex_str_if_int(arg_function_name_or_ea)}, we are calling str(get_type({_hex_str_if_int(arg_function_name_or_ea)}, arg_debug={arg_debug}))", arg_type="INFO")
         return str(get_type(arg_function_name_or_ea, arg_debug=arg_debug))
 
     l_function_prototype: str = _ida_lines.tag_remove(arg_cached_cfunc.print_dcl()) + ';'
@@ -1464,7 +1499,7 @@ def function_prototype(arg_function_name_or_ea: EvaluateType,
 
     return l_function_prototype
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _get_func_name(arg_ea: int) -> str:
     ''' Wrapper for ida_funcs.get_func_name()
     IDA Bug: The docstring say "@return: length of the function name" which is wrong
@@ -1474,7 +1509,7 @@ def _get_func_name(arg_ea: int) -> str:
     l_get_func_name_res = _ida_funcs.get_func_name(arg_ea)
     return l_get_func_name_res or  ""
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def name(arg_ea: EvaluateType,
          arg_set_name: Optional[str] = None,
          arg_flags: int = _ida_name.SN_NOWARN | _ida_name.SN_NOCHECK,
@@ -1549,7 +1584,7 @@ def name(arg_ea: EvaluateType,
 
 label = name # Other programs use the term label
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _demangle_name(arg_name: str, arg_disable_mask: int, arg_demreq=_ida_name.DQT_FULL) -> str:
     ''' Wrapper around ida_name.demangle_name() 
     IDA bug: Docstring say "demangle_name(name, disable_mask, demreq=DQT_FULL) -> int32" which is wrong
@@ -1561,7 +1596,7 @@ def _demangle_name(arg_name: str, arg_disable_mask: int, arg_demreq=_ida_name.DQ
     l_demangle_name_res = _ida_name.demangle_name(arg_name, arg_disable_mask, arg_demreq)
     return l_demangle_name_res if l_demangle_name_res else ""
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def demangle_string(arg_mangled_name: str,
                   arg_flags: int = 0,
                   arg_debug: bool = False,
@@ -1586,7 +1621,7 @@ def demangle_string(arg_mangled_name: str,
     log_print(f"ida_name.demangle_name('{arg_mangled_name}', {arg_flags}) resulted in {res}", arg_debug)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def comment(arg_ea: EvaluateType,
             arg_set_comment: Optional[str] = None,
             arg_add_source: bool = True,
@@ -1617,7 +1652,7 @@ def comment(arg_ea: EvaluateType,
 
     return _comment_get(arg_ea=arg_ea, arg_cached_cfunc=arg_cached_cfunc, arg_add_source=arg_add_source, arg_oneliner=arg_oneliner, arg_debug=arg_debug)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _comment_get(arg_ea: EvaluateType,
                 arg_cached_cfunc: Optional[_ida_hexrays.cfuncptr_t] = None,
                 arg_add_source: bool = True,
@@ -1679,7 +1714,7 @@ def _comment_get(arg_ea: EvaluateType,
 
     return res.strip()
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _comment_set(arg_ea: EvaluateType,
                 arg_comment: str,
                 arg_cached_cfunc: Optional[_ida_hexrays.cfuncptr_t] = None,
@@ -1763,7 +1798,7 @@ def _comment_set(arg_ea: EvaluateType,
     res = _ida_bytes.set_cmt(l_addr, arg_comment, l_is_repeatable)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _comment_append(arg_ea: EvaluateType, arg_comment: str, arg_cached_cfunc: Optional[_ida_hexrays.cfuncptr_t] = None, arg_debug: bool = False) -> bool:
     ''' Comments can be set at many different levels at the same address.
     This function appends to the decompiler comment (if possible) and appends to the disassembly view
@@ -1777,7 +1812,7 @@ def _comment_append(arg_ea: EvaluateType, arg_comment: str, arg_cached_cfunc: Op
         res = _comment_set(arg_ea, f"{l_old_cmt}{l_marker}{arg_comment}", arg_cached_cfunc=arg_cached_cfunc, arg_debug=arg_debug)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def is_library_function(arg_ea: EvaluateType, arg_heavy_analysis: bool = False, arg_debug: bool = False) -> Optional[bool]:
     ''' Is the given EA (Effective Address) in a function IDA thinks is incompiled library function? '''
     
@@ -1794,7 +1829,7 @@ def is_library_function(arg_ea: EvaluateType, arg_heavy_analysis: bool = False, 
             return None
 
     if arg_heavy_analysis:
-        log_print("Not yet implemented the arg_heavy_analysis")
+        log_print("Not yet implemented the arg_heavy_analysis", arg_type="ERROR")
     # Each function that has both its neighbors as library functions will also be marked as library functions
         # for i in range(1, len(all_functions) - 1):
             # if not is_library_function(all_functions[i]) and is_library_function(all_functions[i-1]) and is_library_function(all_functions[i+1]):
@@ -1806,7 +1841,7 @@ def is_library_function(arg_ea: EvaluateType, arg_heavy_analysis: bool = False, 
     
     return (l_func.flags & _ida_funcs.FUNC_LIB) != 0
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def functions(arg_allow_library_functions: bool = True, arg_debug: bool = False) -> List[int]:
     ''' List of functions in the program.
     Can be used to filter out library functions
@@ -1823,7 +1858,7 @@ def functions(arg_allow_library_functions: bool = True, arg_debug: bool = False)
     res = [func for func in l_all_functions if not is_library_function(func, arg_debug=arg_debug)]
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def imports(arg_debug: bool = False) -> Dict[str, Dict[str, Tuple[int, int]]]:
     ''' Returns a dict with key: the module name and as value: another dict
     with key: function_name, value: tuple (function_ea, function_ordinal)
@@ -1851,7 +1886,7 @@ def imports(arg_debug: bool = False) -> Dict[str, Dict[str, Tuple[int, int]]]:
 
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def exports(arg_debug: bool = False) -> Dict[int, Tuple[int, int, str]]:
     ''' Get all exported functions including start/entrypoint. The dict returned is Dict[ea: int] -> (index: int, ordinal: int, name: str) '''
     res = {}
@@ -1860,7 +1895,7 @@ def exports(arg_debug: bool = False) -> Dict[int, Tuple[int, int, str]]:
     log_print(f"Len of exports: {len(res)}", arg_debug)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def read_bytes(arg_ea: EvaluateType, arg_len: EvaluateType, arg_debug: bool = False) -> Optional[bytes]:
     ''' Read bytes from the IDB. OBS! The IDB might not match the file on disk or active memory.
     
@@ -1893,7 +1928,7 @@ def read_bytes(arg_ea: EvaluateType, arg_len: EvaluateType, arg_debug: bool = Fa
 
 get_bytes = read_bytes
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def write_bytes(arg_ea: EvaluateType, arg_buf: Union[BufferType, int], arg_debug: bool = False) -> bool:
     ''' Write bytes (or hex string) to the IDB. OBS! The IDB might not match the file on disk or in active memory.
     Use ida_bytes.get_original_byte() to get back the bytes 
@@ -1928,12 +1963,12 @@ def write_bytes(arg_ea: EvaluateType, arg_buf: Union[BufferType, int], arg_debug
 
 set_bytes = patch_bytes = write_bytes
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def write_string(arg_ea: EvaluateType, arg_string: str, arg_append_NULL_byte: bool = True, arg_debug: bool = False) -> bool:
     ''' Write a null-terminated C string (UTF-8) to IDB'''
     return write_bytes(arg_ea=arg_ea, arg_buf=bytes(arg_string + ('\x00' if arg_append_NULL_byte else ''), encoding='utf-8'), arg_debug=arg_debug)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def import_h_file(arg_h_file: str, arg_flags: int = _ida_typeinf.PT_FILE, arg_debug: bool = False) -> bool:
     ''' Import a header file (.h file) with types into IDA. Same as using the menu File -> Load file -> Parse C header file. Default keybinding for the menu is Ctrl + F9
     
@@ -1950,18 +1985,18 @@ def import_h_file(arg_h_file: str, arg_flags: int = _ida_typeinf.PT_FILE, arg_de
         log_print(f"There where errors when trying to import the header file '{arg_h_file}'. Please make sure it's correct by manual load with Ctrl + F9", arg_type="ERROR")
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _local_types_as_c_types(arg_debug: bool = False) -> Optional[List[str]]:
     ''' Internal function. Get all local types as a list of strings that can be exported to a header file.
     Read more at <https://github.com/idapython/src/blob/ae62cd4df534f18c8c3dc47bd159d50c9822d82d/python/idc.py#L5142>
     '''
     class CustomPrinter(_ida_typeinf.text_sink_t):
-        @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
         def __init__(self):
             _ida_typeinf.text_sink_t.__init__(self)
-            self.lines: List[str] = []
+            self.lines: List[str] = [] # type: ignore[annotation-unchecked]
 
-        @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
         def _print(self, arg_defstr: str):
             self.lines.append(arg_defstr)
             return 0
@@ -1980,7 +2015,7 @@ def _local_types_as_c_types(arg_debug: bool = False) -> Optional[List[str]]:
 
     return l_printer.lines
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def export_h_file(arg_h_file: str = input_file.idb_path + ".h", arg_add_comment_at_top: bool = False, arg_debug: bool = False) -> str:
     ''' Export all local types into a header file
      
@@ -2008,7 +2043,7 @@ def export_h_file(arg_h_file: str = input_file.idb_path + ".h", arg_add_comment_
 
     return arg_h_file
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def string_encoding(arg_ea: EvaluateType, arg_detect: bool = False, arg_debug: bool = False) -> Optional[str]:
     '''
     Gets teh encoding of a string, can also be used to check if IDA thinks there is a string on that address
@@ -2039,21 +2074,21 @@ def string_encoding(arg_ea: EvaluateType, arg_detect: bool = False, arg_debug: b
         
         log_print(f"chardet.detect({str(l_bytes)}) len: {len(l_bytes)}", arg_debug)
         l_detected = chardet.detect(l_bytes)
-        log_print(f"chardet gave the following: {str(l_detected)}")
+        log_print(f"chardet gave the following: {str(l_detected)}", arg_type="ERROR")
         res = l_detected["encoding"] if l_detected["encoding"] is not None else ""
     else:
         log_print(f"IDA does _NOT_ think there is a string at {_hex_str_if_int(arg_ea)} but you can try to detect what encoding is used by calling string_encoding(<address>, arg_detect=True)", arg_type="ERROR")
         res = ""
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _is_invalid_strtype(arg_strtype: int) -> bool:
     ''' It's not clear what is ida_nalt.get_str_type() should return that is a valid strtype. 
     I used to think that 0xFFFFFFFF was the constant but I have gotten cases where 0xFFFFFF00 is also returned 
     '''
     return (arg_strtype >> 8) == 0xFFFFFF
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _validate_encoding_name(arg_encoding: str) -> str:
     ''' Try to normalize some encoding names.
      Maybe check against <https://docs.python.org/3.12/library/codecs.html#standard-encodings> ?
@@ -2075,7 +2110,7 @@ def _validate_encoding_name(arg_encoding: str) -> str:
         res = arg_encoding
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _encoding_to_strtype(arg_encoding: str, arg_debug: bool = False) -> int:
     ''' Internal function. Do not use directly. 
     
@@ -2084,14 +2119,14 @@ def _encoding_to_strtype(arg_encoding: str, arg_debug: bool = False) -> int:
     l_encoding: str = _validate_encoding_name(arg_encoding)
     l_encoding_index: int = _ida_nalt.add_encoding(l_encoding) # If the encoding exists, then return the index, else create it and return index.
     if l_encoding_index == -1:
-        log_print(f'ida_nalt.add_encoding("{arg_encoding}") failed.')
+        log_print(f'ida_nalt.add_encoding("{arg_encoding}") failed.', arg_type="ERROR")
         return -1
     log_print(f"Encoding index: {l_encoding_index}", arg_debug)
     res: int = _ida_nalt.make_str_type(0, l_encoding_index)
     log_print(f"l_strtype: {res}", arg_debug)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _encoding_from_strtype(arg_strtype: int) -> str:
     ''' Wrapper around ida_nalt.encoding_from_strtype() that honors the type hints. 
     It does NOT return None (NULLPTR) if we send in an invalid index as the docstring say
@@ -2100,7 +2135,7 @@ def _encoding_from_strtype(arg_strtype: int) -> str:
     '''
     return _ida_nalt.encoding_from_strtype(arg_strtype)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def string(arg_ea: EvaluateType, 
            arg_type: Optional[Union[int, str]] = None, 
            arg_len: EvaluateType = 0,
@@ -2129,7 +2164,7 @@ def string(arg_ea: EvaluateType,
     
     l_t_len = eval_expression(arg_len, arg_debug=arg_debug)
     if l_t_len is None:
-        log_print(f'eval_expression({arg_len}) failed')
+        log_print(f'eval_expression({arg_len}) failed', arg_type="ERROR")
         return None
     l_len: int = l_t_len
     del l_t_len
@@ -2206,21 +2241,21 @@ def string(arg_ea: EvaluateType,
     log_print(f"res: '{res}'", arg_debug)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def c_string(arg_ea: EvaluateType, arg_len: int = 0, arg_flags: int = _ida_bytes.ALOPT_IGNHEADS | _ida_bytes.ALOPT_IGNPRINT | _ida_bytes.ALOPT_IGNCLT, arg_debug: bool = False) -> Optional[str]:
     ''' Forcefully read the data as a NULL terminated C string (in UTF-8) For more info about the flags, see the docstring for string() '''
     return string(arg_ea=arg_ea, arg_type=_ida_nalt.STRTYPE_C, arg_len=arg_len, arg_flags=arg_flags, arg_debug=arg_debug)
 
 utf8_string = string_utf8 = c_string
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def wide_string(arg_ea: EvaluateType, arg_len: int = 0, arg_flags: int = _ida_bytes.ALOPT_IGNHEADS | _ida_bytes.ALOPT_IGNPRINT | _ida_bytes.ALOPT_IGNCLT, arg_debug: bool = False) -> Optional[str]:
     ''' Forcefully read the data as a NULL terminated wide/unicode/UTF-16/UCS-2 string. For more info about the flags, see the docstring for string() '''
     return string(arg_ea=arg_ea, arg_type=_ida_nalt.STRTYPE_C_16, arg_len=arg_len, arg_flags=arg_flags, arg_debug=arg_debug)
 
 utf16_string = string_utf16 = wide_string
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def strings(arg_only_first: int = 100000, arg_debug: bool = False) -> List[Tuple[int, int, str, str, int]]:
     ''' Returns all strings that IDA has found.
     The result is a list with tuples: (address: int, length: int, encoding: str, content: str, _ida_nalt.STRTYPE_*: enum)
@@ -2241,7 +2276,6 @@ def strings(arg_only_first: int = 100000, arg_debug: bool = False) -> List[Tuple
     log_print(f"len(res) = {len(res)}", arg_debug)
     return res
 
-# TODO: Remove in the version I send to Github/Hexrays
 def _strings_profiled():
     r''' Profile code to see what is taking most time
     From the command console: snakeviz C:\temp\strings.prof
@@ -2259,7 +2293,7 @@ def _strings_profiled():
     stats.print_stats()
     stats.dump_stats(r'C:\temp\strings.prof')
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pointer_type(arg_type_or_function_name: Union[str, _ida_typeinf.tinfo_t], arg_debug: bool = False) -> Optional[_ida_typeinf.tinfo_t]:
     ''' Send in a name or a type and get a pointer type back.
      Usually one use str(res) to get it as a string
@@ -2273,7 +2307,7 @@ def pointer_type(arg_type_or_function_name: Union[str, _ida_typeinf.tinfo_t], ar
     res.create_ptr(l_type)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _fix_assembly(arg_assembly_string: str, arg_debug: bool = False) -> str:
     ''' Internal function. If you read assembly from IDA and try to reassemble it, it won't work.
     OBS! This is NOT a complete fix!
@@ -2295,7 +2329,7 @@ def _fix_assembly(arg_assembly_string: str, arg_debug: bool = False) -> str:
     log_print(f"in: {arg_assembly_string} --> out: {res}", arg_debug)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def assemble(arg_ea: EvaluateType,
              arg_line: str,
              arg_cs: Optional[int] = None,
@@ -2372,7 +2406,7 @@ def assemble(arg_ea: EvaluateType,
             return None
     return l_addr + instr_size_after
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def disassemble(arg_ea: EvaluateType,
                 arg_flags: int = _ida_lines.GENDSM_FORCE_CODE,
                 arg_show_size: bool = True,
@@ -2403,7 +2437,7 @@ def disassemble(arg_ea: EvaluateType,
         res += f' ; bytes: ' + " ".join(f"{b:02x}" for b in l_ins.bytes)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def instruction(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[_ida_ua.insn_t]:
     '''
     Instruction object at given ea (Effective Address).
@@ -2421,12 +2455,12 @@ def instruction(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[_ida_
         return None
     return insn
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def instruction_before(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[_ida_ua.insn_t]:
     ''' Returns the instruction before the given instruction '''
     return instruction(arg_ea=_ida_bytes.get_item_head(address(arg_ea, arg_debug=arg_debug) - 1), arg_debug=arg_debug)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def instruction_after(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[_ida_ua.insn_t]:
     ''' Returns the instruction after the given instruction '''
     return instruction(arg_ea=_ida_bytes.get_item_end(address(arg_ea, arg_debug=arg_debug) + 1), arg_debug=arg_debug)
@@ -2446,7 +2480,7 @@ def xrefs_to(arg_ea: EvaluateType, arg_debug: bool = False) -> Dict[int, _ida_xr
     log_print(f"len of dict: {len(res)}", arg_debug)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pointer_size(arg_debug: bool = False) -> int:
     ''' Returns the native pointer size on the system in bytes '''
 
@@ -2458,7 +2492,7 @@ def pointer_size(arg_debug: bool = False) -> int:
     log_print(f"Pointer size is {res}", arg_debug)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pointer(arg_ea: EvaluateType, arg_value: Optional[EvaluateType] = None, arg_debug: bool = False) -> Optional[int]:
     ''' Reads a pointer from memory. If no memory is active, then read from the IDB.
     If arg_value is set, then write that pointer to the memory. Works like WinDBG poi() '''
@@ -2481,7 +2515,7 @@ def pointer(arg_ea: EvaluateType, arg_value: Optional[EvaluateType] = None, arg_
     return res
 p = poi = ptr = pointer # WinDBG, I love you and I hate you
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def clipboard_copy(arg_text: EvaluateType, arg_debug: bool = False) -> bool:
     ''' Helper function to put text into the clipboard 
     
@@ -2502,7 +2536,7 @@ def clipboard_copy(arg_text: EvaluateType, arg_debug: bool = False) -> bool:
     clipboard.setText(l_text)
     return clipboard.ownsClipboard() and l_text == clipboard.text()
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _flags(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
     ''' Wrapper around ida_bytes.get_flags() '''
     l_addr: int = address(arg_ea, arg_debug=arg_debug)
@@ -2512,7 +2546,7 @@ def _flags(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
 
     return _ida_bytes.get_flags(l_addr)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def is_code(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
     ''' Is the given EA (Effective Address) code? '''
     l_flags = _flags(arg_ea, arg_debug=arg_debug)
@@ -2521,7 +2555,7 @@ def is_code(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
         return False
     return _ida_bytes.is_code(l_flags)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def is_data(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
     ''' Is the given EA (Effective Address) data? '''
     l_flags = _flags(arg_ea, arg_debug=arg_debug)
@@ -2530,7 +2564,7 @@ def is_data(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
         return False
     return _ida_bytes.is_data(l_flags)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def is_unknown(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
     ''' Is the given EA (Effective Address) unknown bytes? '''
     l_flags = _flags(arg_ea, arg_debug=arg_debug)
@@ -2539,7 +2573,7 @@ def is_unknown(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
         return False
     return _ida_bytes.is_unknown(l_flags)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def is_head(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
     ''' Is the given EA (Effective Address) an instruction OR data item? '''
     l_flags = _flags(arg_ea, arg_debug=arg_debug)
@@ -2548,7 +2582,7 @@ def is_head(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
         return False
     return _ida_bytes.is_head(l_flags)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def make_unknown(arg_ea: EvaluateType, arg_len: int = 1, arg_debug: bool = False) -> Optional[bool]:
     ''' Mark the bytes as unknown '''
 
@@ -2562,7 +2596,7 @@ def make_unknown(arg_ea: EvaluateType, arg_len: int = 1, arg_debug: bool = False
     res &= is_unknown(l_addr, arg_debug=arg_debug) 
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def make_code(arg_ea: EvaluateType, arg_len: int = 1, arg_force: bool = False, arg_debug: bool = False) -> Optional[bool]:
     ''' Tell IDA to parse the bytes at address as code.
     Replacement for ida_auto.auto_mark_range(a, b, ida_auto.AU_CODE), idc.auto_mark_range(a, b, ida_auto.AU_CODE) and idc.auto_make_code()
@@ -2583,13 +2617,12 @@ def make_code(arg_ea: EvaluateType, arg_len: int = 1, arg_force: bool = False, a
     _ = _ida_ua.create_insn(l_addr)
     return _ida_auto.auto_wait() and is_code(l_addr, arg_debug=arg_debug) # _ida_auto.auto_wait() waits for the auto analysis to be done. It returns true if everything went smooth and false if the user clicked cancel
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def make_data(arg_ea: EvaluateType, arg_item_type: str = "BYTE", arg_number_of_items: int = 1, arg_debug: bool = False) -> Optional[bool]:
     ''' Make adress into data, can be used to create arrays also.
 
     Replacement for ida_bytes.create_data()
     '''
-    # TODO: mark an address as a pointer (same as pressin <o> in IDA)
     l_addr = address(arg_ea, arg_debug=arg_debug)
     if l_addr == _ida_idaapi.BADADDR:
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
@@ -2605,7 +2638,7 @@ def make_data(arg_ea: EvaluateType, arg_item_type: str = "BYTE", arg_number_of_i
         log_print(f"Invalid arg_item_type, you wrote '{arg_item_type}'", arg_type="ERROR")
         return None
 
-    l_type_id = _ida_netnode.BADNODE # If the dataflag is one of the data types in the data carusel, then we set this to _ida_netnode.BADNODE
+    l_type_id = _ida_netnode.BADNODE # If the dataflag is one of the data types in the data carusel, then we set this to ida_netnode.BADNODE
     if l_type.is_struct():
         l_type_id = _idc.get_struc_id(str(l_type))
         if l_type_id == _ida_idaapi.BADADDR:
@@ -2620,12 +2653,12 @@ def make_data(arg_ea: EvaluateType, arg_item_type: str = "BYTE", arg_number_of_i
         return False
     return _ida_auto.auto_wait() and is_data(l_addr, arg_debug=arg_debug) # _ida_auto.auto_wait() waits for the auto analysis to be done. It returns true if everything went smooth and false if the user clicked cancel
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def make_array(arg_ea: EvaluateType, arg_item_type: str, arg_number_of_items: int, arg_debug: bool = False) -> Optional[bool]:
     ''' Make an array of item type with given length in number of items '''
     return make_data(arg_ea=arg_ea, arg_item_type=arg_item_type, arg_number_of_items=arg_number_of_items, arg_debug=arg_debug)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _parse_binpat_str(arg_out: _ida_bytes.compiled_binpat_vec_t, arg_ea: int, arg_in: str, arg_radix: int, arg_strlits_encoding: int = 0, arg_debug: bool = False) -> bool:
     ''' Wrapper around ida_bytes.parse_binpat_str() which have a bad history of return type problems. 
     Read more: <https://python.docs.hex-rays.com/namespaceida__bytes.html#a78f65e2beddbe9a9da023e022a6a6b06>
@@ -2636,7 +2669,7 @@ def _parse_binpat_str(arg_out: _ida_bytes.compiled_binpat_vec_t, arg_ea: int, ar
     # log_print(f"ida_bytes.parse_binpat_str() have a bad history of type problems... type: {type(_t)}  value: '{_t}'", arg_debug)
     return l_temp == ""
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _bin_search(arg_start_ea: int, arg_end_ea: int, arg_data: _ida_bytes.compiled_binpat_vec_t, arg_flags: int) -> int:
     ''' Wrapper around bin_search() that actually honors the type hints
     @param start_ea: linear address, start of range to search
@@ -2652,7 +2685,7 @@ def _bin_search(arg_start_ea: int, arg_end_ea: int, arg_data: _ida_bytes.compile
     res = l_temp[0] if isinstance(l_temp, tuple) else l_temp # IDA 9.0 returns a tuple, IDA < 9.0 returns int
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _get_encoding_bpu_by_name(arg_encoding_name: str) -> int:
     ''' Wrapper around ida_nalt.get_encoding_bpu_by_name().
     Take a human readable string and get the width of each element. e.g. "UTF-8" -> 1, "UTF-16" -> 2, "UTF-32" -> 2
@@ -2668,7 +2701,7 @@ def _get_encoding_bpu_by_name(arg_encoding_name: str) -> int:
     l_encoding: str =_validate_encoding_name(arg_encoding_name)
     return _ida_nalt.get_encoding_bpu_by_name(l_encoding) # TODO: the encoding is not validated, if you send in a weird string, the function returns 1. Why?
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def search_binary(arg_pattern: BufferType,
                   arg_min_ea: Optional[EvaluateType] = None,
                   arg_max_ea: Optional[EvaluateType] = None,
@@ -2758,7 +2791,7 @@ def search_binary(arg_pattern: BufferType,
 
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def plugin_load_and_run(arg_plugin_name: str, arg_optional_argument_to_plugin: int = 0, arg_debug: bool = False) -> Optional[bool]:
     ''' Load a plugin and run it with optional argument.
 
@@ -2783,7 +2816,7 @@ def plugin_load_and_run(arg_plugin_name: str, arg_optional_argument_to_plugin: i
 
 load_and_run_plugin = plugin_load_and_run
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def segments() -> List[_ida_segment.segment_t]:
     ''' Get all segments in the program
     @return Returns List[segment_obj: ida_segment.segment_t]
@@ -2793,7 +2826,7 @@ def segments() -> List[_ida_segment.segment_t]:
         res.append(_ida_segment.getnseg(segment_index))
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def segment(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[_ida_segment.segment_t]:
     ''' Gets the segment the given EA (Effective Address) '''
     l_addr: int = address(arg_ea, arg_debug=arg_debug)
@@ -2808,8 +2841,12 @@ def segment(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[_ida_segm
     log_print(f"Segment found: {str(res)}", arg_debug)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
-def _segment_permissions(arg_segment: EvaluateType,  arg_readable: Optional[bool] = None, arg_writable: Optional[bool] = None, arg_executable: Optional[bool] = None, arg_debug: bool = False) -> int:
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _segment_permissions(arg_segment: EvaluateType,  
+                         arg_readable: Optional[bool] = None, 
+                         arg_writable: Optional[bool] = None, 
+                         arg_executable: Optional[bool] = None, 
+                         arg_debug: bool = False) -> int:
     ''' Internal function. To change a sections permissions, use:
     s = segment(<address>)
     s.writable = True
@@ -2817,7 +2854,8 @@ def _segment_permissions(arg_segment: EvaluateType,  arg_readable: Optional[bool
     Gets or sets the permission flags according to the arguments.
     If an argument is set to None, then it won't be changed.
 
-    OBS! During an active debugger session, even if you set the executable flag, the memory will not be executable. This is only IDAs view and not what the OS thinks
+    OBS! During an active debugger session, even if you set the executable flag, 
+    the memory will not be executable. This is only IDAs view and not what the OS thinks
     This is something I'm thinking of adding but atm I am just so tired of this function...
 
     '''
@@ -2839,7 +2877,7 @@ def _segment_permissions(arg_segment: EvaluateType,  arg_readable: Optional[bool
 
     return l_segment.perm
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def xref_add_code_ref(arg_from: EvaluateType, arg_to: EvaluateType, arg_flags: int = _ida_xref.XREF_USER | _ida_xref.fl_CN, arg_add_comment: bool = True, arg_debug: bool = False) -> Optional[bool]:
     ''' Creates a code xref arg_from --> arg_to.
     IDA does not show anything in the arg_from position so we add a comment at that address
@@ -2866,7 +2904,7 @@ def xref_add_code_ref(arg_from: EvaluateType, arg_to: EvaluateType, arg_flags: i
         res = res and _comment_append(arg_ea=l_from_addr, arg_comment=f"code xref to: 0x{l_to_addr:x}", arg_debug=arg_debug)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _decompiler_calls(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[List[_ida_hexrays.cexpr_t]]:
     ''' Internal function, use calls() instead.
     Returns a list of all _ida_hexrays.cexpr_t that is of type "call" '''
@@ -2880,7 +2918,7 @@ def _decompiler_calls(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional
             res.append(item.to_specific_type.cexpr)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _assembler_calls(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[List[_ida_ua.insn_t]]:
     ''' Internal function, use calls() instead.
     Returns a list of all _ida_ua.insn_t that is of type "call" '''
@@ -2895,7 +2933,7 @@ def _assembler_calls(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[
             res.append(l_ins)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def calls(arg_ea: EvaluateType, arg_use_assembly_calls_instead: bool = False, arg_debug: bool = False) -> Optional[Union[List[_ida_hexrays.cexpr_t], List[_ida_ua.insn_t]]]:
     ''' Return a list of all calls in the given function.
     This uses the decompiler but you can set arg_use_assembly_calls_instead=True to use the disassembler instead.
@@ -2909,7 +2947,7 @@ def calls(arg_ea: EvaluateType, arg_use_assembly_calls_instead: bool = False, ar
 # DATA TYPES ------------------------------------------------------------------------------------------------------------------
 
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _fix_c_type(arg_c_type: str, arg_debug: bool = False) -> Optional[str]:
     '''
     Internal function. Please use get_type() instead.
@@ -2975,7 +3013,7 @@ def _fix_c_type(arg_c_type: str, arg_debug: bool = False) -> Optional[str]:
     log_print(f"Failed to make the c type string into something IDA wants to swallow :-(", arg_debug, arg_type="ERROR")
     return None
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _parse_decl(arg_c_type: str, arg_debug: bool = False) -> Optional[_ida_typeinf.tinfo_t]:
     ''' Internal function. Please use get_type() instead.
     Can convert a C string such as "int* a" to a ida_typeinf.tinfo_t (type information).
@@ -3000,7 +3038,7 @@ def _parse_decl(arg_c_type: str, arg_debug: bool = False) -> Optional[_ida_typei
     log_print(f"ida_typeinf.parse_decl(res, None, '{l_c_type}', ida_typeinf.PT_SIL) failed", arg_type="ERROR")
     return None
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def get_type(arg_name_or_ea: Union[EvaluateType, _ida_hexrays.lvar_t, _ida_typeinf.tinfo_t],
              arg_cached_cfunc: Optional[_ida_hexrays.cfuncptr_t] = None,
              arg_debug: bool = False
@@ -3078,7 +3116,7 @@ def get_type(arg_name_or_ea: Union[EvaluateType, _ida_hexrays.lvar_t, _ida_typei
     log_print("t.deserialize() failed", arg_type="ERROR")
     return None
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def set_type(arg_original_type_name_or_ea: EvaluateType, arg_new_type: Union[str, _ida_typeinf.tinfo_t], arg_debug: bool = False) -> bool:
     ''' Set type by name or address.
 
@@ -3133,7 +3171,7 @@ def set_type(arg_original_type_name_or_ea: EvaluateType, arg_new_type: Union[str
 
 
 # TODO: IDA 9.0 will break this by removing ida_typeinf.get_ordinal_qty written 2024-09-03
-# @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 # def enum(arg_enum_name: Union[str, _ida_typeinf.tinfo_t], arg_debug: bool = False) -> Optional[str]:
     # ''' Takes a name of an enum that is in the IDB (can be seen in the local types window) and
         # returns the str of the enum as it would be seen in the local types edit enum window.
@@ -3165,7 +3203,7 @@ def set_type(arg_original_type_name_or_ea: EvaluateType, arg_new_type: Union[str
 # DEBUGGER ------------------------------------------------------------------------------------------------------------------
 
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def debugger_refresh_memory_WARNING_VERY_EXPENSIVE() -> None:
     ''' Force a refresh of IDAs view on the targets memory.
     WARNING! This is a VERY expensive function
@@ -3174,14 +3212,14 @@ def debugger_refresh_memory_WARNING_VERY_EXPENSIVE() -> None:
     _ida_dbg.refresh_debugger_memory()
     return
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def debugger_is_running() -> bool:
     ''' Check if the debugger is running. 
       @return Returns True if the debugger is running and False otherwise
     '''
     return _ida_dbg.is_debugger_on()
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def process_is_suspended() -> Optional[bool]:
     ''' Returns True if the debugger is active and the process is suspended.
         Returns False if the debugger is active but the process is not suspended.
@@ -3193,7 +3231,7 @@ def process_is_suspended() -> Optional[bool]:
 
     return _ida_dbg.get_process_state() == _ida_dbg.DSTATE_SUSP
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _step_synchronous(arg_num_step_to_take: int = 1, arg_step_into: bool = True, arg_seconds_max_wait: int = 60, arg_debug: bool = False) -> Optional[int]:
     ''' The normal ida_dbg.step_into() / ida_dbg.step_over() is asynchronous which can make it a little tricky to use.
     @param arg_seconds_max_wait: number of seconds to wait, -1 --> infinity
@@ -3214,7 +3252,7 @@ def _step_synchronous(arg_num_step_to_take: int = 1, arg_step_into: bool = True,
         log_print(f"ida_dbg.wait_for_next_event() returned {res}", arg_debug)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def step_into_synchronous(arg_num_step_to_take: int = 1, arg_seconds_max_wait: int = 60, arg_debug: bool = False) -> Optional[int]:
     ''' The normal ida_dbg.step_into() is asynchronous which can make it a little tricky to use.
     @param arg_seconds_max_wait: number of seconds to wait, -1 --> infinity
@@ -3227,7 +3265,7 @@ def step_into_synchronous(arg_num_step_to_take: int = 1, arg_seconds_max_wait: i
 
     return _step_synchronous(arg_num_step_to_take=arg_num_step_to_take, arg_step_into=True, arg_seconds_max_wait=arg_seconds_max_wait, arg_debug=arg_debug)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def step_over_synchronous(arg_num_step_to_take: int = 1, arg_seconds_max_wait: int = 60, arg_debug: bool = False) -> Optional[int]:
     ''' The normal ida_dbg.step_over() is asynchronous which can make it a little tricky to use.
     @param arg_seconds_max_wait: number of seconds to wait, -1 --> infinity
@@ -3240,7 +3278,7 @@ def step_over_synchronous(arg_num_step_to_take: int = 1, arg_seconds_max_wait: i
     '''
     return _step_synchronous(arg_num_step_to_take=arg_num_step_to_take, arg_step_into=False, arg_seconds_max_wait=arg_seconds_max_wait, arg_debug=arg_debug)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def breakpoint_add(arg_ea: EvaluateType,
                    arg_size: int = 0,
                    arg_breakpoint_type: int = _ida_idd.BPT_DEFAULT,
@@ -3278,7 +3316,7 @@ def breakpoint_add(arg_ea: EvaluateType,
         return None
     return l_bpt
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def breakpoint_disable(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[bool]:
     ''' Disable a breakpoint '''
     l_addr: int = address(arg_ea, arg_debug=arg_debug)
@@ -3288,7 +3326,7 @@ def breakpoint_disable(arg_ea: EvaluateType, arg_debug: bool = False) -> Optiona
 
     return _ida_dbg.disable_bpt(l_addr)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def breakpoint_enable(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[bool]:
     ''' Enable a breakpoint '''
     l_addr: int = address(arg_ea, arg_debug=arg_debug)
@@ -3298,7 +3336,7 @@ def breakpoint_enable(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional
 
     return _ida_dbg.enable_bpt(l_addr)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def breakpoint_delete(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[bool]:
     ''' Delete a breakpoint '''
 
@@ -3309,7 +3347,7 @@ def breakpoint_delete(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional
 
     return _ida_dbg.del_bpt(l_addr)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def breakpoint(arg_ea: EvaluateType, arg_create_if_needed: bool = False, arg_debug: bool = False) -> Optional[_ida_dbg.bpt_t]:
     ''' Get the breakpoint at the given address. If there is no breakpoint there, returns None
     @param arg_create_if_needed if there is no breakpoint, then create one at that address if this argument is set
@@ -3332,7 +3370,7 @@ def breakpoint(arg_ea: EvaluateType, arg_create_if_needed: bool = False, arg_deb
 
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def breakpoint_update(arg_breakpoint: _ida_dbg.bpt_t) -> bool:
     ''' Update (change) a breakpoint that already exists.
     OBS! You can NOT change the address (ea) of the breakpoint with this function!
@@ -3340,19 +3378,19 @@ def breakpoint_update(arg_breakpoint: _ida_dbg.bpt_t) -> bool:
     '''
     return _ida_dbg.update_bpt(arg_breakpoint)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def process_suspend() -> bool:
     ''' Wrapper for ida_dbg.suspend_process() '''
     return _ida_dbg.suspend_process()
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def process_resume() -> bool:
     ''' Wrapper for ida_dbg.continue_process'''
     return _ida_dbg.continue_process()
 
 process_continue = process_resume
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def process_options(arg_debug: bool = False) -> Dict[str, str]:
     ''' Get the options which the process is started '''
     (file_on_disk, program_arguments, directory, remote_server_ip, remote_server_password, remote_server_port) = _ida_dbg.get_process_options()
@@ -3365,7 +3403,7 @@ def process_options(arg_debug: bool = False) -> Dict[str, str]:
     log_print(f"res: {res}", arg_debug)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _add_property_to_registers_object(arg_reg_name: str, arg_debug: bool = False):
     ''' Internal function. For some strange reason, this line has to be in called from its own function. I don't know why and I have spent WAY TOO MUCH TIME on trying to figure out why... '''
     arg_reg_name = arg_reg_name.replace('$', '').lower() # MIPS :-()
@@ -3378,11 +3416,11 @@ class _registers_object(object):
     '''
     _as_dict: Dict[str, _ida_idp.reg_info_t] = {}
 
-    @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def __init__(self, arg_reg_sizes: Optional[List[int]] = None, arg_debug: bool = False):
         self._populate_register_dict(arg_reg_sizes=arg_reg_sizes, arg_debug=arg_debug)
 
-    @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def _populate_register_dict(self, arg_reg_sizes: Optional[List[int]] = None, arg_debug: bool = False) -> Dict[str, _ida_idp.reg_info_t]:
         ''' Returns a dict that containts all registers in this processor module.
         The dict looks like: Dict[register_name: str] = register_info: _ida_idp.reg_info_t
@@ -3422,7 +3460,7 @@ class _registers_object(object):
 
 registers = _registers_object() # Recreated in the "_new_file_opened_notification_callback" function
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _new_file_opened_notification_callback(arg_nw_code: int, arg_is_old_database: int) -> None:
     ''' Callback that is triggered whenever a file is opened in IDA Pro.
     
@@ -3439,7 +3477,7 @@ def _new_file_opened_notification_callback(arg_nw_code: int, arg_is_old_database
     log_print(f"{__name__} is (re)loaded", arg_type="INFO")
 _ida_idaapi.notify_when(_ida_idaapi.NW_OPENIDB, _new_file_opened_notification_callback) # See also : NW_INITIDA, NW_REMOVE, NW_CLOSEIDB, NW_TERMIDA
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _add_links_to_docstring(arg_function: Any, arg_link: str) -> None:
     ''' If there is no link the official documentation for the given function, add a link to it '''
     l_docstring: str = getattr(arg_function, "__doc__")
@@ -3460,7 +3498,7 @@ _add_links_to_docstring(_ida_dbg.wait_for_next_event, "https://python.docs.hex-r
 _add_links_to_docstring(_ida_bytes.get_strlit_contents, "https://python.docs.hex-rays.com/namespaceida__bytes.html#aafc64f6145bfe2e7d3e49a6e1e4e217c")
 # TODO: Add more links
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _register(arg_register: Union[str, _ida_idp.reg_info_t], arg_set_value: Optional[EvaluateType] = None, arg_debug: bool = False) -> Optional[int]:
     ''' Internal function. The public interface is the community_base.registers.<register_name>
     Get or set the value in a register in a running process '''
@@ -3498,7 +3536,7 @@ def _register(arg_register: Union[str, _ida_idp.reg_info_t], arg_set_value: Opti
         return None
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def appcall(arg_function_name: EvaluateType,
             arg_prototype: Union[EvaluateType, _ida_typeinf.tinfo_t, None] = None,
             arg_set_type_in_IDB: bool = True,
@@ -3545,7 +3583,7 @@ def appcall(arg_function_name: EvaluateType,
     res.prototype = l_function_prototype
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def allocate_memory_in_target(arg_size: EvaluateType, arg_executable: bool = False, arg_debug: bool = False) -> Optional[int]:
     ''' If the debugger is running, try to allocate memory in target process.
 
@@ -3573,7 +3611,7 @@ def allocate_memory_in_target(arg_size: EvaluateType, arg_executable: bool = Fal
         PAGE_EXECUTE_READWRITE = 0x40
         l_kernelbase_VirtualAlloc = appcall('kernelbase_VirtualAlloc', 'PVOID __stdcall(PVOID lpAddress, SIZE_T dwSize, __int32 flAllocationType, __int32 flProtect)', arg_debug=arg_debug)
         if l_kernelbase_VirtualAlloc is None:
-            log_print(f'Failed to find kernelbase_VirtualAlloc')
+            log_print(f'Failed to find kernelbase_VirtualAlloc', arg_type="ERROR")
             return None
         res = l_kernelbase_VirtualAlloc(None, l_size, MEM_COMMIT, PAGE_EXECUTE_READWRITE if arg_executable else PAGE_READWRITE)
         
@@ -3670,7 +3708,7 @@ def allocate_memory_in_target(arg_size: EvaluateType, arg_executable: bool = Fal
 
 malloc = allocate_memory_in_target
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def modules(arg_name_filter_regex: str = ".*",  arg_debug: bool = False) -> Optional[List[_ida_idd.modinfo_t]]:
     ''' Return all loaded modules. This information is only available with a live running process.
         OBS! Modules here means loaded DLLs in the target process
@@ -3703,7 +3741,7 @@ def modules(arg_name_filter_regex: str = ".*",  arg_debug: bool = False) -> Opti
 
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def module(arg_module_name_or_address: Union[str, EvaluateType] = None, arg_debug: bool = False) -> Optional[_ida_idd.modinfo_t]:
     ''' Find a module based on the name or an address
     OBS! Module in this context refers to a DLL loaded in the target process while it is running '''
@@ -3729,7 +3767,7 @@ def module(arg_module_name_or_address: Union[str, EvaluateType] = None, arg_debu
     log_print(f"No module found for '{arg_module_name_or_address}'", arg_type="ERROR")
     return None
     
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def load_file_into_memory(arg_file_path: str, arg_executable: bool = True, arg_debug: bool = False) -> Optional[int]:
     ''' Take a file on disk (usually shellcode) and allocates that much memory and write the file content to that memory location
     @return Returns the address the data (shellcode) was written to
@@ -3745,7 +3783,7 @@ def load_file_into_memory(arg_file_path: str, arg_executable: bool = True, arg_d
         return None
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def win_PEB(arg_debug: bool = False) -> Optional[int]:
     ''' Gets the address to the PEB (Process Environment Block) '''
     if not debugger_is_running():
@@ -3762,7 +3800,7 @@ def win_PEB(arg_debug: bool = False) -> Optional[int]:
         return None
     return teb.start_ea if input_file.bits == 64 else teb.start_ea + 0x1000
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def win_GetCommandLineW(arg_debug: bool = False) -> Optional[str]:
     ''' The command line the program was started with via AppCall '''
     l_GetCommandLineW = appcall('kernel32_GetCommandLineW', "LPWSTR GetCommandLineW();", arg_debug=arg_debug)
@@ -3772,16 +3810,16 @@ def win_GetCommandLineW(arg_debug: bool = False) -> Optional[str]:
     res = l_GetCommandLineW().decode('UTF-16')
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def win_GetLastError(arg_debug: bool = False) -> Optional[int]:
     ''' Calls GetLastError() via AppCall '''
     l_GetLastError = appcall('kernel32_GetLastError', "DWORD GetLastError();", arg_debug=arg_debug)
     if l_GetLastError is None:
-        log_print("appcall('kernel32_GetLastError') failed")
+        log_print("appcall('kernel32_GetLastError') failed", arg_type="ERROR")
         return None
     return l_GetLastError()
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def win_LoadLibraryA(arg_dll: str, arg_debug: bool = False) -> Optional[int]:
     ''' Load a DLL into the running process via AppCall '''
     l_load_library = appcall('kernel32_LoadLibraryA', "HMODULE LoadLibraryA(LPCSTR lpLibFileName);", arg_debug=arg_debug)
@@ -3800,7 +3838,7 @@ def win_LoadLibraryA(arg_dll: str, arg_debug: bool = False) -> Optional[int]:
     return res
 
 # TODO: maybe implement?
-# @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 # def win_GetProcAddress(arg_hmodule: EvaluateType, arg_function_name: str) -> bool:
 #     ''' Calls GetProcAddress via AppCall '''
 #     #     address("kernel32_GetProcAddress")
@@ -3809,7 +3847,7 @@ def win_LoadLibraryA(arg_dll: str, arg_debug: bool = False) -> Optional[int]:
 #     #   [in] LPCSTR  lpProcName
 #     return True
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def win_FreeLibrary(arg_hmodule: EvaluateType, arg_debug: bool = False) -> bool:
     ''' Free a DLL in the running process via AppCall '''
     l_free_library = appcall('kernel32_FreeLibrary', "BOOL FreeLibraryA(HMODULE hLibModule)", arg_debug=arg_debug)
@@ -3830,7 +3868,7 @@ def win_FreeLibrary(arg_hmodule: EvaluateType, arg_debug: bool = False) -> bool:
         log_print(f"FreeLibrary('{arg_hmodule}') failed with error code: {l_last_error} (0x{l_last_error:x}), error description: '{l_error_message}'", arg_type="ERROR") #
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def win_GetProcessHeap(arg_debug: bool = False) -> Optional[int]:
     ''' Gets the default heap for this process via AppCall '''
     l_GetProcessHeap = appcall('kernel32_GetProcessHeap', "HANDLE GetProcessHeap()", arg_debug=arg_debug)
@@ -3841,7 +3879,7 @@ def win_GetProcessHeap(arg_debug: bool = False) -> Optional[int]:
     log_print(f"res: {res}", arg_debug)
     return eval_expression(res, arg_debug=arg_debug) # res can be ida_idaapi.PyIdc_cvt_int64__ on win64 but not on win32
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def win_GetProcessHeap_emulated(arg_debug: bool = False) -> Optional[int]:
     ''' Gets the default heap for this process by reading from the PEB
 
@@ -3857,7 +3895,7 @@ def win_GetProcessHeap_emulated(arg_debug: bool = False) -> Optional[int]:
 # UI ---------------------------------------------------------------------------------------------------------------------
 
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def jumpto(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
     ''' Moves the current (last used) view to show the address/name/label/register.
     Replacement for ida_kernwin.jumpto()
@@ -3871,11 +3909,13 @@ def jumpto(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
 
 j = jumpto # Make it short, make it fast!
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ui_quick_view() -> None:
     ''' Opens the quick view where the user can pick what view they want. Default shortcut is Ctrl + 1 
     This is an example on how to use the ida_kernwin.process_ui_action() function
     The input to process_ui_action() can be found in the GUI. "Options" -> "Shortcuts". The column named "Action" is the action name that goes in to the function.
+    You can alos list them with ida_kernwin.get_registered_actions()
+    
     e.g. ida_kernwin.process_ui_action("community_base:copy_current_address")
     ida_kernwin.process_ui_action("HelpPythonAPI") --> Will open a browser window at <https://python.docs.hex-rays.com/>
     '''
@@ -3885,26 +3925,26 @@ def ui_quick_view() -> None:
 # New members/functions of IDA pythons objects -------------------------------------------------------------------------------------------------
 
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def __repr__type_address_str(arg_self: EvaluateType) -> str:
     ''' repr with type, address and content '''
     return f"{type(arg_self)} @ 0x{address(arg_self):x} which has str():\n{str(arg_self)}"
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def __repr__type_str(arg_self: Any) -> str:
     ''' repr with type and content '''
     return f"{type(arg_self)} which has str():\n{str(arg_self)}"
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _instruction_to_bytes(arg_instruction: EvaluateType, arg_debug: bool = False) -> Optional[bytes]:
     ''' Given an instruction, return it's byte values '''
     l_addr: int = address(arg_instruction, arg_debug=arg_debug)
     if l_addr == _ida_idaapi.BADADDR:
-        log_print(f'arg_instruction is invalid.')
+        log_print(f'arg_instruction is invalid.', arg_type="ERROR")
         return None
     return read_bytes(l_addr, _ida_bytes.get_item_size(l_addr) , arg_debug=arg_debug)
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _instruction_is_same_as_nop(arg_instruction: EvaluateType, arg_debug: bool = False) -> Optional[bool]:
     ''' Given an instruction, check if the operation done by the instruction is not changing any state, e.g. mov rax, rax
 
@@ -3954,7 +3994,7 @@ setattr(_ida_funcs.func_t, 'is_library_function', property(fget=is_library_funct
 setattr(_ida_funcs.func_t, 'is_lumina_name', property(fget=_is_lumina_name))
 
 __GLOBAL_KEEP_REFERENCE_TO_AVOID_MEMORY_CORRUPTION__ = 0
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _function_arguments(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[_ida_typeinf.func_type_data_t]:
     ''' Internal function. Gets the arguments to a function '''
 
@@ -3980,7 +4020,7 @@ setattr(_ida_funcs.func_t, 'arguments', property(fget=_function_arguments))
 setattr(_ida_funcs.func_t, 'calls', property(fget=_assembler_calls))
 setattr(_ida_funcs.func_t, '__call__', lambda *args: appcall(args[0])(*args[1:])) # type: ignore[misc] # py_lstrcmpA = cb.function("lstrcmpA"); py_lstrcmpA("input_text", "input_text") # TODO: This is dangerous, maybe remove?
 setattr(_ida_funcs.func_t.__call__, '__doc__', f"Calls the function via AppCall. Read more: {help()['links']['appcall_guide']}")
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _argloc_t_type_to_str(arg_argloc: _ida_typeinf.argloc_t) -> Optional[str]:
     ''' Internal function. Convert the int from argloc.atype() to a human readable string '''
     if isinstance(arg_argloc, _ida_typeinf.funcarg_t):
@@ -3997,7 +4037,7 @@ def _argloc_t_type_to_str(arg_argloc: _ida_typeinf.argloc_t) -> Optional[str]:
 setattr(_ida_typeinf.argloc_t, '__str__', _argloc_t_type_to_str)
 setattr(_ida_typeinf.argloc_t, '__repr__', __repr__type_str)
 setattr(_ida_typeinf.argloc_t, 'atype_as_str', property(fget=_argloc_t_type_to_str))
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _funcarg_t_str(arg_funcarg_t: _ida_typeinf.funcarg_t) -> str:
     ''' Internal function. Makes a nice string from a ida_typeinf.funcarg_t object '''
 
@@ -4030,7 +4070,7 @@ setattr(_ida_segment.segment_t, 'name_as_str', property(fget=_ida_segment.get_se
 setattr(_ida_segment.segment_t, 'class_as_str', property(fget=_ida_segment.get_segm_class, fset=_ida_segment.set_segm_class))
 setattr(_ida_segment.segment_t, 'bits', property(fget=lambda self: 0x10 << self.bitness))
 _data_type_sizes: Dict[int, int] = {_ida_ua.dt_byte: 1, _ida_ua.dt_word: 2, _ida_ua.dt_dword: 4, _ida_ua.dt_qword: 8, _ida_ua.dt_float: 4, _ida_ua.dt_double: 8, _ida_ua.dt_byte16: 16, _ida_ua.dt_byte32: 32, _ida_ua.dt_byte64: 64, _ida_ua.dt_half: 2}
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _op_t_is_reg(self: _ida_ua.op_t, arg_register_name_or_index: Union[int, str, _ida_idp.reg_info_t]) -> bool:
     ''' Replacement for ida_ua.op_t.is_reg() to allow to also check for register name or _ida_idp.reg_info_t '''
     if isinstance(arg_register_name_or_index, int):
@@ -4044,7 +4084,7 @@ def _op_t_is_reg(self: _ida_ua.op_t, arg_register_name_or_index: Union[int, str,
     
 setattr(_ida_ua.op_t, 'is_reg', _op_t_is_reg)
 _operand_type = _int_to_str_dict_from_module(_ida_ua, "o_.*")
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _op_t__str__(self: _ida_ua.op_t, arg_debug: bool = False) -> str:
     ''' Internal function. More verbose output in the __str__() of ida_ua.op_t '''
     if self.type == _ida_ua.o_void:
@@ -4082,7 +4122,7 @@ def _op_t__str__(self: _ida_ua.op_t, arg_debug: bool = False) -> str:
     return "<<< invalid operand, could _NOT_ parse it >>>"
 setattr(_ida_ua.op_t, '__str__', _op_t__str__)
 setattr(_ida_ua.op_t, '__repr__', lambda self: f"{type(self)} with operand_type {_operand_type.get(self.type, '<unknown _ida_ua.o_???>')} which has str():\n{str(self)}")
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _op_t_to_register(arg_operand: _ida_ua.op_t, arg_debug: bool = False) -> Optional[_ida_idp.reg_info_t]:
     ''' Send in an operand and if the operand is a register, then return the register as ida_idp.reg_info_t '''
     res = None
@@ -4164,7 +4204,7 @@ setattr(_ida_range.range_t, '__repr__', __repr__type_address_str)
 # TESTS ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_appcall_on_Windows(arg_debug: bool = False) -> bool:
     res = True
     l_GetProcessHeap_res = win_GetProcessHeap(arg_debug=arg_debug) 
@@ -4174,12 +4214,12 @@ def _test_appcall_on_Windows(arg_debug: bool = False) -> bool:
     res &= (l_GetProcessHeap_res == win_GetProcessHeap_emulated(arg_debug=arg_debug)) # win_GetProcessHeap --> appcall, 
     
     if res:
-        log_print(f'Appcall tests OK!')
+        log_print(f'Appcall tests OK!', arg_type="INFO")
     else:
-        log_print(f'Appcall tests failed!')
+        log_print(f'Appcall tests failed!', arg_type="ERROR")
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_mem_alloc_write_read(arg_debug: bool = False) -> bool:
     ''' Tests: allocate_memory_in_target(), write_string(), write_bytes(), read_bytes(), string()
         Needs a running process.
@@ -4189,7 +4229,7 @@ def _test_mem_alloc_write_read(arg_debug: bool = False) -> bool:
     if l_memory is None:
         log_print(f'Failed to allocate memory', arg_type="ERROR")
         return False
-    log_print(f"Allocated 0x1000 bytes at 0x{l_memory:x}")
+    log_print(f"Allocated 0x1000 bytes at 0x{l_memory:x}", arg_type="INFO")
     l_input_test_string: str = "This string is for the tests!"
     write_string(l_memory, l_input_test_string, arg_debug=arg_debug) # write_string --> write_bytes --> read_bytes
     l_test_string = string(l_memory, arg_debug=arg_debug)
@@ -4243,7 +4283,7 @@ def _test_mem_alloc_write_read(arg_debug: bool = False) -> bool:
 
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_modules_on_Windows(arg_debug: bool = False) -> bool:
     ''' Tests: modules(), read_bytes()
         Needs a running process.
@@ -4260,7 +4300,7 @@ def _test_modules_on_Windows(arg_debug: bool = False) -> bool:
     res &= (l_MZ_header == b'MZ')
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_eval_expression(arg_debug: bool = False) -> bool:
     ''' Tests: eval_expression() '''
     res = True
@@ -4278,7 +4318,7 @@ def _test_eval_expression(arg_debug: bool = False) -> bool:
     log_print(f'Test 6: {res}', arg_debug)
     return res
     
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_all(arg_debug: bool = False) -> bool:
     ''' Tests all tests we have. This is NOT complete and needs to be extended '''
     l_test_functions = {'_test_appcall_on_Windows': _test_appcall_on_Windows(arg_debug=arg_debug), 
@@ -4293,7 +4333,7 @@ def _test_all(arg_debug: bool = False) -> bool:
 # EXPERIMENTAL ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _experimental_basic_string_print(arg_ea: EvaluateType, arg_str_len_threshold: int = 400, arg_debug: bool = False) -> Optional[str]:
     ''' Try to parse a basic string and print it. OBS! Since basic_string is depending on the compiler, this function may need som slight modifications for your project. Tags: std_string, std::string, std_wstring, std::wstring '''
     log_print(f"You gave arg_ea: {arg_ea}", arg_debug)
@@ -4312,7 +4352,7 @@ def _experimental_basic_string_print(arg_ea: EvaluateType, arg_str_len_threshold
     log_print(f"Read string is: {res}", arg_debug)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _experimental_export_names_and_types(arg_save_to_file: str = "",
                                          arg_allow_library_functions: bool = True, 
                                          arg_list_of_functions: Union[List[_ida_funcs.func_t], List[int], None] = None, 
@@ -4325,7 +4365,7 @@ def _experimental_export_names_and_types(arg_save_to_file: str = "",
     if not arg_save_to_file:
         arg_save_to_file = input_file.idb_path + ".export_names_and_functions.json"
     log_print(f"Saving exported data to {arg_save_to_file}", arg_debug)
-    
+
     if not arg_list_of_functions:
         arg_list_of_functions = functions(arg_allow_library_functions=arg_allow_library_functions, arg_debug=arg_debug)
     
@@ -4359,7 +4399,7 @@ def _experimental_export_names_and_types(arg_save_to_file: str = "",
     log_print(f"Wrote JSON to:\n'{arg_save_to_file}'", arg_type="INFO")
     return res
 
-# @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 # def _experimental_fix_NtQuerySystemInformation_second_argument_type(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[bool]:
 #     ''' Given a function, check if there are any calls to NtQuerySystemInformation (a.k.a. ZwQuerySystemInformation) and fix the second argument to the correct type if known) '''
     
@@ -4424,14 +4464,14 @@ def _experimental_export_names_and_types(arg_save_to_file: str = "",
 #         # set_type(l_addr, )
     
 #     return None
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _ignore_cast(arg_expr: _ida_hexrays.cexpr_t) -> _ida_hexrays.cexpr_t:
     ''' Helper function for (<type>)variable_name in the decompiler '''
     if arg_expr.opname == 'cast':
         return arg_expr.first_operand
     return arg_expr
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _experimental_find_type_errors(arg_ea: EvaluateType, arg_force_fresh_decompilation: bool = True, arg_debug: bool = False) -> Optional[bool]:
     '''  Find type errors such as <int> - <ptr> and in the future: <ptr> + <ptr> '''
 
@@ -4452,7 +4492,7 @@ def _experimental_find_type_errors(arg_ea: EvaluateType, arg_force_fresh_decompi
                     if right.opname == 'var':
                         right_type = right.variable.getv().type()
                         if right_type.is_ptr():
-                            log_print(f'WARNING! Found invalid types at "{_t}" where {left} is int and {right} is ptr')
+                            log_print(f'Found invalid types at "{_t}" where {left} is int and {right} is ptr', arg_type="WARNING")
                             return True
         elif _t.opname == 'eq': # Checking for a <ptr> == <integer value> which is very rare
             left = _ignore_cast(_t.first_operand)
@@ -4466,7 +4506,7 @@ def _experimental_find_type_errors(arg_ea: EvaluateType, arg_force_fresh_decompi
     return False
 
 
-# @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 # def _experimental_add_data_ref():
 
 # See _ida_xref.add_cref
@@ -4492,13 +4532,13 @@ def _experimental_find_type_errors(arg_ea: EvaluateType, arg_force_fresh_decompi
 
 # idaapi.add_cref(from_ea, to_ea, _ida_xref.XREF_USER | _ida_xref.fl_CN)
 
-# @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 # def gen_file
 # f = ida_diskio.fopenWB # ida_diskio.eclose(f)
 # _ida_loader.gen_file
     # return "TODO:"
 
-# @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 # def _function_data(arg_ea: int, arg_debug: bool = False) -> _ida_typeinf.tinfo_t:
     # ''' For unknown reasons, _ida_funcs.func_t nor _ida_hexrays.cfuncptr_t has the return type (that I can find)  '''
     # cfunc = decompile(arg_ea, arg_debug=arg_debug)
@@ -4550,7 +4590,7 @@ def _experimental_find_type_errors(arg_ea: EvaluateType, arg_force_fresh_decompi
     # ImageBaseAddress_structure_offset = m.soff # ImageBaseAddress is on offset 8 in win32
     # log_print(f"ImageBaseAddress: {pointer(peb() + ImageBaseAddress_structure_offset):x} which is {m.get_size()} bytes large. type: '{str(t)}'") # TODO: replace all .get_size() with len() ?
 
-# @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 # def _guess_type(arg_ea: int, arg_debug: bool = False) -> _ida_typeinf.tinfo_t:
     # ''' Give it an address and it tries to give a good type back '''
     # res = None
@@ -4561,9 +4601,8 @@ def _experimental_find_type_errors(arg_ea: EvaluateType, arg_force_fresh_decompi
     # # TODO: Work here
 
     # return res
-    return None
 
-# @validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 # def _experimental_pdb_load(arg_debug: bool = False) -> Optional[bool]:
 #     ''' Experimental. Try to load the PDB for this file.
 #     OBS! Make sure your environment variable _NT_SYMBOL_PATH is set correct
@@ -4602,7 +4641,7 @@ def _experimental_find_type_errors(arg_ea: EvaluateType, arg_force_fresh_decompi
       
     # return True
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _segment_with_most_xrefs(arg_segment_name: EvaluateType, arg_debug: bool = False) -> Optional[Dict[int, int]]:
     ''' Experimental '''
     l_segment: Optional[_ida_segment.segment_t] = segment(arg_segment_name, arg_debug=arg_debug)
@@ -4622,7 +4661,7 @@ def _segment_with_most_xrefs(arg_segment_name: EvaluateType, arg_debug: bool = F
     res = _dict_sort(_xrefs_dict, arg_sort_by_value=True, arg_descending=True)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _argv_reader(arg_ea: EvaluateType, arg_debug: bool = False) -> List[str]:
     ''' Experimental. Takes an address that has the type char** and returns a list of all strings. Nice to parse argv. '''
     l_pointer_size = pointer_size()
@@ -4644,7 +4683,7 @@ def _argv_reader(arg_ea: EvaluateType, arg_debug: bool = False) -> List[str]:
         else:
             return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _experimental_gdb_helper_info_sharedlibrary() -> Dict[str, Tuple[int, int]]:
     ''' GDB: info sharedlibrary gives a list of shared libraries (modules). Copy that output into the clipboard and run this function to parse it nicely into something more usable.
     
@@ -4663,7 +4702,7 @@ def _experimental_gdb_helper_info_sharedlibrary() -> Dict[str, Tuple[int, int]]:
             res[l_lib] = (l_lib_start, l_lib_end)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _experimental_gdb_breakpoint(arg_ea_in_ida: EvaluateType, arg_dict_from_gdb: Dict[str, Tuple[int, int]]) -> Optional[str]:
     ''' arg_dict_from_gdb is the output from gdb_helper_info_sharedlibrary()  '''
     l_my_so_file = os.path.basename(input_file.filename)
@@ -4673,7 +4712,7 @@ def _experimental_gdb_breakpoint(arg_ea_in_ida: EvaluateType, arg_dict_from_gdb:
             return f"break *0x{l_imagebase + rva(arg_ea_in_ida):x}" 
     return None
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _experimental_get_widget_lines(widget, tp0: _ida_kernwin.twinpos_t, tp1: _ida_kernwin.twinpos_t):
     """
     get lines between places tp0 and tp1 in widget
@@ -4698,7 +4737,7 @@ def _experimental_get_widget_lines(widget, tp0: _ida_kernwin.twinpos_t, tp1: _id
         lines.append(line)
     return lines
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _experimental_get_selected_text() -> str:
     ''' Returns the selected text in the last used window/widget 
     
@@ -4713,7 +4752,7 @@ def _experimental_get_selected_text() -> str:
         res += "\n".join(lines)
     return res
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _experimental_gen_file():
     ''' gen_file(otype, fp, ea1, ea2, flags) -> int
         Generate an output file.
@@ -4728,7 +4767,7 @@ def _experimental_gen_file():
         @retval 1: ok
         @return: number of the generated lines. -1 if an error occurred
     '''
-    
+
     # ofile_type_t = {}   # Taken from https://github.com/nihilus/ScyllaHide/blob/ba9f4a8a10be349f7c8d6651da890c7dbf7d1020/ScyllaHideIDAProPlugin/idasdk/loader.hpp#L308
                         # and https://www.openrce.org/reference_library/ida_sdk_lookup/gen_file
     
@@ -4752,11 +4791,11 @@ def _experimental_gen_file():
     gen_file_flags["GENFLG_GENHTML"] = 0x0020 # asm&lst: generate html (ui_genfile_callback will be used)
     gen_file_flags["GENFLG_ASMINC"] = 0x0040 # asm&lst: gen information only about types
 
-    log_print(f"ofile_type_t: {ofile_type_t_enum}")
+    log_print(f"ofile_type_t: {ofile_type_t_enum}", arg_type="INFO")
     
     # _ida_loader.gen_file()
   
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _experimental_widget() -> None:
     ''' Fooling around with widget and viewer '''
     
@@ -4765,16 +4804,16 @@ def _experimental_widget() -> None:
     l_current_viewer: Any = _ida_kernwin.get_current_viewer() # The last window you were watching (Pseudocode view/IDA view/Hex view). type: TWidget
     l_current_widget: Any = _ida_kernwin.get_current_widget()
     l_pseudocode_A_widget: Any = _ida_kernwin.find_widget("Pseudocode-A")
-    log_print(_ida_lines.tag_remove(_ida_kernwin.get_custom_viewer_curline(l_current_viewer, l_find_by_mouse)))
-    log_print(_ida_lines.tag_remove(_ida_kernwin.get_custom_viewer_curline(l_pseudocode_A_widget, l_find_by_mouse)))
+    log_print(_ida_lines.tag_remove(_ida_kernwin.get_custom_viewer_curline(l_current_viewer, l_find_by_mouse)), arg_type="INFO")
+    log_print(_ida_lines.tag_remove(_ida_kernwin.get_custom_viewer_curline(l_pseudocode_A_widget, l_find_by_mouse)), arg_type="INFO")
 
     # Widget is the window (including the imports and stuff)
     # Viewer is IDAs special windows (Pseudocode view/IDA view/Hex view)
     # These 2 does NOT return the same info:
-    log_print(_ida_kernwin.get_widget_title(l_current_widget))
-    log_print(_ida_kernwin.get_widget_title(l_current_viewer))
+    log_print(_ida_kernwin.get_widget_title(l_current_widget), arg_type="INFO")
+    log_print(_ida_kernwin.get_widget_title(l_current_viewer), arg_type="INFO")
 
-    log_print(f"is_idaview: {_ida_kernwin.is_idaview(l_current_widget)}")
+    log_print(f"is_idaview: {_ida_kernwin.is_idaview(l_current_widget)}", arg_type="INFO")
 
     # _ida_kernwin.process_ui_action("Edit/Plugins/IPyIDA") # Same as clicking on the menu
     #  python_console_widget = _ida_kernwin.find_widget("IPython Console")
@@ -4783,7 +4822,7 @@ def _experimental_widget() -> None:
     _ida_kernwin.activate_widget(l_pseudocode_A_widget, True) # Make the gives TWidget active 
     return
 
-@validate_call(config=dict(arbitrary_types_allowed=True, strict=True, validate_return=True))
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _experimental_change_comment_symbol(arg_new_symbol: str) -> None:
     '''Change what symbol that is the comment symbol in the IDA-view  '''
     l_ash: _ida_idp.asm_t = _ida_idp.get_ash()
