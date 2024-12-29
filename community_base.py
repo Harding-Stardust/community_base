@@ -1265,16 +1265,16 @@ def bookmark(arg_ea: EvaluateType, arg_description: Optional[str] = None, arg_de
         return None
 
     if arg_description is not None:
-        ''' Taken from <https://docs.hex-rays.com/developer-guide/idc/idc-api-reference/alphabetical-list-of-idc-functions/367>
-        ea      - address to mark
-        lnnum   - number of generated line for the 'ea'
-        x       - x coordinate of cursor
-        y       - y coordinate of cursor
-        slot    - slot number: 0..1023
-                  if the specified value is not within the range, IDA will ask the user to select slot.
-        comment - description of the mark.
-                  Should be not empty.
-        returns: none '''
+        # Taken from <https://docs.hex-rays.com/developer-guide/idc/idc-api-reference/alphabetical-list-of-idc-functions/367>
+        # ea      - address to mark
+        # lnnum   - number of generated line for the 'ea'
+        # x       - x coordinate of cursor
+        # y       - y coordinate of cursor
+        # slot    - slot number: 0..1023
+        #           if the specified value is not within the range, IDA will ask the user to select slot.
+        # comment - description of the mark.
+        #           Should be not empty.
+        # returns: none 
 
         # Need to find first empty slot for our bookmark
         for bookmark_slot in range(0, 1024):
@@ -2146,7 +2146,7 @@ def _idaapi_encoding_from_strtype(arg_strtype: int) -> str:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def string(arg_ea: EvaluateType,
-           arg_type: Optional[Union[int, str]] = None,
+           arg_encoding: Optional[Union[int, str]] = None,
            arg_len: EvaluateType = 0,
            arg_create_string: bool = False,
            arg_flags: int = _ida_bytes.ALOPT_IGNHEADS | _ida_bytes.ALOPT_IGNPRINT | _ida_bytes.ALOPT_IGNCLT,
@@ -2183,17 +2183,17 @@ def string(arg_ea: EvaluateType,
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
         return None
 
-    if isinstance(arg_type, str):
-        l_type = _encoding_to_strtype(arg_type)
+    if isinstance(arg_encoding, str):
+        l_type = _encoding_to_strtype(arg_encoding)
         if l_type == -1:
-            log_print(f'_encoding_to_strtype("{arg_type}") failed')
+            log_print(f'_encoding_to_strtype("{arg_encoding}") failed')
             return None
-    elif isinstance(arg_type, int):
-        l_type = arg_type
+    elif isinstance(arg_encoding, int):
+        l_type = arg_encoding
 
     if is_unknown(l_addr, arg_debug=arg_debug):
         log_print(f"address: {_hex_str_if_int(l_addr)} is tagged as unknown, trying to convert it to string", arg_debug)
-        if arg_type is None:
+        if arg_encoding is None:
             is_unicode: bool = _ida_bytes.create_strlit(l_addr, l_len, _ida_nalt.STRTYPE_C_16)
             if is_unicode:
                 log_print(f"ida_bytes.create_strlit(0x{l_addr:x}, 0x{l_len:x}, ida_nalt.STRTYPE_C_16) OK", arg_debug)
@@ -2204,7 +2204,7 @@ def string(arg_ea: EvaluateType,
             _ida_bytes.create_strlit(l_addr, l_len, l_type)
         _ida_auto.auto_wait()
 
-    if arg_type is None:
+    if arg_encoding is None:
         l_type = _ida_nalt.get_str_type(l_addr)
     if _is_invalid_strtype(l_type):
         log_print(f"IDA doesn't think there is a string at this address. (0x{l_type:x} is not a valid string type).", arg_type="ERROR")
@@ -2254,14 +2254,14 @@ def string(arg_ea: EvaluateType,
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def c_string(arg_ea: EvaluateType, arg_len: int = 0, arg_flags: int = _ida_bytes.ALOPT_IGNHEADS | _ida_bytes.ALOPT_IGNPRINT | _ida_bytes.ALOPT_IGNCLT, arg_debug: bool = False) -> Optional[str]:
     ''' Forcefully read the data as a NULL terminated C string (in UTF-8) For more info about the flags, see the docstring for string() '''
-    return string(arg_ea=arg_ea, arg_type=_ida_nalt.STRTYPE_C, arg_len=arg_len, arg_flags=arg_flags, arg_debug=arg_debug)
+    return string(arg_ea=arg_ea, arg_encoding=_ida_nalt.STRTYPE_C, arg_len=arg_len, arg_flags=arg_flags, arg_debug=arg_debug)
 
 utf8_string = string_utf8 = c_string
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def wide_string(arg_ea: EvaluateType, arg_len: int = 0, arg_flags: int = _ida_bytes.ALOPT_IGNHEADS | _ida_bytes.ALOPT_IGNPRINT | _ida_bytes.ALOPT_IGNCLT, arg_debug: bool = False) -> Optional[str]:
     ''' Forcefully read the data as a NULL terminated wide/unicode/UTF-16/UCS-2 string. For more info about the flags, see the docstring for string() '''
-    return string(arg_ea=arg_ea, arg_type=_ida_nalt.STRTYPE_C_16, arg_len=arg_len, arg_flags=arg_flags, arg_debug=arg_debug)
+    return string(arg_ea=arg_ea, arg_encoding=_ida_nalt.STRTYPE_C_16, arg_len=arg_len, arg_flags=arg_flags, arg_debug=arg_debug)
 
 utf16_string = string_utf16 = wide_string
 
@@ -2275,7 +2275,7 @@ def strings(arg_only_first: int = 100000, arg_debug: bool = False) -> List[Tuple
 
     res = []
     for string_item in _idautils.Strings():
-        l_string_content: Optional[str] = string(string_item, arg_type=string_item.strtype, arg_debug=arg_debug)
+        l_string_content: Optional[str] = string(string_item, arg_encoding=string_item.strtype, arg_debug=arg_debug)
         if l_string_content is None:
             l_string_content = f"<<< Could not read string at 0x{string_item.ea:x} >>>"
         res.append((string_item.ea, string_item.length, _idaapi_encoding_from_strtype(string_item.strtype), l_string_content, string_item.strtype))
@@ -2366,7 +2366,7 @@ def assemble(arg_ea: EvaluateType,
         if _t_segment is None:
             log_print("segment() failed", arg_type="ERROR")
             return None
-        arg_ip = l_addr - (_ida_segment.sel2para(_t_segment.sel) << 4) # This is how _idautils.Assemble() does it. I have no idea what is happening here.
+        arg_ip = l_addr - (_ida_segment.sel2para(_t_segment.sel) << 4) # This is how idautils.Assemble() does it. I have no idea what is happening here.
 
     NOP = "90" # x64/x86 only
     if arg_keep_size:
@@ -2441,7 +2441,7 @@ def disassemble(arg_ea: EvaluateType,
     if arg_show_size:
         res += f' ; size: 0x{l_ins.size:x}'
     if arg_show_bytes:
-        res += ' ; bytes: ' + " ".join(f"{b:02x}" for b in _instruction_to_bytes(l_ins))
+        res += ' ; bytes: ' + " ".join(f"{b:02x}" for b in _instruction_to_bytes(l_ins)) # type: ignore[union-attr]
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -3657,7 +3657,7 @@ def allocate_memory_in_target(arg_size: EvaluateType, arg_executable: bool = Fal
                     break
 
         if l_syscall_already_in_code == []:
-            log_print(f"Could NOT find SYSCALL so I have to create my own", arg_debug)
+            log_print("Could NOT find SYSCALL so I have to create my own", arg_debug)
             l_t_ins = instruction(l_rip, arg_debug=arg_debug)
             if l_t_ins is None:
                 return None
@@ -3994,7 +3994,7 @@ setattr(_ida_funcs.func_t, '__str__', lambda self: f"name: {_ida_funcs.get_func_
 setattr(_ida_funcs.func_t, '__repr__', __repr__type_address_str)
 setattr(_ida_funcs.func_t, '__len__', lambda self: self.end_ea - self.start_ea)
 setattr(_ida_funcs.func_t, 'decompiled', property(fget=decompile, doc="Returns a ida_hexrays.cfuncptr_t, same as the decompile() function returns"))
-setattr(_ida_funcs.func_t, 'prototype', property(fget=function_prototype, fset=lambda self, new_prototype: set_type(self, new_prototype))) # type: ignore[arg-type]
+setattr(_ida_funcs.func_t, 'prototype', property(fget=function_prototype, fset=set_type)) # type: ignore[arg-type]
 setattr(_ida_funcs.func_t, 'name', property(fget=name, fset=name, doc="Get or set the name of the function")) # type: ignore[arg-type]
 setattr(_ida_funcs.func_t, 'address', property(fget=address))
 setattr(_ida_funcs.func_t, 'return_type', property(fget=lambda self: decompile(self).type.get_rettype())) # type: ignore[union-attr]
@@ -4129,7 +4129,7 @@ def _op_t__str__(self: _ida_ua.op_t, arg_debug: bool = False) -> str:
             l_scale_string = f"+{l_index_reg.name}{l_scale_const}" if l_scale else ""
         return f"[{l_base_reg.name}{l_scale_string}{l_displacement_string}]"
 
-    log_print(f"Could not parse the given ida_ua.op_t.", arg_type='ERROR')
+    log_print("Could not parse the given ida_ua.op_t.", arg_type='ERROR')
     return "<<< invalid operand, could _NOT_ parse it >>>"
 setattr(_ida_ua.op_t, '__str__', _op_t__str__)
 setattr(_ida_ua.op_t, '__repr__', lambda self: f"{type(self)} with operand_type {_operand_type.get(self.type, '<unknown _ida_ua.o_???>')} which has str():\n{str(self)}")
@@ -4164,7 +4164,7 @@ setattr(_ida_idp.reg_info_t, '__rsub__', lambda other, self: _ida_idp.reg_info_t
 setattr(_ida_idp.reg_info_t, '__isub__', lambda self, other: self if _register(arg_register=self, arg_set_value=eval_expression(self) - eval_expression(other)) else self) # type: ignore[operator]
 setattr(_ida_idp.reg_info_t, '__eq__', lambda self, other: self is other or self.name == other)
 setattr(_ida_hexrays.carg_t, '__repr__', lambda self: f"{type(self)} which looks like:\n{self.type} {str(self)}")
-setattr(_ida_hexrays.carg_t, 'name', property(fget=lambda self: str(self))) # TODO: Bad idea?
+setattr(_ida_hexrays.carg_t, 'name', property(fget=str)) # TODO: Bad idea?
 setattr(_ida_hexrays.carglist_t, '__repr__', lambda self: f"{type(self)} which looks like:\n{' '.join([chr(0x0D)+repr(arg)+chr(0x0D) for arg in self])}")
 setattr(_ida_hexrays.cfuncptr_t, '__str__', lambda self: pseudocode(self, arg_force_fresh_decompilation=True))
 setattr(_ida_hexrays.cfuncptr_t, '__repr__', lambda self: __repr__type_address_str(self)[0:200])
@@ -4244,21 +4244,22 @@ def _test_mem_alloc_write_read(arg_debug: bool = False) -> bool:
     l_input_test_string: str = "This string is for the tests!"
     write_string(l_memory, l_input_test_string, arg_debug=arg_debug) # write_string --> write_bytes --> read_bytes
     l_test_string = string(l_memory, arg_debug=arg_debug)
-    res &= ((l_input_test_string + '\0') == l_test_string)
+    res &= ((l_input_test_string) == l_test_string)
     log_print(f"cstring test: {res}", arg_debug)
     log_print(f"<<< FAILED >>> cstring test: {res}", arg_actually_print=not res, arg_type="ERROR")
 
     l_input_test_string_wide: bytes = b"T\x00e\x00s\x00t\x00\x00\x00"
     write_bytes(l_memory, l_input_test_string_wide, arg_debug=arg_debug)
-    l_wide_string_res = string(l_memory, arg_type="UCS-2", arg_debug=arg_debug)
-    res &= ("Test\x00" == l_wide_string_res)
+    l_wide_string_res = string(l_memory, arg_encoding="UCS-2", arg_debug=arg_debug)
+    res &= ("Test" == l_wide_string_res)
     log_print(f"simple wide string test: {res}", arg_debug)
     log_print(f"<<< FAILED >>> cstring test: {res}", arg_actually_print=not res, arg_type="ERROR")
 
-    l_non_english_char_test_string = "åäö\x00"
+    l_non_english_char_test_string: str = "åäö"
     l_encoding = "UTF-8"
-    write_bytes(l_memory, f"{l_non_english_char_test_string}\x00".encode(l_encoding), arg_debug=arg_debug)
-    l_nonenglish_res = string(l_memory, arg_type=l_encoding, arg_debug=arg_debug)
+    write_bytes(l_memory, "00" * 32, arg_debug=arg_debug)
+    write_bytes(l_memory, l_non_english_char_test_string.encode(l_encoding), arg_debug=arg_debug)
+    l_nonenglish_res = string(l_memory, arg_encoding=l_encoding, arg_debug=arg_debug)
     if l_nonenglish_res is None:
         log_print("string() failed", arg_type="ERROR")
         return False
@@ -4266,11 +4267,12 @@ def _test_mem_alloc_write_read(arg_debug: bool = False) -> bool:
     log_print(f"l_non_english_char_test_string: {' '.join(hex_parse(l_non_english_char_test_string.encode(l_encoding)))}", arg_debug)
     log_print(f"l_nonenglish_res: {' '.join(hex_parse(l_nonenglish_res.encode(l_encoding)))}", arg_debug)
     log_print(f"non english string test: {res}", arg_debug)
-    log_print(f"<<< FAILED >>> wide string ({l_encoding}) test: {res}", arg_actually_print=not res, arg_type="ERROR")
+    log_print(f"<<< FAILED >>> {l_encoding} test: {res}", arg_actually_print=not res, arg_type="ERROR")
 
     l_encoding = "UTF-16LE"
-    write_bytes(l_memory, f"{l_non_english_char_test_string}\x00".encode(l_encoding), arg_debug=arg_debug)
-    l_nonenglish_res = string(l_memory, arg_type=l_encoding, arg_debug=arg_debug)
+    write_bytes(l_memory, "00" * 32, arg_debug=arg_debug)
+    write_bytes(l_memory, l_non_english_char_test_string.encode(l_encoding), arg_debug=arg_debug)
+    l_nonenglish_res = string(l_memory, arg_encoding=l_encoding, arg_debug=arg_debug)
     if l_nonenglish_res is None:
         log_print("string() failed", arg_type="ERROR")
         return False
@@ -4278,11 +4280,12 @@ def _test_mem_alloc_write_read(arg_debug: bool = False) -> bool:
     log_print(f"l_non_english_char_test_string: {' '.join(hex_parse(l_non_english_char_test_string.encode(l_encoding)))}", arg_debug)
     log_print(f"l_nonenglish_res: {' '.join(hex_parse(l_nonenglish_res.encode(l_encoding)))}", arg_debug)
     log_print(f"non english string test: {res}", arg_debug)
-    log_print(f"<<< FAILED >>> wide string ({l_encoding}) test: {res}", arg_actually_print=not res, arg_type="ERROR")
+    log_print(f"<<< FAILED >>> {l_encoding} test: {res}", arg_actually_print=not res, arg_type="ERROR")
 
     l_encoding = "Latin-1"
-    write_bytes(l_memory, f"{l_non_english_char_test_string}\x00".encode(l_encoding), arg_debug=arg_debug)
-    l_nonenglish_res = string(l_memory, arg_type=l_encoding, arg_debug=arg_debug)
+    write_bytes(l_memory, "00" * 32, arg_debug=arg_debug)
+    write_bytes(l_memory, l_non_english_char_test_string.encode(l_encoding), arg_debug=arg_debug)
+    l_nonenglish_res = string(l_memory, arg_encoding=l_encoding, arg_debug=arg_debug)
     if l_nonenglish_res is None:
         log_print("string() failed", arg_type="ERROR")
         return False
@@ -4290,7 +4293,7 @@ def _test_mem_alloc_write_read(arg_debug: bool = False) -> bool:
     log_print(f"l_non_english_char_test_string: {' '.join(hex_parse(l_non_english_char_test_string.encode(l_encoding)))}", arg_debug)
     log_print(f"l_nonenglish_res: {' '.join(hex_parse(l_nonenglish_res.encode(l_encoding)))}", arg_debug)
     log_print(f"non english string test: {res}", arg_debug)
-    log_print(f"<<< FAILED >>> wide string ({l_encoding}) test: {res}", arg_actually_print=not res, arg_type="ERROR")
+    log_print(f"<<< FAILED >>> {l_encoding} test: {res}", arg_actually_print=not res, arg_type="ERROR")
 
     return res
 
@@ -4345,7 +4348,7 @@ def _test_all(arg_debug: bool = False) -> bool:
 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _experimental_basic_string_print(arg_ea: EvaluateType, arg_str_len_threshold: int = 400, arg_debug: bool = False) -> Optional[str]:
+def _basic_string_print(arg_ea: EvaluateType, arg_str_len_threshold: int = 400, arg_debug: bool = False) -> Optional[str]:
     ''' Try to parse a basic string and print it. OBS! Since basic_string is depending on the compiler, this function may need som slight modifications for your project. Tags: std_string, std::string, std_wstring, std::wstring '''
     log_print(f"You gave arg_ea: {arg_ea}", arg_debug)
     l_p_string = pointer(arg_ea)
@@ -4364,7 +4367,7 @@ def _experimental_basic_string_print(arg_ea: EvaluateType, arg_str_len_threshold
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _experimental_export_names_and_types(arg_save_to_file: str = "",
+def _export_names_and_types(arg_save_to_file: str = "",
                                          arg_allow_library_functions: bool = True,
                                          arg_list_of_functions: Union[List[_ida_funcs.func_t], List[int], None] = None,
                                          arg_full_export: bool = False,
@@ -4410,71 +4413,6 @@ def _experimental_export_names_and_types(arg_save_to_file: str = "",
     log_print(f"Wrote JSON to:\n'{arg_save_to_file}'", arg_type="INFO")
     return res
 
-# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-# def _experimental_fix_NtQuerySystemInformation_second_argument_type(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[bool]:
-#     ''' Given a function, check if there are any calls to NtQuerySystemInformation (a.k.a. ZwQuerySystemInformation) and fix the second argument to the correct type if known) '''
-
-#     l_known_types = {}
-#     l_known_types["SystemExtendedHandleInformation"] = "SYSTEM_HANDLE_INFORMATION_EX*" # These types are defined in default_types.h
-#     l_known_types["SystemModuleInformation"] = "SYSTEM_MODULE_INFORMATION*"
-
-#     l_all_calls = _decompiler_calls(arg_ea, arg_debug=arg_debug)
-#     res = False
-#     if l_all_calls is None:
-#         log_print(f"Could not decompile '{hex_str_if_int(arg_ea)}'", arg_type="ERROR")
-#         return None
-
-#     for call in l_all_calls:
-#         if call.target_ea == _ida_idaapi.BADADDR:
-#             log_print(f"Call is emulated {call}, skipping", arg_debug)
-#             continue
-#         if name(call.target_ea) != "NtQuerySystemInformation":
-#             log_print(f"Call is NOT correct {name(call.target_ea)}, skipping", arg_debug)
-#             continue
-
-#         log_print(f"Success! Working on {call}", arg_debug)
-
-#         l_new_type = l_known_types.get(call.arguments[0].name, "")
-#         if not l_new_type:
-#             log_print(f"First argument is of unknown type: '{call.arguments[0].name}', skipping", arg_debug)
-#             continue
-
-#     res = res or decompiler_variable_set_type(arg_function=arg_ea, arg_variable=call.arguments[1].name, arg_new_type=l_new_type, arg_debug=arg_debug)
-#     return res
-
-# def _load_import_name_and_types(arg_load_from_file: Optional[str] = None, arg_debug: bool = False) -> Dict[str, Dict[str, str]]:
-#     ''' Internal function. Use import_name_and_types() instead '''
-
-#     # if not arg_load_from_file:
-#         # arg_load_from_file = input_file.idb_path + ".export_names_and_functions.json"
-#     # log_print(f"Loading data from {arg_load_from_file}", arg_debug)
-#     # with open(arg_load_from_file, "r", encoding="utf-8", newline="\n") as f:
-#         # return json.load(f)
-#     return None
-
-# def _experimental_import_name_and_types(arg_load_from_file: Optional[str] = None, arg_list_of_functions: Union[List[_ida_funcs.func_t], List[int], None] = None, arg_debug: bool = False) -> bool:
-#     ''' Import function names and prototypes from a file exported with export_name_and_types().
-
-#     # TODO: Not implemented fully atm
-#     '''
-
-#     # l_database = _load_import_name_and_types(arg_load_from_file=arg_load_from_file, arg_debug=arg_debug)
-#     # for mangled_name, function_info in l_database.items():
-#         # l_prototype = function_info["prototype"]
-#         # l_parsed = _parse_c_type(l_prototype)
-#         # if not l_parsed:
-#             # log_print(f"Failed to parse: '{l_prototype}'")
-
-
-
-#         # # l_addr = _ida_kernwin.str2ea("TranslateTextEx") # To speed up, I do NOT use my address() function
-#         # l_addr = address(mangled_name, arg_debug=arg_debug)
-#         # if l_addr == _ida_idaapi.BADADDR:
-#             # continue
-
-#         # set_type(l_addr, )
-
-#     return None
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _ignore_cast(arg_expr: _ida_hexrays.cexpr_t) -> _ida_hexrays.cexpr_t:
     ''' Helper function for (<type>)variable_name in the decompiler '''
@@ -4483,7 +4421,7 @@ def _ignore_cast(arg_expr: _ida_hexrays.cexpr_t) -> _ida_hexrays.cexpr_t:
     return arg_expr
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _experimental_find_type_errors(arg_ea: EvaluateType, arg_force_fresh_decompilation: bool = True, arg_debug: bool = False) -> Optional[bool]:
+def errors_find_type_errors(arg_ea: EvaluateType, arg_force_fresh_decompilation: bool = True, arg_debug: bool = False) -> Optional[bool]:
     '''  Find type errors such as <int> - <ptr> and in the future: <ptr> + <ptr> '''
 
     l_cfunc = decompile(arg_ea, arg_force_fresh_decompilation=arg_force_fresh_decompilation, arg_debug=arg_debug)
@@ -4515,364 +4453,3 @@ def _experimental_find_type_errors(arg_ea: EvaluateType, arg_force_fresh_decompi
                         log_print(f'WARNING! Found possible invalid types at "{_t}" where {left} is ptr and {right} is num')
                         return True
     return False
-
-
-# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-# def _experimental_add_data_ref():
-
-# See _ida_xref.add_cref
-# Taken from https://www.github.com/tmr232/idapython/blob/master/python/_idc.py
-
-# idaapi.XREF_USER = 32 # Both code and data refs MUST be a combine with this value according to the documentation
-
-# DATA REF
-# _ida_xref.dr_O           Offset
-# _ida_xref.dr_W           Write
-# _ida_xref.dr_R           Read
-# _ida_xref.dr_T           Text (names in manual operations)
-# _ida_xref.dr_I           Informational
-
-# idaapi.add_dref(from_ea, to_ea, idaapi.XREF_USER | idaapi.dr_I)
-
-# CODE REF
-# _ida_xref.fl_CF = 16             Call Far
-# _ida_xref.fl_CN = 17             Call Near
-# _ida_xref.fl_JF = 18             Jump Far
-# _ida_xref.fl_JN = 19             Jump Near
-# _ida_xref.fl_F  = 21             ordinary Flow
-
-# idaapi.add_cref(from_ea, to_ea, _ida_xref.XREF_USER | _ida_xref.fl_CN)
-
-# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-# def gen_file
-# f = ida_diskio.fopenWB # ida_diskio.eclose(f)
-# _ida_loader.gen_file
-    # return "TODO:"
-
-# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-# def _function_data(arg_ea: int, arg_debug: bool = False) -> _ida_typeinf.tinfo_t:
-    # ''' For unknown reasons, _ida_funcs.func_t nor _ida_hexrays.cfuncptr_t has the return type (that I can find)  '''
-    # cfunc = decompile(arg_ea, arg_debug=arg_debug)
-    # funcdata = _ida_typeinf.func_type_data_t()
-    # cfunc.type.get_func_details(funcdata)
-    # return funcdata
-
-# def _struct_experiment():
-    # ''' Do NOT use '''
-    # # TODO: more work needed here on structs
-
-    # my_struct_index = _ida_idaapi.BADADDR # idaapi.BADADDR == add after last index
-    # my_struct_name = 'my_own_struct'
-    # my_struct_is_union = False
-    # my_struct = ida_struct.add_struc(my_struct_index, my_struct_name, my_struct_is_union) # my_struct is tid_t (int)
-
-    # # add_struc(idx, name, is_union=False) -> tid_t
-    # # Create a structure type. if idx==BADADDR then add as the last idx. if  name == nullptr then a name will be generated "struct_%d".
-
-    # # @param idx: (C++: uval_t)
-    # # @param name: (C++: const char *) char const *
-    # # @param is_union: (C++: bool)
-
-    # struct_id = ida_struct.get_struc_id(my_struct_name)     # struct_id is int
-    # struct = ida_struct.get_struc(struct_id)                # struct is ida_struct.struc_t
-
-    # # Add member
-    # my_member_name = 'my_own_member'
-    # my_member_offset_in_struct = _ida_idaapi.BADADDR # _ida_idaapi.BADADDR == add last
-    # opinfo = _ida_nalt.opinfo_t()
-    # ida_struct.add_struc_member(struct, my_member_name, my_member_offset_in_struct, _ida_bytes.FF_DWORD, opinfo, 4)
-
-    # # add_struc_member(sptr, fieldname, offset, flag, mt, nbytes) -> struc_error_t
-    # # Add member to existing structure.
-
-    # # @param sptr: (C++: struc_t *) structure to modify
-    # # @param fieldname: (C++: const char *) if nullptr, then "anonymous_#" name will be generated
-    # # @param offset: (C++: ea_t) BADADDR means add to the end of structure
-    # # @param flag: (C++: flags_t) type + representation bits
-    # # @param mt: (C++: const opinfo_t *) additional info about member type. must be present for structs, offsets, enums, strings, struct offsets.
-    # # @param nbytes: (C++: asize_t) if == 0 then the structure will be a varstruct. in this case the member should be the last member in the structure
-
-    # # Find the ImageBase in a running program
-    # struct_id = ida_struct.get_struc_id('PEB')  # struct_id is int
-    # struct = ida_struct.get_struc(struct_id)    # struct is ida_struct.struc_t
-    # m = ida_struct.get_member_by_name(struct, 'ImageBaseAddress') # m is ida_struct.member_t
-    # t = _ida_typeinf.tinfo_t()
-    # ida_struct.get_member_tinfo(t, m) # This writes to t
-    # ImageBaseAddress_structure_offset = m.soff # ImageBaseAddress is on offset 8 in win32
-    # log_print(f"ImageBaseAddress: {pointer(peb() + ImageBaseAddress_structure_offset):x} which is {m.get_size()} bytes large. type: '{str(t)}'") # TODO: replace all .get_size() with len() ?
-
-# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-# def _guess_type(arg_ea: int, arg_debug: bool = False) -> _ida_typeinf.tinfo_t:
-    # ''' Give it an address and it tries to give a good type back '''
-    # res = None
-    # # int or pointer?
-    # # t = _ida_typeinf.tinfo_t()
-    # # _ida_typeinf.guess_tinfo(t, _ida_dbg.get_reg_val('rax'))
-    # # Log that you asked for a given address and keep that in a history, every time you tun this function, then evaluate the history
-    # # TODO: Work here
-
-    # return res
-
-# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-# def _experimental_pdb_load(arg_debug: bool = False) -> Optional[bool]:
-#     ''' Experimental. Try to load the PDB for this file.
-#     OBS! Make sure your environment variable _NT_SYMBOL_PATH is set correct
-
-#     Code taken from https://gist.github.com/patois/b3f329868934710fbc81218ce1d6d722
-
-#     # TODO: This one is not working
-#     '''
-
-#     _ida_kernwin.process_ui_action('LoadPdbFile')
-
-    # os.environ['_NT_SYMBOL_PATH'] = "srv*https://msdl.microsoft.com/download/symbols"
-
-    # # Those come from pdb/common.h
-    # PDB_CC_USER_WITH_DATA=3
-    # PDB_DLLBASE_NODE_IDX=0
-    # PDB_DLLNAME_NODE_IDX=0
-
-    # pdb_file = _ida_kernwin.ask_file(0, "Title", "Path to copy of guest machine's ntoskrnl.exe")
-    # if pdb_file is None:
-    #     log_print("No PDB file found")
-
-    # # pdb_file = ""
-
-    # pdb_node = _ida_netnode.netnode()
-    # pdb_node.create("$ pdb")
-    # pdb_node.altset(PDB_DLLBASE_NODE_IDX, input_file.imagebase)
-    # pdb_node.supset(PDB_DLLNAME_NODE_IDX, pdb_file)
-
-    # plugin_load_and_run("pdb", PDB_CC_USER_WITH_DATA, arg_debug=arg_debug) # See https://reverseengineering.stackexchange.com/questions/8171/
-
-    # rc = pdb_node.altval(PDB_DLLBASE_NODE_IDX)
-    # if not rc:
-    #   log_print("Could not load PDB", arg_type="ERROR")
-    #   return False
-
-    # return True
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _segment_with_most_xrefs(arg_segment_name: EvaluateType, arg_debug: bool = False) -> Optional[Dict[int, int]]:
-    ''' Experimental '''
-    l_segment: Optional[_ida_segment.segment_t] = segment(arg_segment_name, arg_debug=arg_debug)
-    if not l_segment:
-        log_print(f"Could not find the segment '{arg_segment_name}'", arg_type="ERROR")
-        return None
-
-    _xrefs_dict = {}
-    l_current_ea = l_segment.start_ea
-
-    while l_current_ea < l_segment.end_ea:
-        _num_xref = len(xrefs_to(l_current_ea))
-        if _num_xref:
-            _xrefs_dict[l_current_ea] = _num_xref
-        l_current_ea = _ida_bytes.get_item_end(l_current_ea)
-
-    res = _dict_sort(_xrefs_dict, arg_sort_by_value=True, arg_descending=True)
-    return res
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _argv_reader(arg_ea: EvaluateType, arg_debug: bool = False) -> List[str]:
-    ''' Experimental. Takes an address that has the type char** and returns a list of all strings. Nice to parse argv. '''
-    l_pointer_size = pointer_size()
-    if l_pointer_size is None:
-        log_print("pointer_size() failed", arg_type="ERROR")
-        return []
-
-    res = []
-    l_current_addr = address(arg_ea, arg_debug=arg_debug)
-    log_print(f"string array: 0x{l_current_addr:x}", arg_debug)
-    while True:
-        l_string_addr = pointer(l_current_addr, arg_debug=arg_debug)
-        log_print(f"_string_addr: 0x{l_string_addr:x}\n\n", arg_debug)
-
-        if _ida_bytes.is_mapped(l_string_addr):
-            res.append(string(l_string_addr,arg_debug=arg_debug) or f"<<< string read failed at {_hex_str_if_int(l_string_addr)}>>>")
-
-            l_current_addr += l_pointer_size
-        else:
-            return res
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _experimental_gdb_helper_info_sharedlibrary() -> Dict[str, Tuple[int, int]]:
-    ''' GDB: info sharedlibrary gives a list of shared libraries (modules). Copy that output into the clipboard and run this function to parse it nicely into something more usable.
-
-    returns: Dict[full_SO_path: str] = (start_address: int, end_address: int)
-    '''
-    clipboard = QApplication.clipboard()
-    l_input = clipboard.text().strip().split('\n')
-    l_regexp = r"(0x[0-9a-f]+)\s+(0x[0-9a-f]+).+?(/.+)"
-    res = {}
-    for line in l_input:
-        matches = re.findall(l_regexp, line)
-        if matches:
-            l_lib = matches[0][2]
-            l_lib_start = int(matches[0][0], 0x10)
-            l_lib_end = int(matches[0][1], 0x10)
-            res[l_lib] = (l_lib_start, l_lib_end)
-    return res
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _experimental_gdb_breakpoint(arg_ea_in_ida: EvaluateType, arg_dict_from_gdb: Dict[str, Tuple[int, int]]) -> Optional[str]:
-    ''' arg_dict_from_gdb is the output from gdb_helper_info_sharedlibrary()  '''
-    l_my_so_file = os.path.basename(input_file.filename)
-    for k, v in arg_dict_from_gdb.items():
-        if l_my_so_file in k:
-            l_imagebase = v[0] - input_file.entry_point
-            return f"break *0x{l_imagebase + rva(arg_ea_in_ida):x}"
-    return None
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _experimental_get_widget_lines(widget, tp0: _ida_kernwin.twinpos_t, tp1: _ida_kernwin.twinpos_t):
-    """
-    get lines between places tp0 and tp1 in widget
-
-    Code taken from examples: dump_selection.py
-    """
-    ud = _ida_kernwin.get_viewer_user_data(widget)
-    lnar = _ida_kernwin.linearray_t(ud)
-    lnar.set_place(tp0.at)
-    lines = []
-    while True:
-        cur_place = lnar.get_place()
-        first_line_ref = _ida_kernwin.l_compare2(cur_place, tp0.at, ud)
-        last_line_ref = _ida_kernwin.l_compare2(cur_place, tp1.at, ud)
-        if last_line_ref > 0: # beyond last line
-            break
-        line = _ida_lines.tag_remove(lnar.down())
-        if last_line_ref == 0: # at last line
-            line = line[0:tp1.x]
-        elif first_line_ref == 0: # at first line
-            line = ' ' * tp0.x + line[tp0.x:]
-        lines.append(line)
-    return lines
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _experimental_get_selected_text() -> str:
-    ''' Returns the selected text in the last used window/widget
-
-    Code taken from examples: dump_selection.py
-    '''
-    res = ""
-    p0 = _ida_kernwin.twinpos_t()
-    p1 = _ida_kernwin.twinpos_t()
-    view = _ida_kernwin.get_current_viewer()
-    if _ida_kernwin.read_selection(view, p0, p1):
-        lines = _experimental_get_widget_lines(view, p0, p1)
-        res += "\n".join(lines)
-    return res
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _experimental_gen_file():
-    ''' gen_file(otype, fp, ea1, ea2, flags) -> int
-        Generate an output file.
-
-        @param otype: (C++: ofile_type_t) type of output file.
-        @param fp: (C++: FILE *) the output file handle
-        @param ea1: (C++: ea_t) start address. For some file types this argument is ignored
-        @param ea2: (C++: ea_t) end address. For some file types this argument is ignored as usual
-                    in ida, the end address of the range is not included
-        @param flags: (C++: int) Generate file flagsOFILE_EXE:
-        @retval 0: can't generate exe file
-        @retval 1: ok
-        @return: number of the generated lines. -1 if an error occurred
-    '''
-
-    # ofile_type_t = {}   # Taken from https://github.com/nihilus/ScyllaHide/blob/ba9f4a8a10be349f7c8d6651da890c7dbf7d1020/ScyllaHideIDAProPlugin/idasdk/loader.hpp#L308
-                        # and https://www.openrce.org/reference_library/ida_sdk_lookup/gen_file
-
-    # ofile_type_t["OFILE_MAP"] = 0 # MAP file
-    # ofile_type_t["OFILE_EXE"] = 1 # Executable file
-    # ofile_type_t["OFILE_IDC"] = 2 # IDC file
-    # ofile_type_t["OFILE_LST"] = 3 # Disassembly listing
-    # ofile_type_t["OFILE_ASM"] = 4 # Assembly
-    # ofile_type_t["OFILE_DIF"] = 5 # Difference
-
-    ofile_type_t_enum = _dict_swap_key_and_value(_int_to_str_dict_from_module("_ida_loader", "OFILE_.*"))
-
-
-    gen_file_flags = {}
-    gen_file_flags["GENFLG_MAPSEG"] = 0x0001 # map: generate map of segments
-    gen_file_flags["GENFLG_MAPNAME"] = 0x0002 # map: include dummy names
-    gen_file_flags["GENFLG_MAPDMNG"] = 0x0004 # map: demangle names
-    gen_file_flags["GENFLG_MAPLOC"] = 0x0008 # map: include local names
-    gen_file_flags["GENFLG_IDCTYPE"] = 0x0008 # idc: gen only information about types
-    gen_file_flags["GENFLG_ASMTYPE"] = 0x0010 # asm&lst: gen information about types too
-    gen_file_flags["GENFLG_GENHTML"] = 0x0020 # asm&lst: generate html (ui_genfile_callback will be used)
-    gen_file_flags["GENFLG_ASMINC"] = 0x0040 # asm&lst: gen information only about types
-
-    log_print(f"ofile_type_t: {ofile_type_t_enum}", arg_type="INFO")
-
-    # _ida_loader.gen_file()
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _experimental_widget() -> None:
-    ''' Fooling around with widget and viewer '''
-
-    # type TWidget = int # There does not seem to be any Python type for TWidget so I did a placeholder. OBS! ONLY works on Python 3.12+
-    l_find_by_mouse: bool = False
-    l_current_viewer: Any = _ida_kernwin.get_current_viewer() # The last window you were watching (Pseudocode view/IDA view/Hex view). type: TWidget
-    l_current_widget: Any = _ida_kernwin.get_current_widget()
-    l_pseudocode_A_widget: Any = _ida_kernwin.find_widget("Pseudocode-A")
-    log_print(_ida_lines.tag_remove(_ida_kernwin.get_custom_viewer_curline(l_current_viewer, l_find_by_mouse)), arg_type="INFO")
-    log_print(_ida_lines.tag_remove(_ida_kernwin.get_custom_viewer_curline(l_pseudocode_A_widget, l_find_by_mouse)), arg_type="INFO")
-
-    # Widget is the window (including the imports and stuff)
-    # Viewer is IDAs special windows (Pseudocode view/IDA view/Hex view)
-    # These 2 does NOT return the same info:
-    log_print(_ida_kernwin.get_widget_title(l_current_widget), arg_type="INFO")
-    log_print(_ida_kernwin.get_widget_title(l_current_viewer), arg_type="INFO")
-
-    log_print(f"is_idaview: {_ida_kernwin.is_idaview(l_current_widget)}", arg_type="INFO")
-
-    # _ida_kernwin.process_ui_action("Edit/Plugins/IPyIDA") # Same as clicking on the menu
-    #  python_console_widget = _ida_kernwin.find_widget("IPython Console")
-    # _ida_kernwin.set_dock_pos("IPython Console", "IDA View-A", _ida_kernwin.DP_TAB) # Set as own tab
-
-    _ida_kernwin.activate_widget(l_pseudocode_A_widget, True) # Make the gives TWidget active
-    return
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _experimental_change_comment_symbol(arg_new_symbol: str) -> None:
-    '''Change what symbol that is the comment symbol in the IDA-view  '''
-    l_ash: _ida_idp.asm_t = _ida_idp.get_ash()
-    l_ash.cmnt = arg_new_symbol # TODO: What more fun can we do with this?
-    return
-
-# TODO: Diaphora have CHtmlViewer(PluginForm), investigate https://github.com/joxeankoret/diaphora/blob/d8b898e35750d103cb6a15f7a87910ff6b237427/diaphora_ida.py#L247
-# https://python-commandments.org/pyqt-qtextbrowser/
-# from PyQt5 import QtWidgets
-# browser = QtWidgets.QTextBrowser()
-# nr.setWindowTitle("This is the title")
-# br.setHtml("<h1>header</h1>")
-# br.show() # br.showMaximized()
-
-
-# TODO: _ida_idp.is_basic_block_end <--- investigate
-
-# TODO: Change color in the decompiled view, see https://github.com/patois/abyss/blob/master/abyss_filters/token_colorizer.py
-
-# TODO: Sphinx documentation
-
-# TODO: Test on ARM and MIPS more
-
-# TODO: print_decls @ https://github.com/BinaryAnalysisPlatform/bap-ida-python/blob/d8d4679de2f50bb75f556419565821d95404034e/plugins/bap/utils/ida.py#L117
-
-# TODO: Investigate https://github.com/zerotypic/wilhelm
-
-# TODO: investigate https://github.com/eset/idapython-src/blob/master/examples/widgets/waitbox/show_and_hide_waitbox.py
-
-# TODO: xor_bytes?
-
-# TODO: move info from IDB 1.0 --> IDB 1.1
-
-# TODO: test idalib
-
-# TODO: investigate https://github.com/quarkslab/idascript/blob/main/src/idascript/ida.py
-
-# TODO: https://github.com/leommxj/AphroditeF5
-
-# TODO: https://github.com/polymorf/findcrypt-yara
-
-# TODO: Ida_loader.save_database ?
