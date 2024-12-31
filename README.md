@@ -40,8 +40,7 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 To use this script, put is somewhere that IDA can find it. A good place is this filename:
 ```python
 import idaapi
-import os
-print(os.path.join(os.path.dirname(idaapi.__file__), "community_base.py"))
+print(idaapi.__file__.replace("idaapi.py", "community_base.py"))
 ```
 It is strongly advised to edit your idapythonrc.py which can be found by typing the following in IDA:
 ```python
