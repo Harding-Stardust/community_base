@@ -59,7 +59,6 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 ```Windows 10 + IDA 9.0 + Python 3.12``` and ```Windows 10 + IDA 8.4 + Python 3.8```
 
 # Future
-- All functions that are named ```_experimental_XX``` are not to be used, they are my playground and are not done
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!
 - I'm planning on doing some short clips on how the script is thought to be used, this takes time and video editing is not my strong side
 - Need help with more testing
