@@ -95,7 +95,7 @@ import time
 import datetime
 import ctypes
 import json # TODO: Change to json5?
-from typing import Union, List, Dict, Tuple, Any, Optional
+from typing import Union, List, Dict, Tuple, Any, Optional, Callable
 from types import ModuleType
 import inspect as _inspect
 from pydantic import validate_call
@@ -146,7 +146,10 @@ __GLOBAL_LOG_EVERYTHING = False # If this is set to True, then all calls to log_
 # HELPERS ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, Dict[str, str]]:
-    ''' Various information to help you develop your own scripts '''
+    ''' Various information to help you develop your own scripts.
+     
+        Read more: https://python.docs.hex-rays.com/
+       '''
     l_abbreviations = {
         'ASG': "Assign",
         'BPU': "Bytes Per Unit",
@@ -162,17 +165,18 @@ def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, D
         }
 
     l_links = {}
-    l_links["official_python_documentation"] =  "https://python.docs.hex-rays.com"
-    l_links["developer_guide"] =                "https://docs.hex-rays.com/developer-guide"
-    l_links["getting_started_with_idapython"] = "https://docs.hex-rays.com/developer-guide/idapython/idapython-getting-started"
-    l_links["porting_guide"] =                  "https://docs.hex-rays.com/developer-guide/idapython/idapython-porting-guide-ida-9"
-    l_links["RexRays_official_Youtube_channel"] =  "https://www.youtube.com/@HexRaysSA"
-    l_links["AllThingsIDA_Youtube_channel"] =  "https://www.youtube.com/@allthingsida"
-    l_links["AllThingsIAD_github"] =  "https://github.com/allthingsida/allthingsida"
-    l_links["HexRays_official_plugins_repository"] =  "https://plugins.hex-rays.com/"
-    l_links["how_to_create_a_plugin"] =  "https://docs.hex-rays.com/developer-guide/idapython/how-to-create-a-plugin"
-    l_links["appcall_guide"] =  "https://docs.hex-rays.com/user-guide/debugger/debugger-tutorials/appcall_primer"
-    l_links["appcall_practical_examples"] =  "https://hex-rays.com/blog/practical-appcall-examples/"
+    l_links["official_python_documentation"] =      "https://python.docs.hex-rays.com"
+    l_links["developer_guide"] =                    "https://docs.hex-rays.com/developer-guide"
+    l_links["getting_started_with_idapython"] =     "https://docs.hex-rays.com/developer-guide/idapython/idapython-getting-started"
+    l_links["idapython_examples"] =                 "https://docs.hex-rays.com/developer-guide/idapython/idapython-examples"
+    l_links["porting_guide"] =                      "https://docs.hex-rays.com/developer-guide/idapython/idapython-porting-guide-ida-9"
+    l_links["HexRays_official_Youtube_channel"] =   "https://www.youtube.com/@HexRaysSA"
+    l_links["AllThingsIDA_Youtube_channel"] =       "https://www.youtube.com/@allthingsida"
+    l_links["AllThingsIDA_github"] =                "https://github.com/allthingsida/allthingsida"
+    l_links["HexRays_official_plugins_repository"] ="https://plugins.hex-rays.com/"
+    l_links["how_to_create_a_plugin"] =             "https://docs.hex-rays.com/developer-guide/idapython/how-to-create-a-plugin"
+    l_links["appcall_guide"] =                      "https://docs.hex-rays.com/user-guide/debugger/debugger-tutorials/appcall_primer"
+    l_links["appcall_practical_examples"] =         "https://hex-rays.com/blog/practical-appcall-examples/"
     # l_links[""] =  ""
 
     l_batch_mode = {}
@@ -184,11 +188,32 @@ def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, D
     res["abbreviations"] = l_abbreviations
     res["batch_mode"] = l_batch_mode
 
-
     if arg_open_browser_at_official_python_docs:
         _ida_kernwin.open_url(l_links["official_python_documentation"])
 
     return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def open_url(arg_text_blob_with_urls_in_it_or_function: Union[str, Callable]) -> None:
+    ''' Opens the default web brower with all URLs in the given text blob.
+        Works well on the docstrings I have enriched with URLs: open_url(ida_kernwin.process_ui_action)
+
+        Read more: 
+
+        Replacement for ida_kernwin.open_url()
+    '''
+    
+    if isinstance(arg_text_blob_with_urls_in_it_or_function, str):
+        l_url_regex: str = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))" # https://www.geeksforgeeks.org/python-check-url-string/
+        urls = re.findall(l_url_regex, arg_text_blob_with_urls_in_it_or_function)
+        if not urls:
+            log_print(f"No URLs found in '{arg_text_blob_with_urls_in_it_or_function}'")
+        for url in urls:
+            _ida_kernwin.open_url(url[0])
+        return
+    
+    # Check the docstring
+    open_url(getattr(arg_text_blob_with_urls_in_it_or_function, "__doc__", ""))
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleType, None] = None) -> str:
@@ -227,15 +252,48 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
 
     return l_bug_report_file
 
+# TODO: This is not working as expected since it runs in it's own thread
+class _check_if_long_running_script_should_abort_not_working():
+    ''' Periodically check if any of the strings "abort.ida", "ida.abort", "ida.stop", "stop.ida" are in the clipboard. If anyone is, then throw an exception to abort the long running task.
+    This is also an example on how to use timers. Read more: <https://github.com/HexRaysSA/IDAPython/blob/9.0sp1/examples/ui/register_timer.py>
+    '''
+    def __init__(self):
+        l_time_between_calls_in_milliseconds = 1000
+        self.interval = l_time_between_calls_in_milliseconds
+        self.obj = _ida_kernwin.register_timer(self.interval, self)
+        if self.obj is None:
+            raise RuntimeError("Failed to register timer")
+        self.times = 30
+
+    def __call__(self):
+        ''' This is the function that is invoked at each call '''
+        # print("Timer invoked. %d time(s) left" % self.times)
+        self.times -= 1
+        # Unregister the timer when the counter reaches zero
+        # return -1 --> do not call again, anything else 
+        
+        clipboard = QApplication.clipboard()
+        res = clipboard.text().strip() in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]
+        if res:
+            log_print(f"String {clipboard.text().strip()} found in clipboard")
+            reload_module()
+        
+        return -1 if self.times == 0 else self.interval
+
+    def __del__(self):
+        ''' Clean up '''
+        log_print(f"Timer object disposed {self}")
+
 _g_timestamp_of_last_checked = time.time()
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
     ''' Scripts that take long time to run can be aborted by copying any of the following strings into the clipboard: "abort.ida", "ida.abort", "ida.stop", "stop.ida"
         This is checked every 30 seconds and raises a TimeoutError() exception
 
-        WARNING! If you have multiple instanced of IDA running with this script then the string check will be done in all instances and abort all long running scripts!
+        WARNING! If you have multiple instances of IDA running with this script then the string check will be done in all instances and abort all long running scripts!
     '''
     # TODO: Add the possibility to add a PID in the string to just abort the correct script? Add if ever needed
+    # TODO: Ask (with a popup) the user if this is the correct IDA to abort?
     global _g_timestamp_of_last_checked
     l_now = time.time()
     if (l_now - _g_timestamp_of_last_checked) > 30:
@@ -316,7 +374,7 @@ def ida_is_running_in_batch_mode() -> bool:
 def ida_save_and_exit(arg_exit_code: int = 0) -> None:
     ''' Save the IDB and clean exit IDA
     A good use for this function is as the last call in a script run in batch mode.
-    See help() for more info about batch mode
+    See links() for more info about batch mode
 
     To exit without saving the IDB, see: <https://docs.hex-rays.com/developer-guide/idc/idc-api-reference/alphabetical-list-of-idc-functions/197>
     and <https://hex-rays.com/blog/igors-tip-of-the-week-116-ida-startup-files>
@@ -339,10 +397,11 @@ def _idaapi_get_ida_notepad_text() -> str:
 def notepad_text(arg_text: Optional[str] = None, arg_debug: bool = False) -> str:
     ''' IDA has a text field that the user can write whatever they want in.
     This function can read and write this text field. '''
+    # TODO: The max size seems to be 0x101c00 (just over 1MB), should I check for the length?
     if arg_text is not None:
         _ida_nalt.set_ida_notepad_text(str(arg_text))
     res = _idaapi_get_ida_notepad_text()
-    log_print(f"_ida_nalt.get_ida_notepad_text() returned {res}", arg_debug)
+    log_print(f"ida_nalt.get_ida_notepad_text() returned {res}", arg_debug)
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -369,6 +428,7 @@ def python_version() -> Tuple[int, int]:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _python_module_to_str(arg_module: Union[str, ModuleType, None] = None) -> str:
     ''' Internal function. Get a Python module name from the argument. If argument is None, then return the module name of ourself '''
+    # TODO: Should I verify that arg_module actually is a module?
     return arg_module if isinstance(arg_module, str) else getattr(arg_module, '__name__', __name__)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -798,7 +858,7 @@ def _idaapi_str2ea(arg_expression: str, arg_screen_ea: int = _ida_idaapi.BADADDR
         res = l_ida_kernwin_str2ea_res if l_ida_kernwin_str2ea_res is not None else _ida_idaapi.BADADDR
     except TypeError as exc:
         log_print(f'ida_kernwin.str2ea("{arg_expression}") failed. Exception: {exc}', arg_type="ERROR")
-        return _ida_idaapi.BADADDR
+        res = _ida_idaapi.BADADDR
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -993,13 +1053,15 @@ def _is_lumina_name(arg_function: EvaluateType, arg_debug: bool = False) -> Opti
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def decompile(arg_ea: EvaluateType,
               arg_hf: Optional[_ida_hexrays.hexrays_failure_t] = None,
-              arg_flags: int = _ida_hexrays.DECOMP_GXREFS_DEFLT, # https://www.hex-rays.com/products/ida/support/idapython_docs/ida_hexrays.html#ida_hexrays.DECOMP_GXREFS_DEFLT
+              arg_flags: int = _ida_hexrays.DECOMP_GXREFS_DEFLT,
               arg_create_function: bool = False,
               arg_force_fresh_decompilation: bool = True,
               arg_debug: bool = False
               ) -> Optional[_ida_hexrays.cfuncptr_t]:
     ''' The problem with the normal ida_hexrays.decompile() is that it's not done with the decompilation when the the function returns.
     You can see the difference if you run: cfunc = ida_hexrays.decompile(<function that has not been decompiled before>);print(f"len of treeitems: {len(cfunc.treeitems)}")
+
+    @param arg_flags Default is ida_hexrays.DECOMP_GXREFS_DEFLT. Read more: <https://python.docs.hex-rays.com/namespaceida__hexrays.html#a25116e19a146df6d38b7c8cdb265e621>
 
     Replacement for ida_hexrays.decompile()
 
@@ -1037,11 +1099,12 @@ def decompile(arg_ea: EvaluateType,
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def decompile_many(arg_outfile: str = input_file.idb_path + '.c',
                    arg_functions: Optional[List[EvaluateType]] = None,
-                   arg_flags: int = _ida_hexrays.VDRUN_MAYSTOP, # The user can cancel decompilation. <https://www.hex-rays.com/products/ida/support/idapython_docs/ida_hexrays.html#ida_hexrays.VDRUN_MAYSTOP>
+                   arg_flags: int = _ida_hexrays.VDRUN_MAYSTOP,
                    arg_debug: bool = False) -> bool:
     '''Decompile many (all) functions to a file on disk
-
        Replacement for ida_hexrays.decompile_many()
+
+       @param arg_flags: int Default is ida_hexrays.VDRUN_MAYSTOP which means that the user can cancel decompilation. <https://python.docs.hex-rays.com/namespaceida__hexrays.html#a5dbc567822242aa3a25402cd87a9b8d5>
     '''
     # TODO: Make this an internal function and put the arg_functions into decompile() ?
     if not _ida_hexrays.init_hexrays_plugin():
@@ -1201,7 +1264,7 @@ def dump_to_disk(arg_ea_start: EvaluateType = 0,
         log_print(f"sel_start: 0x{sel_start:x}, sel_end: 0x{sel_end:x}, l_len: 0x{l_len:x}", arg_debug)
     else:
         arg_ea_start = address(arg_ea_start, arg_debug=arg_debug)
-        l_temp_len = eval_expression(arg_len)
+        l_temp_len = eval_expression(arg_len, arg_debug=arg_debug)
         if l_temp_len is None:
             log_print("eval_expression(arg_len) failed", arg_type="ERROR")
             return None
@@ -1427,9 +1490,12 @@ def _ea_to_hexrays_insn(arg_ea: EvaluateType,
         return None
 
     # OBS! I know there is a shorter and faster way with arg_cached_cfunc.eamap.get(ea, None) but I used the long code to have debug output during development
+    ea: int
+    vector_of_insn: List[_ida_hexrays.cinsn_t]
     for ea, vector_of_insn in arg_cached_cfunc.eamap.items(): # eamap maps ea_t --> vector<ida_hexrays.cinsn_t>.
         vector_idx = 0
         res: _ida_hexrays.cinsn_t = _ida_hexrays.cinsn_t()
+        
         for insn in vector_of_insn: # This can be multiple insn but they can be wrong. How to find the correct one? This is most probably a bug in IDA cause I get vectors that look like <return -1, call function, return -1> where the call is the expected and the "return -1"s are wrong
             if arg_debug:
                 if insn.is_epilog():
@@ -1438,10 +1504,13 @@ def _ea_to_hexrays_insn(arg_ea: EvaluateType,
                 log_print(f"ea: {ea:x} --> insn.ea: {insn.ea:x} --> vector_idx: {vector_idx} --> {_ida_lines.tag_remove(insn.print1(None))}", arg_debug)
                 vector_idx += 1
             if ea == l_addr:
-                log_print(f"Match l_addr: {l_addr:x} --> take the longest (most info) and return that", arg_debug)
+                log_print(f"Match l_addr: 0x{l_addr:x} --> take the longest (most info) and return that. len(vector_of_insn): {len(vector_of_insn)}", arg_debug)
                 if insn.is_epilog():
+                    log_print(f"l_addr 0x{l_addr:x} is epilog", arg_debug)
                     continue
                 res = insn if len(str(insn)) > len(str(res)) else res
+                log_print(f"res: {res}", arg_debug)
+                log_print(f"res.ea: {_hex_str_if_int(res.ea)}", arg_debug)
 
             if ea > l_addr:
                 log_print(f"ea: 0x{ea:x} > l_addr: 0x{l_addr:x} means we are past our address we are looking for", arg_debug)
@@ -2024,7 +2093,7 @@ def _local_types_as_c_types(arg_debug: bool = False) -> Optional[List[str]]:
     return l_printer.lines
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def export_h_file(arg_h_file: str = input_file.idb_path + ".h", arg_add_comment_at_top: bool = False, arg_debug: bool = False) -> str:
+def export_h_file(arg_h_file: str = input_file.idb_path + ".h", arg_add_comment_at_top: bool = True, arg_debug: bool = False) -> str:
     ''' Export all local types into a header file
 
         @param arg_h_file The destination file
@@ -2032,7 +2101,6 @@ def export_h_file(arg_h_file: str = input_file.idb_path + ".h", arg_add_comment_
 
         Replacement for ida_typeinf.print_decls()
     '''
-
     l_local_types: Optional[List[str]] = _local_types_as_c_types(arg_debug=arg_debug)
     if l_local_types is None:
         log_print('_local_types_as_c_types() failed.', arg_type="ERROR")
@@ -2040,13 +2108,15 @@ def export_h_file(arg_h_file: str = input_file.idb_path + ".h", arg_add_comment_
 
     with open(arg_h_file, "w", encoding="UTF-8", newline="\n") as f:
         if arg_add_comment_at_top:
-            l_header: str = "/*\n"
-            l_header += f"File generated by script {__name__}.py at {_timestamped_line('')}\n"
-            l_header += f"file: {os.path.basename(input_file.filename)} \n"
-            l_header += f"MD5: {input_file.md5}\n"
-            l_header += f"SHA256: {input_file.sha256}\n"
-            l_header += "*/"
-            f.write(*l_header)
+            l_header_dict: Dict[str, str] = {}
+            l_header_dict["generated_by"] = f"{__name__}.py version {__version__}"
+            l_header_dict["generated_at"] = _timestamped_line('').strip()
+            l_header_dict["input_filename"] = os.path.basename(input_file.filename)
+            l_header_dict["MD5"] = input_file.md5
+            l_header_dict["SHA256"] = input_file.sha256
+            f.write("/*\n")
+            f.write(json.dumps(l_header_dict, ensure_ascii=False, indent=4, default=str))
+            f.write("\n*/")
         f.write("\n".join(l_local_types))
 
     return arg_h_file
@@ -2287,7 +2357,8 @@ def strings(arg_only_first: int = 100000, arg_debug: bool = False) -> List[Tuple
     return res
 
 def _strings_profiled():
-    r''' Profile code to see what is taking most time
+    r''' Internal function. Do not use.
+    Profile code to see what is taking most time
     From the command console: snakeviz C:\temp\strings.prof
     '''
     import cProfile
@@ -2419,7 +2490,9 @@ def disassemble(arg_ea: EvaluateType,
                 arg_show_size: bool = True,
                 arg_show_bytes: bool = True,
                 arg_debug: bool = False) -> Optional[str]:
-    ''' Disassemble bytes into assembly string. If you want an object, use instruction() instead
+    ''' Disassemble bytes at the given address into assembly string. If you want an object, use ```instruction()``` instead
+
+        @param arg_flags Default to ida_lines.GENDSM_FORCE_CODE. Read more: <https://python.docs.hex-rays.com/namespaceida__lines.html#a8fba3e94325a73b051a886d780262fe2>
 
         Replacement for idc.generate_disasm_line() and ida_lines.generate_disasm_line()
     '''
@@ -3413,8 +3486,8 @@ def process_options(arg_debug: bool = False) -> Dict[str, str]:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _add_property_to_registers_object(arg_reg_name: str, arg_debug: bool = False):
     ''' Internal function. For some strange reason, this line has to be in called from its own function. I don't know why and I have spent WAY TOO MUCH TIME on trying to figure out why... '''
-    arg_reg_name = arg_reg_name.replace('$', '').lower() # MIPS :-()
-    setattr(_registers_object, arg_reg_name, property(fget=lambda self: registers._as_dict[arg_reg_name], fset=lambda self, value: _register(arg_reg_name, arg_set_value=value, arg_debug=arg_debug))) # type: ignore[arg-type] # To be honest,  don't understand what mypy is complaining about
+    arg_reg_name = arg_reg_name.replace('$', '').lower() # MIPS
+    setattr(_registers_object, arg_reg_name, property(fget=lambda self: registers._as_dict[arg_reg_name], fset=lambda self, value: _register(arg_reg_name, arg_set_value=value, arg_debug=arg_debug))) # type: ignore[arg-type] # To be honest, I don't understand what mypy is complaining about
 
 class _registers_object():
     ''' Interface to interact with the registers. It works like idautils.cpu but my version supports tab completion.
@@ -3471,8 +3544,8 @@ registers = _registers_object() # Recreated in the "_new_file_opened_notificatio
 def _new_file_opened_notification_callback(arg_nw_code: int, arg_is_old_database: int) -> None:
     ''' Callback that is triggered whenever a file is opened in IDA Pro.
 
-    @param argument arg_nw_code: int is the event number that caused this callback.
-    @param argument arg_is_old_database == 1 if there was an IDB/I64 and 0 if it's a new file
+    @param arg_nw_code: int is the event number that caused this callback.
+    @param arg_is_old_database == 1 if there was an IDB/I64 and 0 if it's a new file
     '''
     del arg_nw_code # This is never used but needed in the prototype
     del arg_is_old_database # This is never used but needed in the prototype
@@ -3485,15 +3558,14 @@ def _new_file_opened_notification_callback(arg_nw_code: int, arg_is_old_database
 _ida_idaapi.notify_when(_ida_idaapi.NW_OPENIDB, _new_file_opened_notification_callback) # See also : NW_INITIDA, NW_REMOVE, NW_CLOSEIDB, NW_TERMIDA
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _add_links_to_docstring(arg_function: Any, arg_link: str) -> None:
-    ''' If there is no link the official documentation for the given function, add a link to it '''
+def _add_links_to_docstring(arg_function: Callable, arg_link: str) -> None:
+    ''' If there is no link the official documentation for the given function, add a link to to the official documentation '''
     l_docstring: str = getattr(arg_function, "__doc__")
     if "hex-rays.com" in l_docstring:
         # log_print(f"Function already has a link, ignoring", arg_type="WARNING")
         return
 
     setattr(arg_function, "__doc__", l_docstring + "\nRead more: " + arg_link)
-    # log_print(f'ran: setattr({arg_function}, "__doc__", {l_docstring} + "\n" + {arg_link})')
     return
 
 # Add links to the official documentation for some functions, more will be added
@@ -3503,7 +3575,11 @@ _add_links_to_docstring(_ida_idp.process_config_directive, "https://python.docs.
 _add_links_to_docstring(_ida_kernwin.str2ea, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#a08d928125a472cc31098defe54be7382")
 _add_links_to_docstring(_ida_dbg.wait_for_next_event, "https://python.docs.hex-rays.com/namespaceida__dbg.html#a53d4d2d6a9426d06f758adea1cfeeee3")
 _add_links_to_docstring(_ida_bytes.get_strlit_contents, "https://python.docs.hex-rays.com/namespaceida__bytes.html#aafc64f6145bfe2e7d3e49a6e1e4e217c")
-# TODO: Add more links
+_add_links_to_docstring(_ida_kernwin.execute_ui_requests, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#a31cf8b9bf7e6ba055f92bb1c2e6a5858")
+_add_links_to_docstring(_ida_kernwin.process_ui_action, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#ab67f049dcd5c47b16f5230ebc3e71d1b")
+_add_links_to_docstring(_ida_loader.load_and_run_plugin, "https://python.docs.hex-rays.com/namespaceida__loader.html#a1b29b29a91dceb429d7b85018303a92e")
+_add_links_to_docstring(_ida_idaapi.notify_when, "https://python.docs.hex-rays.com/namespaceida__idaapi.html#a0b63655706845252b36a543e550d884e")
+_add_links_to_docstring(_ida_dbg.update_bpt, "https://python.docs.hex-rays.com/namespaceida__dbg.html#a65a328849707f223bf166d0a8df5d695")
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _register(arg_register: Union[str, _ida_idp.reg_info_t], arg_set_value: Optional[EvaluateType] = None, arg_debug: bool = False) -> Optional[int]:
@@ -3516,7 +3592,7 @@ def _register(arg_register: Union[str, _ida_idp.reg_info_t], arg_set_value: Opti
 
     if isinstance(arg_register, _ida_idp.reg_info_t):
         arg_register = _ida_idp.get_reg_name(arg_register.reg, arg_register.size)
-        log_print(f"arg_register is of type _ida_idp.reg_info_t, using that info to get the register name: '{arg_register}'", arg_debug)
+        log_print(f"arg_register is of type ida_idp.reg_info_t, using that info to get the register name: '{arg_register}'", arg_debug)
     else:
         if arg_register not in registers._as_dict:
             log_print(f"arg_register: '{arg_register}' is not a valid register. These registers are support in this architecture:\n{str(registers)}", arg_type="ERROR")
@@ -3538,7 +3614,7 @@ def _register(arg_register: Union[str, _ida_idp.reg_info_t], arg_set_value: Opti
             res = int.from_bytes(res, 'little')
 
     except Exception as exc:
-        log_print(f"res = _ida_dbg.get_reg_val('{arg_register}') threw an exception:'", arg_type="ERROR")
+        log_print(f"res = ida_dbg.get_reg_val('{arg_register}') threw an exception:'", arg_type="ERROR")
         log_print(str(exc), arg_type="ERROR")
         return None
     return res
@@ -3731,7 +3807,7 @@ def modules(arg_name_filter_regex: str = ".*",  arg_debug: bool = False) -> Opti
     l_temp_result = _ida_dbg.get_first_module(l_temp_mod)
     while l_temp_result:
         if re.fullmatch(arg_name_filter_regex, l_temp_mod.name, re.IGNORECASE):
-            # This note is from _idautils.Modules():
+            # This note is from idautils.Modules():
             # Note: can't simply return `mod` here, since callers might
             # collect all modules in a list, and they would all re-use
             # the underlying C++ object.
@@ -3922,13 +3998,15 @@ def ui_quick_view() -> None:
     ''' Opens the quick view where the user can pick what view they want. Default shortcut is Ctrl + 1
     This is an example on how to use the ida_kernwin.process_ui_action() function
     The input to process_ui_action() can be found in the GUI. "Options" -> "Shortcuts". The column named "Action" is the action name that goes in to the function.
-    You can alos list them with ida_kernwin.get_registered_actions()
+    You can also list them with ida_kernwin.get_registered_actions()
 
-    e.g. ida_kernwin.process_ui_action("community_base:copy_current_address")
+    e.g.
+    ida_kernwin.process_ui_action("community_base:copy_current_address")
     ida_kernwin.process_ui_action("HelpPythonAPI") --> Will open a browser window at <https://python.docs.hex-rays.com/>
-    '''
-    _ida_kernwin.process_ui_action('QuickView')
 
+    There is also execute_ui_requests. Read more <https://github.com/HexRaysSA/IDAPython/blob/9.0sp1/examples/ui/trigger_actions_programmatically.py>
+    '''
+    _ida_kernwin.process_ui_action('QuickView') 
 
 # New members/functions of IDA pythons objects -------------------------------------------------------------------------------------------------
 

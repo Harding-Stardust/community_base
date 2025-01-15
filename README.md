@@ -1,5 +1,5 @@
 # Summary
-Code that will help you develop scripts for [Hexrays IDA Pro](https://hex-rays.com/ida-pro)
+This Python script will help you develop scripts for [Hexrays IDA Pro](https://hex-rays.com/ida-pro)
 community_base turns IDA Python into a [DWIM (Do What I Mean)](https://en.wikipedia.org/wiki/DWIM) style and I try to follow ["Principle of least astonishment"](https://en.wikipedia.org/wiki/Principle_of_least_astonishment)
 
 You can think of this script as padding between the user created scripts and the IDA Python API.
@@ -14,7 +14,7 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 - Strong typing. I use [Pydantic](https://docs.pydantic.dev/latest/) to force types. This makes the code much easier to read since you get an idea what a function expects and what it returns. I try to follow [PEP 484](https://peps.python.org/pep-0484/) as much as I can.
 - Full function/variable names. This makes variables and functions easy to read at a glance.
 - Properly documented. I try to document as extensive I can without making redundent comments.
-- Easy to debug (hopefully!). All functions that are non-trivial have the last argument named ```arg_debug``` which is a bool that if set, prints out helpful information that is happening in the code.
+- Easy to debug (hopefully!). All functions that are non-trivial have the last argument named ```arg_debug``` which is a bool that if set, prints out helpful information on what is happening in the code.
 - Good default values set. E.g. ```ida_idp.assemble(ea, 0, ea, True, 'mov eax, 1')``` have many arguments you don't know that they should be.
 - Understands what the user wants. I have type checks and treat input different depending on what you send in. E.g. addresses vs labels. In my script, everywhere you are expecting an address, you can send in a label (or register) that is then resolved. See ```address()``` and ```eval_expression()``` (same with where tinfo_t (type info) is expected, you can also send in a C-type string)
 - I have written the code as easy I can to READ (hopefully), it might not be the most Pythonic way (or the fastest) but I have focused on readability. However, I do understand that this is subjective.
