@@ -4,7 +4,7 @@
 r''' This text is easier to read when the markdown is parsed: <https://github.com/Harding-Stardust/community_base/blob/main/README.md>
 
 # Summary
-Code that will help you develop scripts for [Hexrays IDA Pro](https://hex-rays.com/ida-pro)
+This Python script will help you develop scripts for [Hexrays IDA Pro](https://hex-rays.com/ida-pro)
 community_base turns IDA Python into a [DWIM (Do What I Mean)](https://en.wikipedia.org/wiki/DWIM) style and I try to follow ["Principle of least astonishment"](https://en.wikipedia.org/wiki/Principle_of_least_astonishment)
 
 You can think of this script as padding between the user created scripts and the IDA Python API.
@@ -19,7 +19,7 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 - Strong typing. I use [Pydantic](https://docs.pydantic.dev/latest/) to force types. This makes the code much easier to read since you get an idea what a function expects and what it returns. I try to follow [PEP 484](https://peps.python.org/pep-0484/) as much as I can.
 - Full function/variable names. This makes variables and functions easy to read at a glance.
 - Properly documented. I try to document as extensive I can without making redundent comments.
-- Easy to debug (hopefully!). All functions that are non-trivial have the last argument named ```arg_debug``` which is a bool that if set, prints out helpful information that is happening in the code.
+- Easy to debug (hopefully!). All functions that are non-trivial have the last argument named ```arg_debug``` which is a bool that if set, prints out helpful information on what is happening in the code.
 - Good default values set. E.g. ```ida_idp.assemble(ea, 0, ea, True, 'mov eax, 1')``` have many arguments you don't know that they should be.
 - Understands what the user wants. I have type checks and treat input different depending on what you send in. E.g. addresses vs labels. In my script, everywhere you are expecting an address, you can send in a label (or register) that is then resolved. See ```address()``` and ```eval_expression()``` (same with where tinfo_t (type info) is expected, you can also send in a C-type string)
 - I have written the code as easy I can to READ (hopefully), it might not be the most Pythonic way (or the fastest) but I have focused on readability. However, I do understand that this is subjective.
@@ -45,8 +45,7 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 To use this script, put is somewhere that IDA can find it. A good place is this filename:
 ```python
 import idaapi
-import os
-print(os.path.join(os.path.dirname(idaapi.__file__), "community_base.py"))
+print(idaapi.__file__.replace("idaapi.py", "community_base.py"))
 ```
 It is strongly advised to edit your idapythonrc.py which can be found by typing the following in IDA:
 ```python
@@ -65,24 +64,22 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 ```Windows 10 + IDA 9.0 + Python 3.12``` and ```Windows 10 + IDA 8.4 + Python 3.8```
 
 # Future
-- All functions that are named ```_experimental_XX``` are not to be used, they are my playground and are not done
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!
-- I'm planning on doing some short clips on how the script is thought to be used, this takes time and video editing is not my strong side
+- I'm planning on doing some short clips on how the script is supposed to be used, this takes time and video editing is not my strong side
 - Need help with more testing
 - More of everything :-D
-
 '''
-__version__ = "2024-12-29 12:52:04"
+__version__ = "2025-01-16 00:54:23"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
-__copyright__ = "Copyright 2024"
+__copyright__ = "Copyright 2025"
 __credits__ = ["https://www.youtube.com/@allthingsida",
                "https://github.com/grayhatacademy/ida/blob/master/plugins/shims/ida_shims.py",
                "https://github.com/arizvisa/ida-minsc",
                "https://github.com/Shizmob/ida-tools",
                "https://github.com/synacktiv/bip/",
                "https://github.com/tmr232/Sark"]
-__license__ = "GPL"
+__license__ = "GPL 3.0"
 __maintainer__ = "Harding (https://github.com/Harding-Stardust)"
 __email__ = "not.at.the.moment@example.com"
 __status__ = "Development"
@@ -147,7 +144,7 @@ __GLOBAL_LOG_EVERYTHING = False # If this is set to True, then all calls to log_
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, Dict[str, str]]:
     ''' Various information to help you develop your own scripts.
-     
+
         Read more: https://python.docs.hex-rays.com/
        '''
     l_abbreviations = {
@@ -198,11 +195,11 @@ def open_url(arg_text_blob_with_urls_in_it_or_function: Union[str, Callable]) ->
     ''' Opens the default web brower with all URLs in the given text blob.
         Works well on the docstrings I have enriched with URLs: open_url(ida_kernwin.process_ui_action)
 
-        Read more: 
+        Read more:
 
         Replacement for ida_kernwin.open_url()
     '''
-    
+
     if isinstance(arg_text_blob_with_urls_in_it_or_function, str):
         l_url_regex: str = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))" # https://www.geeksforgeeks.org/python-check-url-string/
         urls = re.findall(l_url_regex, arg_text_blob_with_urls_in_it_or_function)
@@ -211,7 +208,7 @@ def open_url(arg_text_blob_with_urls_in_it_or_function: Union[str, Callable]) ->
         for url in urls:
             _ida_kernwin.open_url(url[0])
         return
-    
+
     # Check the docstring
     open_url(getattr(arg_text_blob_with_urls_in_it_or_function, "__doc__", ""))
 
@@ -270,14 +267,14 @@ class _check_if_long_running_script_should_abort_not_working():
         # print("Timer invoked. %d time(s) left" % self.times)
         self.times -= 1
         # Unregister the timer when the counter reaches zero
-        # return -1 --> do not call again, anything else 
-        
+        # return -1 --> do not call again, anything else
+
         clipboard = QApplication.clipboard()
         res = clipboard.text().strip() in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]
         if res:
             log_print(f"String {clipboard.text().strip()} found in clipboard")
             reload_module()
-        
+
         return -1 if self.times == 0 else self.interval
 
     def __del__(self):
@@ -1337,7 +1334,7 @@ def bookmark(arg_ea: EvaluateType, arg_description: Optional[str] = None, arg_de
         #           if the specified value is not within the range, IDA will ask the user to select slot.
         # comment - description of the mark.
         #           Should be not empty.
-        # returns: none 
+        # returns: none
 
         # Need to find first empty slot for our bookmark
         for bookmark_slot in range(0, 1024):
@@ -1495,7 +1492,7 @@ def _ea_to_hexrays_insn(arg_ea: EvaluateType,
     for ea, vector_of_insn in arg_cached_cfunc.eamap.items(): # eamap maps ea_t --> vector<ida_hexrays.cinsn_t>.
         vector_idx = 0
         res: _ida_hexrays.cinsn_t = _ida_hexrays.cinsn_t()
-        
+
         for insn in vector_of_insn: # This can be multiple insn but they can be wrong. How to find the correct one? This is most probably a bug in IDA cause I get vectors that look like <return -1, call function, return -1> where the call is the expected and the "return -1"s are wrong
             if arg_debug:
                 if insn.is_epilog():
@@ -4006,7 +4003,7 @@ def ui_quick_view() -> None:
 
     There is also execute_ui_requests. Read more <https://github.com/HexRaysSA/IDAPython/blob/9.0sp1/examples/ui/trigger_actions_programmatically.py>
     '''
-    _ida_kernwin.process_ui_action('QuickView') 
+    _ida_kernwin.process_ui_action('QuickView')
 
 # New members/functions of IDA pythons objects -------------------------------------------------------------------------------------------------
 
