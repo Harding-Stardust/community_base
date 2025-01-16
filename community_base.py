@@ -362,10 +362,9 @@ def ida_plugin_dirs() -> List[str]:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_is_running_in_batch_mode() -> bool:
     ''' Are we running in batch mode? a.k.a. headless
-     OBS! I could not find a good way to check this so this is the best I could come up with
-     Credits goes to Sark: <https://github.com/tmr232/Sark/blob/c57dd3571009fef5ae124155fe2bdf564e4d80d8/sark/qt.py#L50>
+     Credita goes to https://github.com/arizvisa: <https://github.com/Harding-Stardust/community_base/issues/1>
     '''
-    return _ida_kernwin.get_current_widget() is None
+    return _ida_kernwin.cvar.batch
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_save_and_exit(arg_exit_code: int = 0) -> None:
