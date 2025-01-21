@@ -15,7 +15,7 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 
 # Why you should use this script
 - Easier to write plugins and scripts for IDA Python
-- Type hints on everything! 
+- Type hints on everything!
 - Strong typing. I use [Pydantic](https://docs.pydantic.dev/latest/) to force types. This makes the code much easier to read since you get an idea what a function expects and what it returns. I try to follow [PEP 484](https://peps.python.org/pep-0484/) as much as I can.
 - Full function/variable names. This makes variables and functions easy to read at a glance.
 - Properly documented. I try to document as extensive I can without making redundent comments.
@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-01-17 00:21:11"
+__version__ = "2025-01-21 16:32:02"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -128,7 +128,9 @@ import ida_ua as _ida_ua # type: ignore[import-untyped] # ua stands for UnAssemb
 import ida_xref as _ida_xref # type: ignore[import-untyped]
 import idautils as _idautils # type: ignore[import-untyped]
 import ida_diskio as _ida_diskio # type: ignore[import-untyped]
+import PyQt5 # type: ignore[import-untyped]
 from PyQt5.Qt import QApplication # type: ignore[import-untyped]
+from PyQt5.QtWidgets import QWidget # type: ignore[import-untyped]
 
 HOTKEY_DUMP_TO_DISK = 'w' # Select bytes and press w to dump it to disk in the same directory as the IDB. One can also call dump_to_disk(address, length) to dump from the console
 HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT = 'shift-c' # Select bytes and press Shift-C to copy the marked bytes as hex text. Same shortcut as in x64dbg.
@@ -195,7 +197,7 @@ def open_url(arg_text_blob_with_urls_in_it_or_function: Union[str, Callable]) ->
     ''' Opens the default web brower with all URLs in the given text blob.
         Works well on the docstrings I have enriched with URLs: open_url(ida_kernwin.process_ui_action)
 
-        Read more:
+        ida_kernwin.open_url docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#aa853ec021675db50a22e8c81eeda1550>
 
         Replacement for ida_kernwin.open_url()
     '''
@@ -204,7 +206,7 @@ def open_url(arg_text_blob_with_urls_in_it_or_function: Union[str, Callable]) ->
         l_url_regex: str = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))" # https://www.geeksforgeeks.org/python-check-url-string/
         urls = re.findall(l_url_regex, arg_text_blob_with_urls_in_it_or_function)
         if not urls:
-            log_print(f"No URLs found in '{arg_text_blob_with_urls_in_it_or_function}'")
+            log_print(f"No URLs found in '{arg_text_blob_with_urls_in_it_or_function}'", arg_type="ERROR")
         for url in urls:
             _ida_kernwin.open_url(url[0])
         return
@@ -249,11 +251,13 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
 
     return l_bug_report_file
 
+# TODO: This can be used as "poor mans thread" to poll external data
 # TODO: This is not working as expected since it runs in it's own thread
 class _check_if_long_running_script_should_abort_not_working():
     ''' Periodically check if any of the strings "abort.ida", "ida.abort", "ida.stop", "stop.ida" are in the clipboard. If anyone is, then throw an exception to abort the long running task.
     This is also an example on how to use timers. Read more: <https://github.com/HexRaysSA/IDAPython/blob/9.0sp1/examples/ui/register_timer.py>
     '''
+    # TODO: Look up ida_kernwin.show_wait_box("Processing") and ida_kernwin.user_cancelled():
     def __init__(self):
         l_time_between_calls_in_milliseconds = 1000
         self.interval = l_time_between_calls_in_milliseconds
@@ -273,7 +277,7 @@ class _check_if_long_running_script_should_abort_not_working():
         res = clipboard.text().strip() in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]
         if res:
             log_print(f"String {clipboard.text().strip()} found in clipboard")
-            reload_module()
+            log_print("Here should I don something smart to stop the long running script, any ideas?")
 
         return -1 if self.times == 0 else self.interval
 
@@ -298,6 +302,7 @@ def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
         if arg_debug:
             l_timestamp: str = time.strftime("%Y-%m-%d %H:%M:%S", datetime.datetime.timetuple(datetime.datetime.now()))
             print(f"{l_timestamp} _long_running_script_should_abort(): Checking for abort.ida in clipboard...")
+
         clipboard = QApplication.clipboard()
         res = clipboard.text().strip() in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]
         if res:
@@ -347,7 +352,7 @@ def ida_version() -> int:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_user_dir() -> str:
-    ''' Returns the path IDA is using as base when it looks for files
+    ''' Returns the path IDA is using as base when it looks for user files
      Read more <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directory-idausr>
     '''
     return _ida_diskio.get_user_idadir()
@@ -362,9 +367,18 @@ def ida_plugin_dirs() -> List[str]:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_is_running_in_batch_mode() -> bool:
     ''' Are we running in batch mode? a.k.a. headless
-     Credita goes to https://github.com/arizvisa: <https://github.com/Harding-Stardust/community_base/issues/1>
+     Credits goes to https://github.com/arizvisa: <https://github.com/Harding-Stardust/community_base/issues/1>
     '''
     return _ida_kernwin.cvar.batch
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def ida_arguments() -> List[str]:
+    ''' The arguments to the IDA Process when it was launched. Can be used to start ida with custom arguments.
+    E.g. ida.exe c:\\temp\\example.exe --extra_option_that_ida_dont_understand=3
+
+    You can then use this function to parse your own arguments. Useful in batch mode
+    '''
+    return PyQt5.Qt.qApp.instance().arguments()
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_save_and_exit(arg_exit_code: int = 0) -> None:
@@ -772,6 +786,7 @@ def google(arg_search: str) -> str:
     _ida_kernwin.open_url(res)
     return res
 
+
 # API extension ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -1068,6 +1083,8 @@ def decompile(arg_ea: EvaluateType,
         log_print(f"The decompiler for this architecture ({l_arch}) is not loaded.", arg_debug, arg_type="ERROR")
         return None # Since the user will get many warning about it not being loaded when starting IDA pro, I suppress the log message unless the user explicitly asks for it
 
+    _ida_auto.auto_wait() # We always want to have the auto analysis done before we start decompiling. This is mostly important when we call this function in batch mode
+
     l_addr: int = address(arg_ea, arg_debug=arg_debug)
     if l_addr == _ida_idaapi.BADADDR:
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
@@ -1106,6 +1123,8 @@ def decompile_many(arg_outfile: str = input_file.idb_path + '.c',
     if not _ida_hexrays.init_hexrays_plugin():
         log_print(f"The decompiler for this architecture ({input_file.processor}) is not loaded.", arg_debug, arg_type="ERROR")
         return False
+
+    _ida_auto.auto_wait() # We always want to have the auto analysis done before we start decompiling. This is mostly important when we call this function in batch mode
 
     if arg_functions:
         arg_functions = [address(func, arg_debug=arg_debug) for func in arg_functions]
@@ -1218,21 +1237,6 @@ def decompiler_variable_set_type(arg_function: EvaluateType,
         return None
     l_lvar_saved_info.type = l_type
     return _ida_hexrays.modify_user_lvar_info(l_function_address, _ida_hexrays.MLI_TYPE, l_lvar_saved_info)
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _read_range_selection(arg_v: Any = None) -> Tuple[bool, int, int]:
-    ''' Reads the selected addresses that you selected with your mouse (or keyboard)
-
-    @param arg_v According to Hexrays, it's a TWidget* which I cannot find any python type for atm. None means "the last used widget"
-    @return (valid_selection: bool, sel_start: int, sel_end: int)
-
-    Replacement for ida_kernwin.read_range_selection()
-    '''
-    valid_selection, start_address, end_address = _ida_kernwin.read_range_selection(arg_v)
-    if not valid_selection:
-        return (False, 0, 0)
-
-    return (valid_selection, start_address, end_address)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def dump_to_disk(arg_ea_start: EvaluateType = 0,
@@ -3576,6 +3580,9 @@ _add_links_to_docstring(_ida_kernwin.process_ui_action, "https://python.docs.hex
 _add_links_to_docstring(_ida_loader.load_and_run_plugin, "https://python.docs.hex-rays.com/namespaceida__loader.html#a1b29b29a91dceb429d7b85018303a92e")
 _add_links_to_docstring(_ida_idaapi.notify_when, "https://python.docs.hex-rays.com/namespaceida__idaapi.html#a0b63655706845252b36a543e550d884e")
 _add_links_to_docstring(_ida_dbg.update_bpt, "https://python.docs.hex-rays.com/namespaceida__dbg.html#a65a328849707f223bf166d0a8df5d695")
+_add_links_to_docstring(_ida_kernwin.get_widget_title, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#ac5f4837e630e94da28ef013d1f2a7ca1")
+_add_links_to_docstring(_ida_kernwin.activate_widget, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#a8bed9c56f3be8cf8136b890d5cc36809")
+_add_links_to_docstring(_ida_kernwin.display_widget, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#ac193e1bc4ae205059edc4d67c6820b80")
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _register(arg_register: Union[str, _ida_idp.reg_info_t], arg_set_value: Optional[EvaluateType] = None, arg_debug: bool = False) -> Optional[int]:
@@ -3973,7 +3980,138 @@ def win_GetProcessHeap_emulated(arg_debug: bool = False) -> Optional[int]:
 
 
 # UI ---------------------------------------------------------------------------------------------------------------------
+class TWidget():
+    ''' TWidget is really IDAs type but there doesn't seem to be any Python type for it so we create this wrapper to get real type hints '''
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def __init__(self, arg_TWidget_name: str) -> None:
+        ''' Just save the TWidget in our member m_TWidget
+        E.g. l_functions_TWidget = TWidget("Functions")
+        '''
+        self.m_TWidget = _ida_kernwin.find_widget(arg_TWidget_name) # m_TWidget is Optional[PySwigObj]
+        if self.m_TWidget is None:
+            log_print(f"No widget named '{arg_TWidget_name}' found. OBS! The window titles are case sensitive", arg_type="ERROR")
 
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def as_PyQtWidget(self) -> Optional[QWidget]:
+        ''' TWidget is IDAs own type, if you want to use Qt functions, then you need to convert to a PyQtWidget
+        Official example: <https://github.com/HexRaysSA/IDAPython/blob/d12e31eae9d678f647013527596a715dd378f989/examples/ui/pyqt/inject_command.py#L76>
+
+        to convert from QtWidget --> TWidget* use: ida_kernwin.PluginForm.QtWidgetToTWidget
+        '''
+        if self.m_TWidget is None:
+            log_print("m_TWidget is not a valid TWidget", arg_type="ERROR")
+            return None
+        return _ida_kernwin.PluginForm.TWidgetToPyQtWidget(self.m_TWidget)
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def activate(self, arg_take_focus: bool = True) -> None:
+        ''' Activate this TWdidget. Same as focus() '''
+        _idaapi_activate_widget(self, arg_take_focus=arg_take_focus)
+
+    focus = activate
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def close(self, arg_close_normally: bool = True) -> None:
+        ''' Close this TWidget '''
+        _idaapi_close_widget(self, arg_close_normally)
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def display(self, arg_options: int = _ida_kernwin.WOPN_NOT_CLOSED_BY_ESC, arg_dest_ctrl: Optional[str] = None) -> None:
+        ''' Display this TWidget. This function is used to place the windows (TWidget) at different locations such as floating or in a tab next to some given tab and so on
+            ida_kernwin.display_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#ac193e1bc4ae205059edc4d67c6820b80>
+
+            @param arg_options: int Flags from ida_kernwin.WOPN_* Read more: <https://cpp.docs.hex-rays.com/group___w_i_d_g_e_t___o_p_e_n.html>
+            @param arg_dest_ctrl: Optional[str] TODO: I don't know what what this is, something to do with another control that can be used with arg_options? Read more: <https://cpp.docs.hex-rays.com/group___w_i_d_g_e_t___o_p_e_n.html>
+
+            WARNING! Calling this on a window that has been closed crashes IDA. IDA Bug
+        '''
+        _idaapi_display_widget(self, arg_options=arg_options, arg_dest_ctrl=arg_dest_ctrl)
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def window_title(self) -> str:
+        ''' Get the window title '''
+        return _idaapi_get_widget_title(self)
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def __repr__(self) -> str:
+        if self.m_TWidget is None:
+            log_print("m_TWidget is not a valid TWidget", arg_type="ERROR")
+            return "<<< Invalid TWidget >>>"
+        return f"{type(self)} Window title: {_idaapi_get_widget_title(self)}"
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _idaapi_find_widget(arg_window_title: str) -> TWidget:
+    ''' Replacement for ida_kernwin.find_widget()
+    ida_kernwin.find_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#aa2f6dc09e7af0dc9a9896439aa340a14>
+    '''
+    return TWidget(arg_window_title)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _idaapi_get_widget_title(arg_TWidget: TWidget) -> str:
+    ''' Replacement for ida_kernwin.get_widget_title()
+    ida_kernwin.get_widget_title() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#ac5f4837e630e94da28ef013d1f2a7ca1>
+    '''
+    if arg_TWidget.m_TWidget is None:
+        log_print("arg_TWidget.m_TWidget is None", arg_type="ERROR")
+        return "<<< Invalid TWidget >>>"
+    return _ida_kernwin.get_widget_title(arg_TWidget.m_TWidget)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _idaapi_activate_widget(arg_TWidget: Union[TWidget, str], arg_take_focus: bool = True) -> None:
+    ''' Replacement for ida_kernwin.activate_widget()
+    ida_kernwin.activate_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#a8bed9c56f3be8cf8136b890d5cc36809>
+    '''
+    if isinstance(arg_TWidget, str):
+        arg_TWidget = TWidget(arg_TWidget)
+
+    if arg_TWidget.m_TWidget is None:
+        log_print("arg_TWidget.m_TWidget is None", arg_type="ERROR")
+        return
+    return _ida_kernwin.activate_widget(arg_TWidget.m_TWidget, arg_take_focus)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _idaapi_display_widget(arg_TWidget: TWidget, arg_options: int = _ida_kernwin.WOPN_NOT_CLOSED_BY_ESC, arg_dest_ctrl: Optional[str] = None) -> None:
+    '''Replacement for ida_kernwin.display_widget()
+    ida_kernwin.display_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#ac193e1bc4ae205059edc4d67c6820b80>
+
+    @param arg_options Flags from ida_kernwin.WOPN_* Read more: <https://cpp.docs.hex-rays.com/group___w_i_d_g_e_t___o_p_e_n.html>
+
+    WARNING! Calling this on a window that has been closed crashes IDA. IDA Bug
+    '''
+    _ida_kernwin.display_widget(arg_TWidget.m_TWidget, options=arg_options, dest_ctrl=arg_dest_ctrl)
+    return
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _idaapi_close_widget(arg_widget: TWidget, arg_options: bool = False) -> None:
+    ''' Replacement for ida_kernwin.close_widget()
+
+    ida_kernwin.close_widget official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#ad327e31199715548666d5f2a47d5b890>
+
+    @param arg_options True --> form is closed normally as if the user pressed Enter. False --> form is closed abnormally as if the user pressed Esc. Source: <https://python.docs.hex-rays.com/classida__kernwin_1_1_form.html#a4107bdc43f92f81264f7041890342b4a>
+    '''
+    _ida_kernwin.close_widget(arg_widget.m_TWidget, 1 if arg_options else 0)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _idaapi_get_current_widget() -> TWidget:
+    ''' Replacement for ida_kernwin.get_current_widget() '''
+    res = TWidget("IDA View-A")
+    res.m_TWidget = _ida_kernwin.get_current_widget()
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _read_range_selection(arg_TWidget: Optional[TWidget] = None) -> Tuple[bool, int, int]:
+    ''' Reads the selected addresses that you selected with your mouse (or keyboard)
+
+    @param arg_TWidget: TWidget None --> "the last used widget"
+    @return (valid_selection: bool, sel_start: int, sel_end: int)
+
+    Replacement for ida_kernwin.read_range_selection()
+    '''
+    l_widget = arg_TWidget.m_TWidget if arg_TWidget else None
+    valid_selection, start_address, end_address = _ida_kernwin.read_range_selection(l_widget)
+    if not valid_selection:
+        return (False, 0, 0)
+
+    return (valid_selection, start_address, end_address)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def jumpto(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
@@ -4003,6 +4141,13 @@ def ui_quick_view() -> None:
     There is also execute_ui_requests. Read more <https://github.com/HexRaysSA/IDAPython/blob/9.0sp1/examples/ui/trigger_actions_programmatically.py>
     '''
     _ida_kernwin.process_ui_action('QuickView')
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def ida_output_text(arg_last_num_lines: int = -1) -> List[str]:
+    ''' Returns the text in the Output window (widget)
+    @param arg_last_num_lines: int Get only the last X lines. -1 --> all lines
+    '''
+    return _ida_kernwin.msg_get_lines(arg_last_num_lines)
 
 # New members/functions of IDA pythons objects -------------------------------------------------------------------------------------------------
 
