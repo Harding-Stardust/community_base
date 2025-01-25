@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-01-25 01:52:29"
+__version__ = "2025-01-25 22:27:14"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -121,6 +121,7 @@ import ida_nalt as _ida_nalt # type: ignore[import-untyped] # Definitions of var
 import ida_netnode as _ida_netnode # type: ignore[import-untyped] # Functions that provide the lowest level public interface to the database.
 import ida_pro as _ida_pro # type: ignore[import-untyped]
 import ida_range as _ida_range # type: ignore[import-untyped]
+import ida_search as _ida_search # type: ignore[import-untyped]
 import ida_segment as _ida_segment # type: ignore[import-untyped]
 import idc as _idc # type: ignore[import-untyped]
 import ida_typeinf as _ida_typeinf # type: ignore[import-untyped]
@@ -176,10 +177,11 @@ def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, D
     l_links["how_to_create_a_plugin"] =             "https://docs.hex-rays.com/developer-guide/idapython/how-to-create-a-plugin"
     l_links["appcall_guide"] =                      "https://docs.hex-rays.com/user-guide/debugger/debugger-tutorials/appcall_primer"
     l_links["appcall_practical_examples"] =         "https://hex-rays.com/blog/practical-appcall-examples/"
-    # l_links[""] =  ""
+    l_links["community_forums"] =                   "https://community.hex-rays.com/"
+    # l_links[""] = ""
 
     l_batch_mode = {}
-    l_batch_mode["command_line"] = r"<full_path_to>ida.exe -A -S<script_I_want_to_run.py> -L<full_path_to>ida.log <full_path_to_input_file>"
+    l_batch_mode["command_line"] = "<full_path_to>ida.exe -A -S<script_I_want_to_run.py> -L<full_path_to>ida.log <full_path_to_input_file>"
     l_batch_mode["official_link"] = "https://docs.hex-rays.com/user-guide/configuration/command-line-switches"
 
     res = {}
@@ -990,7 +992,9 @@ def address(arg_label_or_address: EvaluateType, arg_supress_error: bool = False,
     ''' Takes a name/label or register name (if the debugger is active)
     or address (int) and try to resolve it into an address (int) in a smart way.
     You can use the syntax +<num bytes> and -<num bytes> to jump down or up from the current_address()
+
     @return Returns a valid address (int) on success and ida_idaapi.BADADDR on fail
+
     Replacement for ida_name.get_name_ea()
     '''
     # Resolve cursor relative jmps such as "+0x10" meaning current_address() + 0x10
@@ -2181,8 +2185,11 @@ def export_h_file(arg_h_file: str = input_file.idb_path + ".h", arg_add_comment_
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def string_encoding(arg_ea: EvaluateType, arg_detect: bool = False, arg_debug: bool = False) -> Optional[str]:
     '''
-    Gets teh encoding of a string, can also be used to check if IDA thinks there is a string on that address
+    Gets the encoding of a string, can also be used to check if IDA thinks there is a string on that address
     If it's not and you want to make a string at that place, you can use string(<address>, arg_type="<encoding>", arg_create_string=True)
+
+    @param arg_ea The address to check for string encoding
+    @param arg_detect True --> attempts to detect the encoding even if IDA doesn't recognize it as a string, requires the third party package chardet (pip install chardet)
 
     @return: The encoding name, if there is no string on that address, then we return "" (empty str)
 
@@ -2215,7 +2222,6 @@ def string_encoding(arg_ea: EvaluateType, arg_detect: bool = False, arg_debug: b
         log_print(f"IDA does _NOT_ think there is a string at {_hex_str_if_int(arg_ea)} but you can try to detect what encoding is used by calling string_encoding(<address>, arg_detect=True)", arg_type="ERROR")
         res = ""
     return res
-
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _is_invalid_strtype(arg_strtype: int) -> bool:
     ''' It's not clear what is ida_nalt.get_str_type() should return that is a valid strtype.
@@ -2914,10 +2920,11 @@ def search_binary(arg_pattern: BufferType,
     if l_max_ea == _ida_idaapi.BADADDR:
         l_max_ea = _ida_ida.inf_get_max_ea()
 
-    res: List[int] = []
+    res = []
     l_start_next_search_at = l_min_ea
     while True:
         l_start_next_search_at = _idaapi_bin_search(l_start_next_search_at, l_max_ea, l_binpat, arg_flags)
+        log_print(f"result from _idaapi_bin_search(): {_hex_str_if_int(l_start_next_search_at)}", arg_debug)
         if l_start_next_search_at == _ida_idaapi.BADADDR:
             break
         res.append(l_start_next_search_at)
@@ -2926,6 +2933,55 @@ def search_binary(arg_pattern: BufferType,
         if l_max_hits == 0:
             break
 
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def search_text(arg_search_for: str,
+                arg_search_direction_down: bool = True,
+                arg_search_is_regex: bool = False,
+                arg_start_ea: Optional[EvaluateType] = None,
+                arg_max_hits: EvaluateType = 1,
+                arg_debug: bool = False) -> Optional[List[int]]:
+    ''' Search for text in the disassembly view and returns the first hit.
+    To get all hits, set the argument arg_max_hits = 0
+
+    @param arg_search_for The string that you see on the screen (that you can mark and copy)
+    @param arg_search_direction_down True --> search from the given ```arg_start_ea````and to higher adresses, False --> search from the given ```arg_start_ea````and to lower adresses
+    @param arg_search_is_regex True --> Handle the string as a regex, False --> The input string is a literal
+    @param arg_start_ea start the search from this address, if None then we start from the first byte we can reach in the IDB
+    @param arg_max_hits After we found this many hits, we return. Set to 0 for all hits
+
+    @return List[address: int]: List of ints where the search matched or [] if not found, returns None if something failed
+    '''
+    res = []
+    l_max_hits: Optional[int] = eval_expression(arg_max_hits, arg_debug=arg_debug)
+    if l_max_hits is None:
+        log_print('eval_expression(arg_max_hits) failed', arg_type="ERROR")
+        return None
+
+    l_min_ea = _ida_ida.inf_get_min_ea() if arg_start_ea is None else address(arg_start_ea, arg_debug=arg_debug)
+    if l_min_ea == _ida_idaapi.BADADDR:
+        l_min_ea = _ida_ida.inf_get_min_ea()
+
+    l_search_flags = _ida_search.SEARCH_DOWN if arg_search_direction_down else _ida_search.SEARCH_UP
+    l_search_flags |= _ida_search.SEARCH_NEXT # TODO: When is this supposed to be used?
+    l_search_flags |= _ida_search.SEARCH_BRK # return BADADDR if the search was cancelled
+    if arg_search_is_regex:
+        l_search_flags |= _ida_search.SEARCH_REGEX
+    l_start_next_search_at = l_min_ea
+    while True:
+        l_useless_y: int = 0
+        l_useless_x: int = 0
+        log_print(f"Calling _ida_search.find_text(0x{l_start_next_search_at:x}, {l_useless_y}, {l_useless_x}, '{arg_search_for}', {l_search_flags})", arg_debug)
+        l_start_next_search_at = _ida_search.find_text(l_start_next_search_at, l_useless_y, l_useless_x, arg_search_for, l_search_flags) # TODO: find_text() seems to ignore the first argument? IDA BUG?
+        log_print(f"result from ida_search.find_text(): {_hex_str_if_int(l_start_next_search_at)}", arg_debug)
+        if l_start_next_search_at == _ida_idaapi.BADADDR:
+            break
+        res.append(l_start_next_search_at)
+        l_start_next_search_at += 1
+        l_max_hits -= 1
+        if l_max_hits == 0:
+            break
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -3566,7 +3622,7 @@ process_continue = process_resume
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def debugger_command(arg_command: str) -> Tuple[bool, str]:
     ''' Passthru for ida_dbg.send_dbg_command()
-    Used to send raw commands to the debugger backend. Works best with WinDBG, GDB and Bochs
+    Used to send raw commands to the debugger backend. Works best with WinDbg, GDB and Bochs
     '''
     return _ida_dbg.send_dbg_command(arg_command)
 
@@ -4117,28 +4173,42 @@ def win_GetCurrentProcessId(arg_debug: bool = False) -> Optional[int]:
 
 
 # UI ---------------------------------------------------------------------------------------------------------------------
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _is_TWidget_TWidget_star_or_QtWidget(arg_widget: Any) -> str:
+    ''' Detects what kind of Widget you send in and returns that as a str '''
+    if isinstance(arg_widget, TWidget):
+        return "TWidget"
+    if str(type(arg_widget)) == "<class 'SwigPyObject'>":
+        return "IDA_TWidget_star"
+    if "<class 'PyQt5.QtWidgets." in str(type(arg_widget)):
+        return "QtWidget"
+
+    log_print(f"arg_widget should be either window title (type: str) or the twidget* object (type: SwigPyObject) or a QtWidget (type: PyQt5.QtWidgets.*)", arg_type="ERROR")
+    return "<<< unknown Widget Type >>>"
+
 class TWidget():
     ''' TWidget is really IDAs type but there doesn't seem to be any Python type for it so we create this wrapper to get real type hints '''
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def __init__(self, arg_TWidget: Any) -> None:
         ''' Create a wrapper object around what IDA calls TWidget*
 
-        @param arg_TWidget can be either the window name (type str) or the SwigPyObject that is returned from the IDA APIs or a QtWidget
+        @param arg_TWidget can be either the window name (type str), the SwigPyObject that is returned from the IDA APIs, a QtWidget or a (community_base) TWidget
 
         E.g. l_functions_TWidget = TWidget("Functions")
         l_functions_TWidget = TWidget(ida_kernwin.find_widget("Functions"))
         l_last_used_TWidget = TWidget(ida_kernwin.get_last_widget())
-
         '''
         if isinstance(arg_TWidget, str):
-            # self.m_TWidget = _ida_kernwin.PluginForm.QtWidgetToTWidget(_ida_kernwin.PluginForm.TWidgetToPyQtWidget(_ida_kernwin.find_widget(arg_TWidget)))  # m_TWidget is Optional[PySwigObj]
             self.m_IDAs_TWidget_star = _ida_kernwin.find_widget(arg_TWidget)  # m_TWidget is Optional[PySwigObj]
             if self.m_IDAs_TWidget_star is None:
                 log_print(f"No widget named '{arg_TWidget}' found. OBS! The window titles are case sensitive", arg_type="ERROR")
-        elif str(type(arg_TWidget)) == "<class 'SwigPyObject'>":
+        elif _is_TWidget_TWidget_star_or_QtWidget(arg_TWidget) == "IDA_TWidget_star":
             self.m_IDAs_TWidget_star = arg_TWidget
-        elif "<class 'PyQt5.QtWidgets." in str(type(arg_TWidget)):
+        elif _is_TWidget_TWidget_star_or_QtWidget(arg_TWidget) == "QtWidget":
             self.m_IDAs_TWidget_star = _ida_kernwin.PluginForm.QtWidgetToTWidget(arg_TWidget)
+        elif _is_TWidget_TWidget_star_or_QtWidget(arg_TWidget) == "TWidget":
+            self.m_IDAs_TWidget_star = arg_TWidget.m_IDAs_TWidget_star
         else:
             log_print(f"arg_TWidget should be either window title (type: str) or the twidget* object (type: SwigPyObject) or a QtWidget (type: PyQt5.QtWidgets.*)", arg_type="ERROR")
             self.m_IDAs_TWidget_star = None
@@ -4363,6 +4433,7 @@ def ida_output_text(arg_last_num_lines: int = -1, arg_clear_it_after: bool = Fal
         l_output_TWidget.focus()
         _ida_kernwin.process_ui_action("OutputClearContents")
     return res
+
 
 # New members/functions of IDA pythons objects -------------------------------------------------------------------------------------------------
 
