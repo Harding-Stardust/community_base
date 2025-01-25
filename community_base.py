@@ -1518,6 +1518,7 @@ def _ea_to_hexrays_insn(arg_ea: EvaluateType,
         if res.ea != _ida_idaapi.BADADDR:
             return res
 
+    log_print(f"Reached a point where I return None", arg_debug, arg_type="WARNING")
     return None
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -1972,8 +1973,64 @@ def exports(arg_debug: bool = False) -> Dict[int, Tuple[int, int, str]]:
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def byte(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
+    ''' Reads a byte (8 bits) from the IDB. OBS! The IDB might not match the file on disk or active memory
+
+    Replacement for ida_bytes.get_byte()
+
+    OBS! See ida_idd.dbg_read_memory(ea, size) for some other memory read
+    '''
+    l_addr: int = address(arg_ea, arg_debug=arg_debug)
+    if l_addr == _ida_idaapi.BADADDR:
+        log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
+        return None
+    return _ida_bytes.get_byte(l_addr)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def word(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
+    ''' Reads a word (16 bits) from the IDB. OBS! The IDB might not match the file on disk or active memory
+
+    Replacement for ida_bytes.get_word()
+
+    OBS! See ida_idd.dbg_read_memory(ea, size) for some other memory read
+    '''
+    l_addr: int = address(arg_ea, arg_debug=arg_debug)
+    if l_addr == _ida_idaapi.BADADDR:
+        log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
+        return None
+    return _ida_bytes.get_word(l_addr)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def dword(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
+    ''' Reads a dword (32 bits) from the IDB. OBS! The IDB might not match the file on disk or active memory
+
+    Replacement for ida_bytes.get_dword()
+
+    OBS! See ida_idd.dbg_read_memory(ea, size) for some other memory read
+    '''
+    l_addr: int = address(arg_ea, arg_debug=arg_debug)
+    if l_addr == _ida_idaapi.BADADDR:
+        log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
+        return None
+    return _ida_bytes.get_dword(l_addr)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def qword(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
+    ''' Reads a qword (64 bits) from the IDB. OBS! The IDB might not match the file on disk or active memory
+
+    Replacement for ida_bytes.get_qword()
+
+    OBS! See ida_idd.dbg_read_memory(ea, size) for some other memory read
+    '''
+    l_addr: int = address(arg_ea, arg_debug=arg_debug)
+    if l_addr == _ida_idaapi.BADADDR:
+        log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
+        return None
+    return _ida_bytes.get_qword(l_addr)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def read_bytes(arg_ea: EvaluateType, arg_len: EvaluateType, arg_debug: bool = False) -> Optional[bytes]:
-    ''' Read bytes from the IDB. OBS! The IDB might not match the file on disk or active memory.
+    ''' Read bytes from the IDB. OBS! The IDB might not match the file on disk or active memory
 
     Replacement for ida_bytes.get_bytes()
 
@@ -2002,7 +2059,7 @@ def read_bytes(arg_ea: EvaluateType, arg_len: EvaluateType, arg_debug: bool = Fa
         log_print(f"arg_ea = 0x{l_addr:x}, arg_len = 0x{l_len:x} resulted in '{l_parsed_hex}'", arg_debug)
     return l_bytes
 
-get_bytes = read_bytes
+bytes_read = get_bytes = read_bytes
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def write_bytes(arg_ea: EvaluateType, arg_buf: Union[BufferType, int], arg_debug: bool = False) -> bool:
@@ -2037,7 +2094,7 @@ def write_bytes(arg_ea: EvaluateType, arg_buf: Union[BufferType, int], arg_debug
     _ida_kernwin.request_refresh(_ida_kernwin.IWID_ALL, res) # Update the GUI if we actually managed to write something
     return res
 
-set_bytes = patch_bytes = write_bytes
+bytes_write = set_bytes = patch_bytes = write_bytes
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def write_string(arg_ea: EvaluateType, arg_string: str, arg_append_NULL_byte: bool = True, arg_debug: bool = False) -> bool:
@@ -2224,7 +2281,7 @@ def string(arg_ea: EvaluateType,
     ''' Reads a string (excluding the NULL terminator) from the IDB that can handle C strings, wide strings (UCS2/UTF-16).
     If you want to force read a string use the functions c_string() or wide_string().
 
-    @param arg_type: See ida_nalt.STRTYPE_* for valid values. If you give it a string, I use this as encoding name
+    @param arg_encoding: See ida_nalt.STRTYPE_* for valid values. If you give it a string, I use this as encoding name
     @param arg_flags: See  ida_bytes.ALOPT_* for valid values. Default: ida_bytes.ALOPT_IGNHEADS | ida_bytes.ALOPT_IGNPRINT | ida_bytes.ALOPT_IGNCLT
     ALOPT_IGNHEADS: Don't stop if another data item is encountered. Only the byte values will be used to determine the string length. If not set, a defined data item or instruction will truncate the string.
     ALOPT_IGNPRINT: Don't stop at non-printable codepoints, but only at the terminating character (or not unicode-mapped character (e.g., 0x8f in CP1252))
@@ -2802,7 +2859,7 @@ def search_binary(arg_pattern: BufferType,
     <https://python.docs.hex-rays.com/namespaceida__bytes.html#a78f65e2beddbe9a9da023e022a6a6b06>
     Use this flag if you like to search for byte sequences like "FF ?? ?? 13" (using wildcards)
 
-    @param arg_flags Default: _ida_bytes.BIN_SEARCH_FORWARD See _ida_bytes.BIN_SEARCH_* for different flags
+    @param arg_flags Default: ida_bytes.BIN_SEARCH_FORWARD See ida_bytes.BIN_SEARCH_* for different flags
     @param radix The radix the numerical values in the search pattern is parsed as. Default: 0x10 (hex)
     @param arg_strlits_encoding Default: ida_bytes.PBSENC_DEF1BPU. This is used to parse the literals in the string. e.g. '"CreateFileA"'
     Other values that can be used: ida_bytes.PBSENC_ALL (all encodings IDA know of) or if you send in a string like 'UTF-16', then I translate that with ida_nalt.get_encoding_bpu_by_name('UTF-16')
@@ -3389,7 +3446,7 @@ def breakpoint_add(arg_ea: EvaluateType,
 
     if arg_condition:
         l_bpt.condition = arg_condition
-    l_bpt.elang = 'Python'
+        l_bpt.elang = 'Python'
     l_update_bpt = breakpoint_update(l_bpt)
     if not l_update_bpt:
         log_print("ida_dbg.update_bpt(l_bpt) returned False", arg_type="ERROR")
@@ -3459,16 +3516,69 @@ def breakpoint_update(arg_breakpoint: _ida_dbg.bpt_t) -> bool:
     return _ida_dbg.update_bpt(arg_breakpoint)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def breakpoints() -> List[_ida_dbg.bpt_t]:
+    ''' Get all breakpoints '''
+    res = []
+    for i in range(_ida_dbg.get_bpt_qty()):
+        l_t_breakpoint = _ida_dbg.bpt_t()
+        if _ida_dbg.getn_bpt(i, l_t_breakpoint):
+            res.append(l_t_breakpoint)
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def process_start(arg_path: str = "", arg_args: str = "", arg_start_dir: str = "") -> int:
+    ''' Passthru ida_dbg.start_process()
+    ida_dbg.start_process() official docs: <https://python.docs.hex-rays.com/namespaceida__dbg.html#a0d6ca89f3573e306b9ecdced17b2ced1>
+    '''
+    return _ida_dbg.start_process(arg_path, arg_args, arg_start_dir)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def process_list(arg_name_filter_regex: str = ".*", arg_debug: bool = False) -> List[_ida_idd.process_info_t]:
+    ''' List all process that are running
+    @param arg_name_filter_regex Only processes whoes name full match this regex
+    '''
+    res = []
+    l_processes = _ida_idd.procinfo_vec_t()
+    l_num_processes = _ida_dbg.get_processes(l_processes)
+    log_print(f"Number of processes: {l_num_processes}", arg_debug)
+    for l_process in l_processes:
+        if not re.fullmatch(arg_name_filter_regex, l_process.name):
+            continue
+        l_t_process_info = _ida_idd.process_info_t()
+        l_t_process_info.name = l_process.name
+        l_t_process_info.pid = l_process.pid
+        log_print(f"Process name: {l_t_process_info.pid}, PID: 0x{l_t_process_info.pid:x} ({l_t_process_info.pid})", arg_debug)
+        res.append(l_t_process_info)
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def process_suspend() -> bool:
     ''' Passthru ida_dbg.suspend_process() '''
     return _ida_dbg.suspend_process()
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def process_resume() -> bool:
-    ''' Passthru for ida_dbg.continue_process'''
+    ''' Passthru for ida_dbg.continue_process() '''
     return _ida_dbg.continue_process()
 
 process_continue = process_resume
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def debugger_command(arg_command: str) -> Tuple[bool, str]:
+    ''' Passthru for ida_dbg.send_dbg_command()
+    Used to send raw commands to the debugger backend. Works best with WinDBG, GDB and Bochs
+    '''
+    return _ida_dbg.send_dbg_command(arg_command)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def process_detach() -> bool:
+    ''' Passthru for ida_dbg.detach_process() '''
+    return _ida_dbg.detach_process()
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def process_exit() -> bool:
+    ''' Passthru for ida_dbg.exit_process() '''
+    return _ida_dbg.exit_process()
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def process_options(arg_debug: bool = False) -> Dict[str, str]:
@@ -3583,6 +3693,7 @@ _add_links_to_docstring(_ida_dbg.update_bpt, "https://python.docs.hex-rays.com/n
 _add_links_to_docstring(_ida_kernwin.get_widget_title, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#ac5f4837e630e94da28ef013d1f2a7ca1")
 _add_links_to_docstring(_ida_kernwin.activate_widget, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#a8bed9c56f3be8cf8136b890d5cc36809")
 _add_links_to_docstring(_ida_kernwin.display_widget, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#ac193e1bc4ae205059edc4d67c6820b80")
+_add_links_to_docstring(_ida_dbg.start_process, "https://python.docs.hex-rays.com/namespaceida__dbg.html#a0d6ca89f3573e306b9ecdced17b2ced1")
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _register(arg_register: Union[str, _ida_idp.reg_info_t], arg_set_value: Optional[EvaluateType] = None, arg_debug: bool = False) -> Optional[int]:
@@ -3632,11 +3743,7 @@ def appcall(arg_function_name: EvaluateType,
     Hexrays example code: <https://hex-rays.com/blog/practical-appcall-examples/>
     <https://docs.hex-rays.com/user-guide/debugger/debugger-tutorials/appcall_primer>
 
-    @param arg_prototype can be either:
-    c type string
-    _ida_typeinf.tinfo_t
-    address/name/label/register which can be resolved to a an address and then the type is read from that location.
-
+    @param arg_prototype can be either: c type string, _ida_typeinf.tinfo_t, address/name/label/register which can be resolved to an address and then the type is read from that location
     @param arg_set_type_in_IDB: Set the type at the function start in the IDB also
 
     If you are debugging and have a function you want to call:
@@ -3924,15 +4031,34 @@ def win_LoadLibraryA(arg_dll: str, arg_debug: bool = False) -> Optional[int]:
             log_print(f"LoadLibraryA('{arg_dll}') failed with error code: {l_last_error} (0x{l_last_error:x}), error description: '{l_error_message}'", arg_type="ERROR") #
     return res
 
-# TODO: maybe implement?
-# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-# def win_GetProcAddress(arg_hmodule: EvaluateType, arg_function_name: str) -> bool:
-#     ''' Calls GetProcAddress via AppCall '''
-#     #     address("kernel32_GetProcAddress")
-#     # FARPROC GetProcAddress(
-#     #   [in] HMODULE hModule,
-#     #   [in] LPCSTR  lpProcName
-#     return True
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def win_GetProcAddress(arg_hmodule: EvaluateType, arg_function_name: str, arg_debug: bool = False) -> Optional[int]:
+    ''' Gets the address of a function in a DLL via AppCall
+
+    @param arg_hmodule: Handle to DLL module (from LoadLibrary)
+    @param arg_function_name: Name of function to look up
+    @return: Function address or None on error
+    '''
+    l_GetProcAddress = appcall('kernel32_GetProcAddress', "FARPROC GetProcAddress(HMODULE hModule, LPCSTR lpProcName);", arg_debug=arg_debug)
+    if not l_GetProcAddress:
+        log_print("Failed to find kernel32_GetProcAddress", arg_type="ERROR")
+        return None
+
+    l_module: Optional[_ida_idd.modinfo_t] = module(arg_hmodule, arg_debug=arg_debug)
+    if l_module is None:
+        log_print(f"address({_hex_str_if_int(arg_hmodule)}) failed", arg_type="ERROR")
+        return None
+
+    res = l_GetProcAddress(l_module.base, arg_function_name)
+    res = eval_expression(res, arg_debug=arg_debug) # Handle PyIdc_cvt_int64__ on win64
+
+    if not res:
+        l_last_error: Optional[int] = win_GetLastError()
+        l_error_message: str = ctypes.WinError(l_last_error).strerror
+        log_print(f"GetProcAddress('{arg_function_name}') failed with error code: {l_last_error} (0x{l_last_error:x}), error description: '{l_error_message}'", arg_type="ERROR")
+        return None
+
+    return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def win_FreeLibrary(arg_hmodule: EvaluateType, arg_debug: bool = False) -> bool:
@@ -3978,18 +4104,51 @@ def win_GetProcessHeap_emulated(arg_debug: bool = False) -> Optional[int]:
         return None
     return pointer(l_PEB + l_default_heap_offset, arg_debug=arg_debug)
 
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def win_GetCurrentProcessId(arg_debug: bool = False) -> Optional[int]:
+    ''' Gets the process ID of the currently debugged process via AppCall '''
+    l_GetCurrentProcessId = appcall('kernel32_GetCurrentProcessId', "DWORD GetCurrentProcessId()", arg_debug=arg_debug)
+    if not l_GetCurrentProcessId:
+        log_print("Failed to find kernel32_GetCurrentProcessId", arg_type="ERROR")
+        return None
+    res = l_GetCurrentProcessId()
+    log_print(f"res: {res}", arg_debug)
+    return eval_expression(res, arg_debug=arg_debug)
+
 
 # UI ---------------------------------------------------------------------------------------------------------------------
 class TWidget():
     ''' TWidget is really IDAs type but there doesn't seem to be any Python type for it so we create this wrapper to get real type hints '''
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def __init__(self, arg_TWidget_name: str) -> None:
-        ''' Just save the TWidget in our member m_TWidget
+    def __init__(self, arg_TWidget: Any) -> None:
+        ''' Create a wrapper object around what IDA calls TWidget*
+
+        @param arg_TWidget can be either the window name (type str) or the SwigPyObject that is returned from the IDA APIs or a QtWidget
+
         E.g. l_functions_TWidget = TWidget("Functions")
+        l_functions_TWidget = TWidget(ida_kernwin.find_widget("Functions"))
+        l_last_used_TWidget = TWidget(ida_kernwin.get_last_widget())
+
         '''
-        self.m_TWidget = _ida_kernwin.find_widget(arg_TWidget_name) # m_TWidget is Optional[PySwigObj]
-        if self.m_TWidget is None:
-            log_print(f"No widget named '{arg_TWidget_name}' found. OBS! The window titles are case sensitive", arg_type="ERROR")
+        if isinstance(arg_TWidget, str):
+            # self.m_TWidget = _ida_kernwin.PluginForm.QtWidgetToTWidget(_ida_kernwin.PluginForm.TWidgetToPyQtWidget(_ida_kernwin.find_widget(arg_TWidget)))  # m_TWidget is Optional[PySwigObj]
+            self.m_IDAs_TWidget_star = _ida_kernwin.find_widget(arg_TWidget)  # m_TWidget is Optional[PySwigObj]
+            if self.m_IDAs_TWidget_star is None:
+                log_print(f"No widget named '{arg_TWidget}' found. OBS! The window titles are case sensitive", arg_type="ERROR")
+        elif str(type(arg_TWidget)) == "<class 'SwigPyObject'>":
+            self.m_IDAs_TWidget_star = arg_TWidget
+        elif "<class 'PyQt5.QtWidgets." in str(type(arg_TWidget)):
+            self.m_IDAs_TWidget_star = _ida_kernwin.PluginForm.QtWidgetToTWidget(arg_TWidget)
+        else:
+            log_print(f"arg_TWidget should be either window title (type: str) or the twidget* object (type: SwigPyObject) or a QtWidget (type: PyQt5.QtWidgets.*)", arg_type="ERROR")
+            self.m_IDAs_TWidget_star = None
+
+        if not self.m_IDAs_TWidget_star is None:
+            l_PyQTWidget = self.as_PyQtWidget()
+            if l_PyQTWidget is None:
+                self.m_original_window_title = "<<< invalid TWidget >>>"
+                return
+            self.m_original_window_title = l_PyQTWidget.windowTitle()
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def as_PyQtWidget(self) -> Optional[QWidget]:
@@ -3998,10 +4157,18 @@ class TWidget():
 
         to convert from QtWidget --> TWidget* use: ida_kernwin.PluginForm.QtWidgetToTWidget
         '''
-        if self.m_TWidget is None:
+        if self.m_IDAs_TWidget_star is None:
             log_print("m_TWidget is not a valid TWidget", arg_type="ERROR")
             return None
-        return _ida_kernwin.PluginForm.TWidgetToPyQtWidget(self.m_TWidget)
+        return _ida_kernwin.PluginForm.TWidgetToPyQtWidget(self.m_IDAs_TWidget_star)
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def as_TWidget_star(self) -> Optional[Any]:
+        ''' For the IDA APIs that takes a TWidget* (e.g. ida_kernwin.attach_action_to_popup()) you can use this to get the correct type '''
+        if self.m_IDAs_TWidget_star is None:
+            log_print("m_TWidget is not a valid TWidget", arg_type="ERROR")
+            return None
+        return self.m_IDAs_TWidget_star
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def activate(self, arg_take_focus: bool = True) -> None:
@@ -4027,13 +4194,26 @@ class TWidget():
         '''
         _idaapi_display_widget(self, arg_options=arg_options, arg_dest_ctrl=arg_dest_ctrl)
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def window_title(self) -> str:
-        ''' Get the window title '''
+    def window_title(self, arg_new_window_title: Optional[str] = "") -> str:
+        ''' Get/set the window title
+        @param arg_new_window_title Optional[str] Set to None to get the original window title, otherwise set to this. If set to "" then just get the current window title
+        '''
+        if arg_new_window_title is None:
+            l_PyQtWidget = self.as_PyQtWidget()
+            if l_PyQtWidget is None:
+                return "<<< Invalid TWidget >>>"
+            l_PyQtWidget.setWindowTitle(self.m_original_window_title)
+        elif arg_new_window_title:
+            l_PyQtWidget = self.as_PyQtWidget()
+            if l_PyQtWidget is None:
+                return "<<< Invalid TWidget >>>"
+            l_PyQtWidget.setWindowTitle(arg_new_window_title)
+
         return _idaapi_get_widget_title(self)
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def __repr__(self) -> str:
-        if self.m_TWidget is None:
+        if self.m_IDAs_TWidget_star is None:
             log_print("m_TWidget is not a valid TWidget", arg_type="ERROR")
             return "<<< Invalid TWidget >>>"
         return f"{type(self)} Window title: {_idaapi_get_widget_title(self)}"
@@ -4050,10 +4230,10 @@ def _idaapi_get_widget_title(arg_TWidget: TWidget) -> str:
     ''' Replacement for ida_kernwin.get_widget_title()
     ida_kernwin.get_widget_title() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#ac5f4837e630e94da28ef013d1f2a7ca1>
     '''
-    if arg_TWidget.m_TWidget is None:
+    if arg_TWidget.m_IDAs_TWidget_star is None:
         log_print("arg_TWidget.m_TWidget is None", arg_type="ERROR")
         return "<<< Invalid TWidget >>>"
-    return _ida_kernwin.get_widget_title(arg_TWidget.m_TWidget)
+    return _ida_kernwin.get_widget_title(arg_TWidget.m_IDAs_TWidget_star)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _idaapi_activate_widget(arg_TWidget: Union[TWidget, str], arg_take_focus: bool = True) -> None:
@@ -4063,10 +4243,10 @@ def _idaapi_activate_widget(arg_TWidget: Union[TWidget, str], arg_take_focus: bo
     if isinstance(arg_TWidget, str):
         arg_TWidget = TWidget(arg_TWidget)
 
-    if arg_TWidget.m_TWidget is None:
+    if arg_TWidget.m_IDAs_TWidget_star is None:
         log_print("arg_TWidget.m_TWidget is None", arg_type="ERROR")
         return
-    return _ida_kernwin.activate_widget(arg_TWidget.m_TWidget, arg_take_focus)
+    return _ida_kernwin.activate_widget(arg_TWidget.m_IDAs_TWidget_star, arg_take_focus)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _idaapi_display_widget(arg_TWidget: TWidget, arg_options: int = _ida_kernwin.WOPN_NOT_CLOSED_BY_ESC, arg_dest_ctrl: Optional[str] = None) -> None:
@@ -4077,7 +4257,10 @@ def _idaapi_display_widget(arg_TWidget: TWidget, arg_options: int = _ida_kernwin
 
     WARNING! Calling this on a window that has been closed crashes IDA. IDA Bug
     '''
-    _ida_kernwin.display_widget(arg_TWidget.m_TWidget, options=arg_options, dest_ctrl=arg_dest_ctrl)
+    if arg_TWidget.m_IDAs_TWidget_star is None:
+        log_print("Cannot display TWidget, arg_widget.m_TWidget is None", arg_type="ERROR")
+        return
+    _ida_kernwin.display_widget(arg_TWidget.as_TWidget_star(), options=arg_options, dest_ctrl=arg_dest_ctrl)
     return
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -4088,14 +4271,30 @@ def _idaapi_close_widget(arg_widget: TWidget, arg_options: bool = False) -> None
 
     @param arg_options True --> form is closed normally as if the user pressed Enter. False --> form is closed abnormally as if the user pressed Esc. Source: <https://python.docs.hex-rays.com/classida__kernwin_1_1_form.html#a4107bdc43f92f81264f7041890342b4a>
     '''
-    _ida_kernwin.close_widget(arg_widget.m_TWidget, 1 if arg_options else 0)
+    if arg_widget.m_IDAs_TWidget_star is None:
+        log_print("Cannot close TWidget, arg_widget.m_TWidget is None", arg_type="ERROR")
+        return
+    _ida_kernwin.close_widget(arg_widget.as_TWidget_star(), 1 if arg_options else 0)
+    arg_widget.m_IDAs_TWidget_star = None
+    return
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _idaapi_get_current_widget() -> TWidget:
     ''' Replacement for ida_kernwin.get_current_widget() '''
-    res = TWidget("IDA View-A")
-    res.m_TWidget = _ida_kernwin.get_current_widget()
-    return res
+    return TWidget(_ida_kernwin.get_current_widget())
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _idaapi_get_current_viewer() -> TWidget:
+    ''' Replacement for ida_kernwin.get_current_viewer()
+    OBS! Viewer is a widget that is how you see the file. This can be IDA-View, Pseudocode or Hex View'''
+    return TWidget(_ida_kernwin.get_current_viewer())
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _idaapi_get_last_widget(arg_mask: int = -1) -> TWidget:
+    ''' Replacement for ida_kernwin.get_last_widget()
+    @param arg_mask an OR'ed set of ida_kernwin.IWID_* to limit the search to
+    '''
+    return TWidget(_ida_kernwin.get_last_widget(arg_mask))
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _read_range_selection(arg_TWidget: Optional[TWidget] = None) -> Tuple[bool, int, int]:
@@ -4106,12 +4305,19 @@ def _read_range_selection(arg_TWidget: Optional[TWidget] = None) -> Tuple[bool, 
 
     Replacement for ida_kernwin.read_range_selection()
     '''
-    l_widget = arg_TWidget.m_TWidget if arg_TWidget else None
+    l_widget = arg_TWidget.as_TWidget_star() if arg_TWidget else None
     valid_selection, start_address, end_address = _ida_kernwin.read_range_selection(l_widget)
     if not valid_selection:
         return (False, 0, 0)
 
     return (valid_selection, start_address, end_address)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def ida_main_window() -> TWidget:
+    ''' Get the top window. If you set the window title on this, then the IDA Process window title will be set
+    The idea is that you can set the window title to give some info to the user.
+    '''
+    return TWidget(PyQt5.QtWidgets.QApplication.activeWindow())
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def jumpto(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
@@ -4143,11 +4349,20 @@ def ui_quick_view() -> None:
     _ida_kernwin.process_ui_action('QuickView')
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_output_text(arg_last_num_lines: int = -1) -> List[str]:
+def ida_output_text(arg_last_num_lines: int = -1, arg_clear_it_after: bool = False) -> List[str]:
     ''' Returns the text in the Output window (widget)
     @param arg_last_num_lines: int Get only the last X lines. -1 --> all lines
+    @param arg_clear_it_after: After we have read the lines, clear the output
+    This a way to get some information (Like PDB filenames and such) that are usually hard to find
     '''
-    return _ida_kernwin.msg_get_lines(arg_last_num_lines)
+    res = _ida_kernwin.msg_get_lines(arg_last_num_lines)
+    res = res[::-1] # For some strange reason, the list is revered so we turn it around
+
+    if arg_clear_it_after:
+        l_output_TWidget = TWidget("Output")
+        l_output_TWidget.focus()
+        _ida_kernwin.process_ui_action("OutputClearContents")
+    return res
 
 # New members/functions of IDA pythons objects -------------------------------------------------------------------------------------------------
 
@@ -4429,6 +4644,7 @@ setattr(_ida_idd.modinfo_t, '__str__', lambda self: f"name: {self.name}, base: 0
 setattr(_ida_idd.modinfo_t, '__repr__', __repr__type_address_str)
 setattr(_ida_range.range_t, '__str__', lambda self: f"start_ea: {_hex_str_if_int(self.start_ea)} --> end_ea: {_hex_str_if_int(self.end_ea)}")
 setattr(_ida_range.range_t, '__repr__', __repr__type_address_str)
+setattr(_ida_idd.process_info_t, '__repr__', lambda self: f"process name: {self.name}, PID: 0x{self.pid:x} ({self.pid})")
 
 
 # TESTS ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
