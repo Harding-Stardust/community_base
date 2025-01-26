@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-01-25 22:27:14"
+__version__ = "2025-01-26 17:58:41"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -2973,12 +2973,12 @@ def search_text(arg_search_for: str,
         l_useless_y: int = 0
         l_useless_x: int = 0
         log_print(f"Calling _ida_search.find_text(0x{l_start_next_search_at:x}, {l_useless_y}, {l_useless_x}, '{arg_search_for}', {l_search_flags})", arg_debug)
-        l_start_next_search_at = _ida_search.find_text(l_start_next_search_at, l_useless_y, l_useless_x, arg_search_for, l_search_flags) # TODO: find_text() seems to ignore the first argument? IDA BUG?
+        l_start_next_search_at = _ida_search.find_text(l_start_next_search_at, l_useless_y, l_useless_x, arg_search_for, l_search_flags)
         log_print(f"result from ida_search.find_text(): {_hex_str_if_int(l_start_next_search_at)}", arg_debug)
         if l_start_next_search_at == _ida_idaapi.BADADDR:
             break
         res.append(l_start_next_search_at)
-        l_start_next_search_at += 1
+        l_start_next_search_at = _ida_bytes.get_item_end(l_start_next_search_at) if arg_search_direction_down else (_ida_bytes.get_item_head(l_start_next_search_at) - 1)
         l_max_hits -= 1
         if l_max_hits == 0:
             break
