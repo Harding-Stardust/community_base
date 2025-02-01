@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-01-26 17:58:41"
+__version__ = "2025-02-01 00:59:33"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -145,6 +145,14 @@ __GLOBAL_LOG_EVERYTHING = False # If this is set to True, then all calls to log_
 
 # HELPERS ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _int_to_str_dict_from_module(arg_module: Union[ModuleType, str], arg_regexp: str) -> Dict[int, str]:
+    ''' Internal function. Used to build dict from module enums.
+        e.g. _int_to_str_dict_from_module(ida_ua, 'o_.*')
+    '''
+    l_module: ModuleType = sys.modules[arg_module] if isinstance(arg_module, str) else arg_module
+    return {getattr(l_module, key): key for key in dir(l_module) if re.fullmatch(arg_regexp, key)}
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, Dict[str, str]]:
     ''' Various information to help you develop your own scripts.
 
@@ -153,7 +161,7 @@ def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, D
     l_abbreviations = {
         'ASG': "Assign",
         'BPU': "Bytes Per Unit",
-        'CC' : "Calling Convention",
+        'CC' : "Calling Convention or Compiler",
         'EA' : "Effective Address, just an address in the process",
         'MBA': "Microcode",
         'PEB': "Process Environment Block",
@@ -259,7 +267,6 @@ class _check_if_long_running_script_should_abort_not_working():
     ''' Periodically check if any of the strings "abort.ida", "ida.abort", "ida.stop", "stop.ida" are in the clipboard. If anyone is, then throw an exception to abort the long running task.
     This is also an example on how to use timers. Read more: <https://github.com/HexRaysSA/IDAPython/blob/9.0sp1/examples/ui/register_timer.py>
     '''
-    # TODO: Look up ida_kernwin.show_wait_box("Processing") and ida_kernwin.user_cancelled():
     def __init__(self):
         l_time_between_calls_in_milliseconds = 1000
         self.interval = l_time_between_calls_in_milliseconds
@@ -326,14 +333,6 @@ def _dict_sort(arg_dict: dict, arg_sort_by_value: bool = False, arg_descending: 
     if arg_descending:
         res = {k: res[k] for k in reversed(res)} # Just reverse the dict
     return res
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _int_to_str_dict_from_module(arg_module: Union[ModuleType, str], arg_regexp: str) -> Dict[int, str]:
-    ''' Internal function. Used to build dict from module enums.
-        e.g. _int_to_str_dict_from_module(ida_ua, 'o_.*')
-    '''
-    l_module: ModuleType = sys.modules[arg_module] if isinstance(arg_module, str) else arg_module
-    return {getattr(l_module, key): key for key in dir(l_module) if re.fullmatch(arg_regexp, key)}
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _dict_swap_key_and_value(arg_dict: dict) -> dict:
@@ -409,7 +408,7 @@ def _idaapi_get_ida_notepad_text() -> str:
 def notepad_text(arg_text: Optional[str] = None, arg_debug: bool = False) -> str:
     ''' IDA has a text field that the user can write whatever they want in.
     This function can read and write this text field. '''
-    # TODO: The max size seems to be 0x101c00 (just over 1MB), should I check for the length?
+
     if arg_text is not None:
         _ida_nalt.set_ida_notepad_text(str(arg_text))
     res = _idaapi_get_ida_notepad_text()
@@ -440,7 +439,7 @@ def python_version() -> Tuple[int, int]:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _python_module_to_str(arg_module: Union[str, ModuleType, None] = None) -> str:
     ''' Internal function. Get a Python module name from the argument. If argument is None, then return the module name of ourself '''
-    # TODO: Should I verify that arg_module actually is a module?
+
     return arg_module if isinstance(arg_module, str) else getattr(arg_module, '__name__', __name__)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -536,17 +535,17 @@ def _loader_name() -> str:
     get_loader_name: <https://cpp.docs.hex-rays.com/loader_8hpp.html#a9c79e47be0a36e47363409f3ce9ce6c5>
     '''
     l_IDA_dll = _ida_DLL()
-    l_buf_size: int = 256
+    l_buf_size: int = 0x100
     l_buf = ctypes.create_string_buffer(l_buf_size)
     l_exported_function_name = 'get_loader_name'
-    l_IDA_dll[l_exported_function_name].argtypes = ctypes.c_char_p, ctypes.c_size_t
-    l_IDA_dll[l_exported_function_name].restype = ctypes.c_size_t
+    l_IDA_dll[l_exported_function_name].argtypes = ctypes.c_char_p, ctypes.c_size_t # Set the prototype
+    l_IDA_dll[l_exported_function_name].restype = ctypes.c_size_t # Set the return value
     l_IDA_dll[l_exported_function_name](l_buf, l_buf_size) # This is the weird way ctypes calls functions
     return l_buf.value.decode('utf-8') # buf.raw gives the whole buffer
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def hex_dump(arg_ea: Union[EvaluateType, bytes, bytearray], arg_len: Optional[EvaluateType] = None, arg_width: int = 0x10, arg_unprintable_char: str = '.', arg_debug: bool = False) -> None:
-    ''' Prints the given data as <address> <byte value> <text> in the same style as IDAs hex view does. '''
+    ''' Prints the given data as <address> <byte value> <text> in the same style as IDAs hex view does '''
 
     l_addr: int = 0
     if isinstance(arg_ea, (bytes, bytearray)):
@@ -788,6 +787,53 @@ def google(arg_search: str) -> str:
     _ida_kernwin.open_url(res)
     return res
 
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def ida_licence_info() -> Dict[str, str]:
+    ''' Gets the license info. This function serves as example of 2 things: 1. How to get info that is not easy to get in a real way. 2. That your name is in every IDB, privacy warning!
+
+    @return {"serial_number": serial_number: str, "name_info": name_info: str}
+    '''
+    res = {"serial_number": "Unknown", "name_info": "Unknown"}
+    l_lines: List[str] = _ida_lines.generate_disassembly(input_file.min_original_ea, max_lines=100, as_stack=False, notags=True)[1]
+    l_next_line_is_user_info: bool = False
+    for l_line in l_lines:
+        if l_next_line_is_user_info:
+            l_next_line_is_user_info = False
+            l_name_or_email_match = re.match(r".*\s\s\s([^\s].*[^\s])\s\s\s", l_line)
+            if l_name_or_email_match:
+                res["name_info"] = l_name_or_email_match.group(1)
+        else:
+            l_license_info_match = re.match(".*License info: (.*?) ", l_line)
+            if l_license_info_match:
+                res["serial_number"] = l_license_info_match.group(1)
+                l_next_line_is_user_info = True
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _compiler_info() -> _ida_ida.compiler_info_t:
+    ''' Replacement for ida_ida.inf_get_cc()
+
+    Official docs: <https://cpp.docs.hex-rays.com/structcompiler__info__t.html>
+    more info: <https://youtu.be/2w8LdSCPUQc?t=1369>
+    '''
+    res = _ida_ida.compiler_info_t() # Create empty objext
+    _ida_ida.inf_get_cc(res) # Fill the object with info
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _compiler_str() -> str:
+    ''' What compiler was used according to IDA?
+
+    Official docs for compiler id: <https://cpp.docs.hex-rays.com/group___c_o_m_p__.html>
+    more info: <https://youtu.be/2w8LdSCPUQc?t=1369>
+    '''
+    l_compiler_info = _compiler_info()
+    l_compiler_id: int = l_compiler_info.id & _ida_typeinf.COMP_MASK
+    l_unsure: bool = bool(l_compiler_info.id & _ida_typeinf.COMP_UNSURE)
+    res = _ida_typeinf.get_compiler_name(l_compiler_id)
+    res += " (unsure)" if l_unsure else " (sure)"
+    return res
+
 
 # API extension ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -798,6 +844,7 @@ class _input_file_object():
         Please use the object created in community_base.input_file. E.g. print(community_base.input_file.idb_path)
     '''
     bits = property(fget=lambda self: 64 if _ida_ida.inf_is_64bit() else 32 if _ida_ida.inf_is_32bit_exactly() else 16, doc='64/32/16: int')
+    compiler = property(fget=lambda self: _compiler_str(), doc="What compiler was used to compile this code")
     crc32 = property(fget=lambda self: ''.join(hex_parse(_ida_nalt.retrieve_input_file_crc32().to_bytes(4, 'big'))), doc='CRC-32 as ascii string')
     endian = property(fget=lambda self: 'big' if _ida_ida.inf_is_be() else 'little' if self.filename else '<<< no file loaded >>>', doc='"big" or "little" (or "<<< no file loaded >>>" if no file is loaded)')
     entry_point = property(fget=lambda self: _ida_ida.inf_get_start_ip(), doc='Address of the first instruction that is executed')
@@ -808,9 +855,11 @@ class _input_file_object():
     idb_path = property(fget=lambda self: _ida_loader.get_path(_ida_loader.PATH_TYPE_IDB), doc='Full path to the IDB. Replacement for ida_utils.GetIdbDir()')
     # idb_work_seconds = property(fget=lambda self: _ida_nalt.get_elapsed_secs(), doc='Number of seconds the IDB have been open') # useless?
     idb_version = property(fget=lambda self: _ida_ida.inf_get_version(), doc='The version that the IDB format is in. If you created the IDB in an older version of IDA Pro, then this will differ from ida_version()')
+    # initial_ida_version = property(fget=lambda self: _ida_nalt.get_initial_ida_version(), doc="The version of IDA that created this IDB") # useless?
     imagebase = property(fget=lambda self: _ida_nalt.get_imagebase(), doc='The address the input file will be/is loaded at')
     is_dll = property(fget=lambda self: _ida_ida.inf_is_dll(), doc='Is the file a DLL file?')
     loader = property(fget=lambda self: _loader_name().upper() if self.filename else "<<< No file loaded >>>", doc='Name of the IDA loader that is parsing the file when loading it into IDA')
+    main = property(fget=lambda self: _ida_ida.inf_get_main(), doc="If IDA can identy the main function, this is set. Otherwise it's set to BADADDR")
     min_ea = property(fget=lambda self: _ida_ida.inf_get_min_ea(), doc='Lowest Effective Address (EA) in the database. If the input file is started in a debugger, this value will be the lowest EA in the process.')
     max_ea = property(fget=lambda self: _ida_ida.inf_get_max_ea(), doc='Highest Effective Address (EA) in the database (but + 1). If the input file is started in a debugger, this value will be the higheest EA in the process.')
     min_original_ea = property(fget=lambda self: _ida_ida.inf_get_omin_ea(), doc='Lowest Effective Address (EA) in the database. If the input file is started in a debugger, this value will be the same as when the process is NOT started.')
@@ -827,7 +876,8 @@ class _input_file_object():
             if l_property.startswith('_'):
                 continue
             l_property_value = getattr(self, l_property)
-            if isinstance(l_property_value, int) and not l_property in ['bits', 'idb_version', 'is_dll', 'idb_work_seconds', 'idb_opened_number_of_times']:
+
+            if isinstance(l_property_value, int) and not l_property in ['bits', 'idb_version', 'is_dll', 'idb_work_seconds', 'idb_opened_number_of_times']: # These are printed as int and not hex
                 l_property_value = f"0x{l_property_value:x}"
             else:
                 l_property_value = str(l_property_value)
@@ -984,7 +1034,7 @@ def eval_expression(arg_expression: EvaluateType, arg_supress_error: bool = Fals
             pass
 
     if arg_debug or not arg_supress_error:
-        log_print(f"arg_expression cannot be parsed in any meaningful way. You gave me {type(arg_expression)}", arg_type="ERROR")
+        log_print(f"arg_expression cannot be parsed in any meaningful way. You gave me '{arg_expression}'", arg_type="ERROR")
     return None
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -1936,8 +1986,7 @@ def functions(arg_allow_library_functions: bool = True, arg_debug: bool = False)
     if arg_allow_library_functions:
         return l_all_functions
 
-    res = [func for func in l_all_functions if not is_library_function(func, arg_debug=arg_debug)]
-    return res
+    return [func for func in l_all_functions if not is_library_function(func, arg_debug=arg_debug)]
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def imports(arg_debug: bool = False) -> Dict[str, Dict[str, Tuple[int, int]]]:
@@ -2069,7 +2118,7 @@ bytes_read = get_bytes = read_bytes
 def write_bytes(arg_ea: EvaluateType, arg_buf: Union[BufferType, int], arg_debug: bool = False) -> bool:
     ''' Write bytes (or hex string) to the IDB. OBS! The IDB might not match the file on disk or in active memory.
     Use ida_bytes.get_original_byte() to get back the bytes
-    Replacement for ida_bytes.put_bytes() and ida_bytes.patch_bytes()
+    Replacement for ida_bytes.patch_bytes()
     '''
     l_addr: int = address(arg_ea, arg_debug=arg_debug)
     if l_addr == _ida_idaapi.BADADDR:
@@ -2964,7 +3013,7 @@ def search_text(arg_search_for: str,
         l_min_ea = _ida_ida.inf_get_min_ea()
 
     l_search_flags = _ida_search.SEARCH_DOWN if arg_search_direction_down else _ida_search.SEARCH_UP
-    l_search_flags |= _ida_search.SEARCH_NEXT # TODO: When is this supposed to be used?
+    l_search_flags |= _ida_search.SEARCH_NEXT
     l_search_flags |= _ida_search.SEARCH_BRK # return BADADDR if the search was cancelled
     if arg_search_is_regex:
         l_search_flags |= _ida_search.SEARCH_REGEX
@@ -3363,36 +3412,6 @@ def set_type(arg_original_type_name_or_ea: EvaluateType, arg_new_type: Union[str
     return res
 
 
-# TODO: IDA 9.0 will break this by removing ida_typeinf.get_ordinal_qty written 2024-09-03
-# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-# def enum(arg_enum_name: Union[str, _ida_typeinf.tinfo_t], arg_debug: bool = False) -> Optional[str]:
-    # ''' Takes a name of an enum that is in the IDB (can be seen in the local types window) and
-        # returns the str of the enum as it would be seen in the local types edit enum window.
-
-        # The result can be parsed by get_type() to get a tinfo_t
-    # '''
-    # if isinstance(arg_enum_name, _ida_typeinf.tinfo_t) and arg_enum_name.is_enum():
-        # arg_enum_name = str(arg_enum_name)
-
-    # if not isinstance(arg_enum_name, str):
-        # log_print(f"arg_enum_name is {type(arg_enum_name)} but I expected str or _ida_typeinf.tinfo_t", arg_type="ERROR")
-        # return None
-
-    # l_local_til: _ida_typeinf.til_t = _ida_typeinf.get_idati() # docstring for get_idati(): Pointer to the local type library - this TIL is private for each IDB file
-    # for ordinal in range(1, _ida_typeinf.get_ordinal_qty(l_local_til)+1):
-        # ti = _ida_typeinf.tinfo_t()
-        # if ti.get_numbered_type(l_local_til, ordinal) and ti.is_enum() and str(ti) == arg_enum_name:
-            # res = f"enum {arg_enum_name}\n"
-            # res += "{\n"
-            # l_enum_type = _ida_typeinf.enum_type_data_t()
-            # ti.get_enum_details(l_enum_type)
-            # res += "\n".join(f"  {member.name} = 0x{member.value:x}, // {member.value}" for member in l_enum_type)
-            # res += "\n}"
-            # return res
-    # log_print(f"Could not find any enum with the name '{arg_enum_name}'", arg_type="ERROR")
-    # return None
-
-
 # DEBUGGER ------------------------------------------------------------------------------------------------------------------
 
 
@@ -3431,6 +3450,9 @@ def _step_synchronous(arg_num_step_to_take: int = 1, arg_step_into: bool = True,
 
     @return: event_id_t (if > 0) or dbg_event_code_t (if <= 0) of the LAST step
     See ida_dbg.wait_for_next_event() for the return value help.
+
+    read more: ida_dbg.wait_for_next_event(): <https://python.docs.hex-rays.com/namespaceida__dbg.html#a53d4d2d6a9426d06f758adea1cfeeee3>
+    AllThingsIDA: <https://www.youtube.com/watch?v=vS_xjnKW21I>
     '''
     if not process_is_suspended():
         log_print("The process must be suspended. Use process_suspend() and to resume the process and to resume the process, use process_resume()", arg_type="ERROR")
@@ -3447,27 +3469,28 @@ def _step_synchronous(arg_num_step_to_take: int = 1, arg_step_into: bool = True,
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def step_into_synchronous(arg_num_step_to_take: int = 1, arg_seconds_max_wait: int = 60, arg_debug: bool = False) -> Optional[int]:
-    ''' The normal ida_dbg.step_into() is asynchronous which can make it a little tricky to use.
+    ''' The normal ida_dbg.step_into() is asynchronous which can make it a little tricky to use
     @param arg_seconds_max_wait: number of seconds to wait, -1 --> infinity
 
     @return: event_id_t (if > 0) or dbg_event_code_t (if <= 0) of the LAST step
     See ida_dbg.wait_for_next_event() for the return value help.
 
     read more: ida_dbg.wait_for_next_event(): <https://python.docs.hex-rays.com/namespaceida__dbg.html#a53d4d2d6a9426d06f758adea1cfeeee3>
+    AllThingsIDA: <https://www.youtube.com/watch?v=vS_xjnKW21I>
     '''
 
     return _step_synchronous(arg_num_step_to_take=arg_num_step_to_take, arg_step_into=True, arg_seconds_max_wait=arg_seconds_max_wait, arg_debug=arg_debug)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def step_over_synchronous(arg_num_step_to_take: int = 1, arg_seconds_max_wait: int = 60, arg_debug: bool = False) -> Optional[int]:
-    ''' The normal ida_dbg.step_over() is asynchronous which can make it a little tricky to use.
+    ''' The normal ida_dbg.step_over() is asynchronous which can make it a little tricky to use
     @param arg_seconds_max_wait: number of seconds to wait, -1 --> infinity
 
     @return: event_id_t (if > 0) or dbg_event_code_t (if <= 0) of the LAST step
     See ida_dbg.wait_for_next_event() for the return value help.
 
     read more: ida_dbg.wait_for_next_event(): <https://python.docs.hex-rays.com/namespaceida__dbg.html#a53d4d2d6a9426d06f758adea1cfeeee3>
-
+    AllThingsIDA: <https://www.youtube.com/watch?v=vS_xjnKW21I>
     '''
     return _step_synchronous(arg_num_step_to_take=arg_num_step_to_take, arg_step_into=False, arg_seconds_max_wait=arg_seconds_max_wait, arg_debug=arg_debug)
 
@@ -3582,11 +3605,64 @@ def breakpoints() -> List[_ida_dbg.bpt_t]:
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def debugger_select(arg_debugger: str = "win32", arg_use_remote: bool = False, arg_options: int = _ida_dbg.DOPT_TEMP_HWBPT | _ida_dbg.DOPT_FAST_STEP) -> bool:
+    ''' Select what debugger you want to use and what options
+    @param arg_debugger What debugger, very strange way IDA picks debugger. Check <https://youtu.be/vS_xjnKW21I?t=80> for an explanation
+    @param arg_options flags from ida_dbg.DOPT_*. Default is: ida_dbg.DOPT_TEMP_HWBPT --> Use hardware breakpoints for stepping and _ida_dbg.DOPT_FAST_STEP --> Do NOT refresh memory on each step
+
+    See also: ida_dbg.set_remote_debugger()
+    AllThingsIDA: <https://www.youtube.com/watch?v=vS_xjnKW21I>
+    '''
+    # arg_debugger can be: ("bochs", remote=False), ("win32", remote=True|False), "GDB", ("windbg", remote=True)
+
+    l_old_options: int = _ida_dbg.set_debugger_options(arg_options)
+    del l_old_options
+    return _ida_dbg.load_debugger(arg_debugger, arg_use_remote)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def process_start(arg_path: str = "", arg_args: str = "", arg_start_dir: str = "") -> int:
     ''' Passthru ida_dbg.start_process()
     ida_dbg.start_process() official docs: <https://python.docs.hex-rays.com/namespaceida__dbg.html#a0d6ca89f3573e306b9ecdced17b2ced1>
     '''
     return _ida_dbg.start_process(arg_path, arg_args, arg_start_dir)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def process_id() -> int:
+    ''' Get the PID of the running process. Only works when the process is suspended (I think...)
+
+    @return pid on OK, -1 --> error
+    '''
+    if not process_is_suspended():
+        log_print("The process must be suspended to be able to get the PID. Use process_suspend() and to resume the process, use process_resume()", arg_type="ERROR")
+        return -1
+
+    l_debug_event: _ida_idd.debug_event_t = _ida_dbg.get_debug_event()
+    # l_debug_event.info() or l_debug_event.modinfo() # Causes IDA bug: Internal error 1502 occurred when running a script. Either
+    #   - the script misused the IDA API, or
+    #   - there is a logic error in IDA
+    # Please check the script first.
+    # If it appears correct, send a bug report to <support@hex-rays.com>.
+    # In any case we strongly recommend you to restart IDA as soon as possible.
+    return l_debug_event.pid
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def process_run_to_synchronous(arg_ea: EvaluateType, arg_seconds_max_wait: int = -1, arg_debug: bool = False) -> None:
+    ''' Replacement for ida_dbg.run_to()
+
+    @param arg_seconds_max_wait how many seconds to wait until timeout, -1 --> infinity
+    '''
+    l_addr: int = address(arg_ea, arg_debug=arg_debug)
+    if l_addr == _ida_idaapi.BADADDR:
+        log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the process", arg_type="ERROR")
+        return None
+
+    if not process_is_suspended():
+        log_print("The process must be suspended. Use process_suspend() and to resume the process and to resume the process, use process_resume()", arg_type="ERROR")
+        return None
+
+    _ida_dbg.run_to(l_addr)
+    _ida_dbg.wait_for_next_event(_ida_dbg.WFNE_SUSP, arg_seconds_max_wait)
+    return
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def process_list(arg_name_filter_regex: str = ".*", arg_debug: bool = False) -> List[_ida_idd.process_info_t]:
@@ -3596,6 +3672,9 @@ def process_list(arg_name_filter_regex: str = ".*", arg_debug: bool = False) -> 
     res = []
     l_processes = _ida_idd.procinfo_vec_t()
     l_num_processes = _ida_dbg.get_processes(l_processes)
+    if l_num_processes == -1:
+        log_print(f"ida_dbg.get_processes() failed, maybe you haven't selected any debugger? See debugger_select()",arg_type="ERROR")
+        return []
     log_print(f"Number of processes: {l_num_processes}", arg_debug)
     for l_process in l_processes:
         if not re.fullmatch(arg_name_filter_regex, l_process.name):
@@ -3750,6 +3829,9 @@ _add_links_to_docstring(_ida_kernwin.get_widget_title, "https://python.docs.hex-
 _add_links_to_docstring(_ida_kernwin.activate_widget, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#a8bed9c56f3be8cf8136b890d5cc36809")
 _add_links_to_docstring(_ida_kernwin.display_widget, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#ac193e1bc4ae205059edc4d67c6820b80")
 _add_links_to_docstring(_ida_dbg.start_process, "https://python.docs.hex-rays.com/namespaceida__dbg.html#a0d6ca89f3573e306b9ecdced17b2ced1")
+
+# TODO: Check out the trick with highlight: https://python.docs.hex-rays.com/namespaceida__search.html#:~:text=find_text()
+# Another: https://github.com/Harding-Stardust/community_base/blob/main/community_base.py#:~:text=def%20search_text
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _register(arg_register: Union[str, _ida_idp.reg_info_t], arg_set_value: Optional[EvaluateType] = None, arg_debug: bool = False) -> Optional[int]:
@@ -4169,7 +4251,7 @@ def win_GetCurrentProcessId(arg_debug: bool = False) -> Optional[int]:
         return None
     res = l_GetCurrentProcessId()
     log_print(f"res: {res}", arg_debug)
-    return eval_expression(res, arg_debug=arg_debug)
+    return res
 
 
 # UI ---------------------------------------------------------------------------------------------------------------------
