@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-02-01 00:59:33"
+__version__ = "2025-02-09 00:17:12"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -511,7 +511,7 @@ def ida_is_64bit() -> bool:
     return _ida_idaapi.__EA64__
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _ida_DLL() -> Union[ctypes.CDLL, ctypes.WinDLL]:
+def _ida_DLL() -> Union[ctypes.CDLL, ctypes.WinDLL]: # TODO: This does not work in Linux, their ctypes don't have the ctypes.WinDLL type
     ''' Load correct version of ida.dll. Work on IDA 8.4 and 9.0. Example of how to use ctypes. '''
 
     l_bits: str = "64" if ida_is_64bit() else "32"
@@ -3646,23 +3646,25 @@ def process_id() -> int:
     return l_debug_event.pid
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def process_run_to_synchronous(arg_ea: EvaluateType, arg_seconds_max_wait: int = -1, arg_debug: bool = False) -> None:
+def process_run_to_synchronous(arg_ea: EvaluateType, arg_seconds_max_wait: int = -1, arg_debug: bool = False) -> bool:
     ''' Replacement for ida_dbg.run_to()
 
     @param arg_seconds_max_wait how many seconds to wait until timeout, -1 --> infinity
+
+    @return True if everything went OK, False if something failed
     '''
     l_addr: int = address(arg_ea, arg_debug=arg_debug)
     if l_addr == _ida_idaapi.BADADDR:
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the process", arg_type="ERROR")
-        return None
+        return False
 
     if not process_is_suspended():
         log_print("The process must be suspended. Use process_suspend() and to resume the process and to resume the process, use process_resume()", arg_type="ERROR")
-        return None
+        return False
 
     _ida_dbg.run_to(l_addr)
     _ida_dbg.wait_for_next_event(_ida_dbg.WFNE_SUSP, arg_seconds_max_wait)
-    return
+    return True
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def process_list(arg_name_filter_regex: str = ".*", arg_debug: bool = False) -> List[_ida_idd.process_info_t]:
@@ -3673,7 +3675,7 @@ def process_list(arg_name_filter_regex: str = ".*", arg_debug: bool = False) -> 
     l_processes = _ida_idd.procinfo_vec_t()
     l_num_processes = _ida_dbg.get_processes(l_processes)
     if l_num_processes == -1:
-        log_print(f"ida_dbg.get_processes() failed, maybe you haven't selected any debugger? See debugger_select()",arg_type="ERROR")
+        log_print(f"ida_dbg.get_processes() failed, maybe you haven't selected any debugger? See debugger_select()", arg_type="ERROR")
         return []
     log_print(f"Number of processes: {l_num_processes}", arg_debug)
     for l_process in l_processes:
@@ -4165,8 +4167,11 @@ def win_LoadLibraryA(arg_dll: str, arg_debug: bool = False) -> Optional[int]:
         if l_last_error == 0xC1: # ERROR_BAD_EXE_FORMAT
             log_print("The DLL you tried to load was in a bad format and could not be loaded. Did you try to load a 32 bit DLL into a 64 bit process?", arg_type="ERROR")
         else:
-            l_error_message: str = ctypes.WinError(l_last_error).strerror
+            l_error_message: Optional[str] = ctypes.WinError(l_last_error).strerror
+            if l_error_message is None: # Can this even happen? mypy say it can but Pylance say it can't
+                 l_error_message = "<<< unknown error >>>"
             log_print(f"LoadLibraryA('{arg_dll}') failed with error code: {l_last_error} (0x{l_last_error:x}), error description: '{l_error_message}'", arg_type="ERROR") #
+            
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -4192,7 +4197,9 @@ def win_GetProcAddress(arg_hmodule: EvaluateType, arg_function_name: str, arg_de
 
     if not res:
         l_last_error: Optional[int] = win_GetLastError()
-        l_error_message: str = ctypes.WinError(l_last_error).strerror
+        l_error_message: Optional[str] = ctypes.WinError(l_last_error).strerror
+        if l_error_message is None:
+            l_error_message = "<<< unknown error >>>"
         log_print(f"GetProcAddress('{arg_function_name}') failed with error code: {l_last_error} (0x{l_last_error:x}), error description: '{l_error_message}'", arg_type="ERROR")
         return None
 
@@ -4215,7 +4222,9 @@ def win_FreeLibrary(arg_hmodule: EvaluateType, arg_debug: bool = False) -> bool:
     res = bool(l_free_library(l_module.base))
     if not res:
         l_last_error: Optional[int] = win_GetLastError()
-        l_error_message: str = ctypes.WinError(l_last_error).strerror
+        l_error_message: Optional[str] = ctypes.WinError(l_last_error).strerror
+        if l_error_message is None:
+            l_error_message = "<<< unknown error >>>"
         log_print(f"FreeLibrary('{arg_hmodule}') failed with error code: {l_last_error} (0x{l_last_error:x}), error description: '{l_error_message}'", arg_type="ERROR") #
     return res
 
@@ -4515,6 +4524,50 @@ def ida_output_text(arg_last_num_lines: int = -1, arg_clear_it_after: bool = Fal
         l_output_TWidget.focus()
         _ida_kernwin.process_ui_action("OutputClearContents")
     return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _ipyida_find_connection_file(arg_copy_to_clipboard: bool = True) -> str:
+    ''' If you are using the excellent plugin [IPyIda](https://github.com/eset/ipyida) then this function helps you to connect from the outside
+        @param arg_copy_to_clipboard Copy the command to the clipboard
+    '''
+    l_temp = sys.modules.get("ipyida", None)
+    if l_temp is None:
+        l_download_command: str = f"wget -O \"{os.path.join(ida_plugin_dirs()[0], 'ipyida_plugin_stub.py')}\" https://raw.githubusercontent.com/eset/ipyida/refs/heads/master/ipyida/ipyida_plugin_stub.py"
+        log_print(f"Plugin IPyIDA not found, you can install it with pip install ipyida and then run {l_download_command}", arg_type="ERROR")
+        if arg_copy_to_clipboard:
+            clipboard_copy(l_download_command)
+        return ""
+    res = l_temp.ida_plugin.ida_qtconsole.find_connection_file()
+    if arg_copy_to_clipboard:
+        clipboard_copy(res)
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def ipyida_jupyter_console_from_cmd(arg_copy_to_clipboard: bool = True) -> str:
+    ''' The command you can run in your shell to connect to [IPyIda](https://github.com/eset/ipyida) and have it outside of IDA (But IDA and IPyIDA must both be up and running)
+        @param arg_copy_to_clipboard Copy the command to the clipboard
+    '''
+    log_print("OBS! When leaving the external Jupyter-console, write: exit(keep_kernel=True)", arg_type="INFO")
+    l_connection_file: str = _ipyida_find_connection_file()
+    if l_connection_file:
+        res = f"jupyter-console --existing {l_connection_file}"
+        if arg_copy_to_clipboard:
+            clipboard_copy(res)
+        return res
+    return ""
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def ipyida_exit(arg_copy_to_clipboard: bool = True) -> str:
+    ''' If you have connected to the Jupyter kernel from the shell using ipyida_jupyter_console_from_cmd() use this command to exit the shell window without killing the kernel
+        @param arg_copy_to_clipboard Copy the command to the clipboard
+    '''
+    l_connection_file: str = _ipyida_find_connection_file()
+    if l_connection_file:
+        res = "exit(keep_kernel=True)"
+        if arg_copy_to_clipboard:
+            clipboard_copy(res)
+        return res
+    return ""
 
 
 # New members/functions of IDA pythons objects -------------------------------------------------------------------------------------------------
