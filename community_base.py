@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-02-09 00:17:12"
+__version__ = "2025-02-15 10:09:44"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -837,6 +837,113 @@ def _compiler_str() -> str:
 
 # API extension ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def pe_header() -> Optional[bytes]:
+    ''' Returns the PE header saved in the IDB.
+    
+        returns The PE header as bytes if we are in a PE file and None if we don't have any PE header
+    '''
+    l_pe_node = _ida_netnode.netnode("$ PE header")
+    if l_pe_node == _ida_netnode.BADNODE:
+        return None
+    return l_pe_node.valobj()
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def pe_header_linker_version() -> Tuple[int, int]:
+    ''' This is a rewrite of Rolf Rolles script to get the linker info from the PE header
+    
+        returns a tuple that looks like (major_version: int, minor_version: int)
+        LLVM returns a major_version of 1 or 2, MSVC returns a major_version of 6+
+    '''
+    l_pe_header = pe_header()
+    if l_pe_header is None:
+        return (0, 0)
+    
+    l_major_version: int = l_pe_header[0x1A]
+    l_minor_version: int = l_pe_header[0x1B]
+    return (l_major_version, l_minor_version)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def pe_header_os_version() -> Tuple[int, int]:
+    ''' Get the OS version from the PE header '''
+    l_pe_header = pe_header()
+    if l_pe_header is None:
+        return (0, 0)
+    
+    l_major_version: int = int.from_bytes(l_pe_header[0x40:0x41], byteorder="little")
+    l_minor_version: int = int.from_bytes(l_pe_header[0x42:0x43], byteorder="little")
+    return (l_major_version, l_minor_version)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def pe_header_compiled_time() -> str:
+    ''' Reads the compiled from the PE header. Warning! In win10+ , this is a hash so we can get reproducable builds <https://devblogs.microsoft.com/oldnewthing/20180103-00/?p=97705> '''
+    l_pe_header = pe_header()
+    if l_pe_header is None:
+        return ""
+    
+    l_timestamp_and_hash: bytes = (l_pe_header[8:12])
+    l_timestamp = int.from_bytes(l_timestamp_and_hash, byteorder="little")
+    l_datetime = datetime.datetime.timetuple(datetime.datetime.fromtimestamp(l_timestamp, tz=datetime.UTC))
+    
+    l_os_version = pe_header_os_version()
+    if l_os_version >= (10, 0):
+        log_print(f"This is file from windows {l_os_version[0]}.{l_os_version[1]} which has reproducable builds so the timestamp is not valid", arg_type="ERROR")
+        return ""
+    return time.strftime("%Y-%m-%d %H:%M:%S (UTC)", l_datetime)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def pdb_path() -> str:
+    ''' Return the PDB filename as stored in the PE header 
+        Taken from <https://github.com/gaasedelen/lucid/blob/9f2480dc8e6bbb9421b5711533b0a98d2e9fb5af/plugins/lucid/util/ida.py#L23>
+    '''
+    l_pe_netnode = _ida_netnode.netnode('$ PE header')
+    if l_pe_netnode == _ida_netnode.BADNODE:
+        return ""
+
+    res = l_pe_netnode.supstr(0xFFFFFFFFFFFFFFF7)
+    if not res:
+        return ""
+    
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _netnode_list_sups(arg_netnode: Optional[_ida_netnode.netnode] = None) -> None:
+    ''' Internal function to list first 100 items in the netnode. I'm not sure how to work with these at all '''
+    
+    l_netnode = arg_netnode if arg_netnode else _ida_netnode.netnode('$ PE header')
+    log_print("vals:", arg_type="INFO")
+    current_idx = l_netnode.supfirst()
+    for _ in range(0, 100):
+        print(f"valobj(0x{current_idx:x}) =")
+        if l_netnode.valobj() is None:
+            print("<<< valobj == None >>>")
+            continue
+        hex_dump(l_netnode.valobj())
+        print()
+        if l_netnode.supval(current_idx) is None:
+            print("<<< supval == None >>>")
+            continue
+        print(f"supval(0x{current_idx:x}) = ")
+        hex_dump(l_netnode.supval(current_idx))
+        print()
+
+        current_idx = l_netnode.supnext(current_idx)
+        if current_idx == _ida_idaapi.BADADDR:
+            break
+   
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _netnode_special_netnodes(arg_filter: str = "") -> List[str]:
+    ''' Internal function. <https://python.docs.hex-rays.com/namespaceida__netnode.html> Used to play with the netnodes  '''
+    res = []
+    nod = _ida_netnode.netnode()
+    nod.start()
+    for i in range(0, 10000000):
+        nod.next()
+        l_name = nod.get_name()
+        if l_name and l_name.startswith("$") and arg_filter in l_name:
+            res.append(l_name)
+    return res
 
 class _input_file_object():
     ''' Information about the file that is loaded in IDA such as filename, file type and so on
