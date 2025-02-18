@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-02-15 10:09:44"
+__version__ = "2025-02-18 19:56:24"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -511,7 +511,7 @@ def ida_is_64bit() -> bool:
     return _ida_idaapi.__EA64__
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _ida_DLL() -> Union[ctypes.CDLL, ctypes.WinDLL]: # TODO: This does not work in Linux, their ctypes don't have the ctypes.WinDLL type
+def _ida_DLL() -> Any: # TODO: This used to be Union[ctypes.CDLL, ctypes.WinDLL] but WinDLL is not supported on Linux
     ''' Load correct version of ida.dll. Work on IDA 8.4 and 9.0. Example of how to use ctypes. '''
 
     l_bits: str = "64" if ida_is_64bit() else "32"
@@ -2310,20 +2310,24 @@ def _local_types_as_c_types(arg_debug: bool = False) -> Optional[List[str]]:
     return l_printer.lines
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def export_h_file(arg_h_file: str = input_file.idb_path + ".h", arg_add_comment_at_top: bool = True, arg_debug: bool = False) -> str:
+def export_h_file(arg_h_file: str = "", arg_add_comment_at_top: bool = True, arg_debug: bool = False) -> str:
     ''' Export all local types into a header file
 
-        @param arg_h_file The destination file
+        @param arg_h_file The destination file, if empty, then generate input_file.idb_path + ".h"
         @param arg_add_comment_at_top Add a comment field with some info about the file the header file was exported from
 
         Replacement for ida_typeinf.print_decls()
     '''
+    l_save_to_file: str = arg_h_file
+    if not l_save_to_file:
+        l_save_to_file = input_file.idb_path + ".h"
+        
     l_local_types: Optional[List[str]] = _local_types_as_c_types(arg_debug=arg_debug)
     if l_local_types is None:
         log_print('_local_types_as_c_types() failed.', arg_type="ERROR")
         return "<<< Export header file failed >>>"
 
-    with open(arg_h_file, "w", encoding="UTF-8", newline="\n") as f:
+    with open(l_save_to_file, "w", encoding="UTF-8", newline="\n") as f:
         if arg_add_comment_at_top:
             l_header_dict: Dict[str, str] = {}
             l_header_dict["generated_by"] = f"{__name__}.py version {__version__}"
