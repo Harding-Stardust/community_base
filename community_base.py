@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-02-18 19:56:24"
+__version__ = "2025-02-18 23:02:01"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -95,7 +95,7 @@ import json # TODO: Change to json5?
 from typing import Union, List, Dict, Tuple, Any, Optional, Callable
 from types import ModuleType
 import inspect as _inspect
-from pydantic import validate_call
+from pydantic import validate_call # pip install pydantic
 
 try:
     import chardet
@@ -841,7 +841,7 @@ def _compiler_str() -> str:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pe_header() -> Optional[bytes]:
     ''' Returns the PE header saved in the IDB.
-    
+
         returns The PE header as bytes if we are in a PE file and None if we don't have any PE header
     '''
     l_pe_node = _ida_netnode.netnode("$ PE header")
@@ -852,14 +852,14 @@ def pe_header() -> Optional[bytes]:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pe_header_linker_version() -> Tuple[int, int]:
     ''' This is a rewrite of Rolf Rolles script to get the linker info from the PE header
-    
+
         returns a tuple that looks like (major_version: int, minor_version: int)
         LLVM returns a major_version of 1 or 2, MSVC returns a major_version of 6+
     '''
     l_pe_header = pe_header()
     if l_pe_header is None:
         return (0, 0)
-    
+
     l_major_version: int = l_pe_header[0x1A]
     l_minor_version: int = l_pe_header[0x1B]
     return (l_major_version, l_minor_version)
@@ -870,7 +870,7 @@ def pe_header_os_version() -> Tuple[int, int]:
     l_pe_header = pe_header()
     if l_pe_header is None:
         return (0, 0)
-    
+
     l_major_version: int = int.from_bytes(l_pe_header[0x40:0x41], byteorder="little")
     l_minor_version: int = int.from_bytes(l_pe_header[0x42:0x43], byteorder="little")
     return (l_major_version, l_minor_version)
@@ -881,11 +881,11 @@ def pe_header_compiled_time() -> str:
     l_pe_header = pe_header()
     if l_pe_header is None:
         return ""
-    
+
     l_timestamp_and_hash: bytes = (l_pe_header[8:12])
     l_timestamp = int.from_bytes(l_timestamp_and_hash, byteorder="little")
     l_datetime = datetime.datetime.timetuple(datetime.datetime.fromtimestamp(l_timestamp, tz=datetime.UTC))
-    
+
     l_os_version = pe_header_os_version()
     if l_os_version >= (10, 0):
         log_print(f"This is file from windows {l_os_version[0]}.{l_os_version[1]} which has reproducable builds so the timestamp is not valid", arg_type="ERROR")
@@ -894,9 +894,16 @@ def pe_header_compiled_time() -> str:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pdb_path() -> str:
-    ''' Return the PDB filename as stored in the PE header 
+    ''' Return the PDB filename from either 1. the loaded PDB or 2. the PDB path in the PE header
         Taken from <https://github.com/gaasedelen/lucid/blob/9f2480dc8e6bbb9421b5711533b0a98d2e9fb5af/plugins/lucid/util/ida.py#L23>
     '''
+    l_pdb_node = _ida_netnode.netnode("$ pdb")
+    if l_pdb_node != _ida_netnode.BADNODE:
+        PDB_DLLNAME_NODE_IDX = 0
+        res = l_pdb_node.supstr(PDB_DLLNAME_NODE_IDX)
+        if res:
+            return res
+
     l_pe_netnode = _ida_netnode.netnode('$ PE header')
     if l_pe_netnode == _ida_netnode.BADNODE:
         return ""
@@ -904,13 +911,65 @@ def pdb_path() -> str:
     res = l_pe_netnode.supstr(0xFFFFFFFFFFFFFFF7)
     if not res:
         return ""
-    
+
     return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def pdb_load(arg_local_pdb_file: str = "",
+             arg_image_base: Optional[EvaluateType] = None,
+             arg_force_reload: bool = False,
+             arg_local_symbol_cache: str = r"C:\symbols",
+             arg_debug: bool = False) -> Optional[bool]:
+    ''' Try to load the PDB for this file.
+    Code taken from <https://gist.github.com/patois/b3f329868934710fbc81218ce1d6d722>
+    Microsoft symbol server info: <https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/microsoft-public-symbols>
+    '''
+    # These come from pdb/common.h
+    PDB_CC_USER_WITH_DATA = 3
+    PDB_DLLBASE_NODE_IDX = 0
+    PDB_DLLNAME_NODE_IDX = 0
+
+    l_size: int = 0
+    l_create_if_not_exists: bool = True
+    l_pdb_node = _ida_netnode.netnode("$ pdb", l_size, l_create_if_not_exists)
+    if arg_force_reload:
+        log_print(f"arg_force_reload set so I will delete the PDB node", arg_debug)
+        l_pdb_node.altdel(PDB_DLLBASE_NODE_IDX)
+        l_pdb_node.supdel(PDB_DLLNAME_NODE_IDX)
+
+    if l_pdb_node.altval(PDB_DLLBASE_NODE_IDX) == 1:
+        log_print("PDB info is already loaded", arg_type="ERROR")
+        return False
+
+    l_temp_imagebase = input_file.imagebase if arg_image_base is None else eval_expression(arg_image_base, arg_debug=arg_debug)
+    if l_temp_imagebase is None:
+        log_print("arg_image_base resolved to None", arg_type="ERROR")
+        return False
+    l_imagebase = l_temp_imagebase
+    l_default_NT_SYMBOL_PATH = f"srv*{arg_local_symbol_cache}*https://msdl.microsoft.com/download/symbols"
+
+    if os.environ.get('_NT_SYMBOL_PATH', None) is None:
+        log_print(f"Your '_NT_SYMBOL_PATH' is not set at all, setting this to {l_default_NT_SYMBOL_PATH}", arg_type="WARNING")
+        os.environ['_NT_SYMBOL_PATH'] = l_default_NT_SYMBOL_PATH
+
+    l_pdb_file = arg_local_pdb_file or pdb_path()
+    log_print(f"l_imagebase: 0x{l_imagebase:x}, l_pdb_file: {l_pdb_file}", arg_debug)
+    l_pdb_node.altset(PDB_DLLBASE_NODE_IDX, l_imagebase) # The alt* part is usually an int
+    l_pdb_node.supset(PDB_DLLNAME_NODE_IDX, l_pdb_file) # the sup* part is usually a str
+
+    plugin_load_and_run("pdb", PDB_CC_USER_WITH_DATA, arg_debug=arg_debug) # See https://reverseengineering.stackexchange.com/questions/8171/
+
+    rc = l_pdb_node.altval(PDB_DLLBASE_NODE_IDX)
+    if not rc:
+      log_print("Could NOT load PDB", arg_type="ERROR")
+      return False
+
+    return True
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _netnode_list_sups(arg_netnode: Optional[_ida_netnode.netnode] = None) -> None:
     ''' Internal function to list first 100 items in the netnode. I'm not sure how to work with these at all '''
-    
+
     l_netnode = arg_netnode if arg_netnode else _ida_netnode.netnode('$ PE header')
     log_print("vals:", arg_type="INFO")
     current_idx = l_netnode.supfirst()
@@ -931,7 +990,7 @@ def _netnode_list_sups(arg_netnode: Optional[_ida_netnode.netnode] = None) -> No
         current_idx = l_netnode.supnext(current_idx)
         if current_idx == _ida_idaapi.BADADDR:
             break
-   
+
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _netnode_special_netnodes(arg_filter: str = "") -> List[str]:
     ''' Internal function. <https://python.docs.hex-rays.com/namespaceida__netnode.html> Used to play with the netnodes  '''
@@ -1568,7 +1627,7 @@ class ActionHandlerDumpToDisk(_ida_kernwin.action_handler_t):
         return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
 
 if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_DUMP_SELECTED_BYTES, f"{__name__}: Dump selected bytes to disk", ActionHandlerDumpToDisk(), HOTKEY_DUMP_TO_DISK)):
-    log_print(f"register_action('{_ACTION_NAME_DUMP_SELECTED_BYTES}') OK", arg_type="INFO")
+    log_print(f"register_action('{_ACTION_NAME_DUMP_SELECTED_BYTES}') OK, shortcut: {HOTKEY_DUMP_TO_DISK}", arg_type="INFO")
 else:
     log_print(f"register_action('{_ACTION_NAME_DUMP_SELECTED_BYTES}') failed", arg_type="ERROR")
 
@@ -1598,7 +1657,7 @@ class ActionHandlerCopyHexText(_ida_kernwin.action_handler_t):
         return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
 
 if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_COPY_HEX_TEXT, f"{__name__}: Copy selected bytes as hex text", ActionHandlerCopyHexText(), HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT)):
-    log_print(f"register_action('{_ACTION_NAME_COPY_HEX_TEXT}') OK", arg_type="INFO")
+    log_print(f"register_action('{_ACTION_NAME_COPY_HEX_TEXT}') OK, shortcut: {HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT}", arg_type="INFO")
 else:
     log_print(f"register_action('{_ACTION_NAME_COPY_HEX_TEXT}') failed", arg_type="ERROR")
 
@@ -1628,7 +1687,7 @@ class ActionHandlerCopyCurrentAddress(_ida_kernwin.action_handler_t):
         return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
 
 if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_COPY_CURRENT_ADDRESS, f"{__name__}: Copy the current address as hex text", ActionHandlerCopyCurrentAddress(), HOTKEY_COPY_CURRENT_ADDRESS)):
-    log_print(f"register_action('{_ACTION_NAME_COPY_CURRENT_ADDRESS}') OK", arg_type="INFO")
+    log_print(f"register_action('{_ACTION_NAME_COPY_CURRENT_ADDRESS}') OK, shortcut: {HOTKEY_COPY_CURRENT_ADDRESS}", arg_type="INFO")
 else:
     log_print(f"register_action('{_ACTION_NAME_COPY_CURRENT_ADDRESS}') failed", arg_type="ERROR")
 
@@ -2321,7 +2380,7 @@ def export_h_file(arg_h_file: str = "", arg_add_comment_at_top: bool = True, arg
     l_save_to_file: str = arg_h_file
     if not l_save_to_file:
         l_save_to_file = input_file.idb_path + ".h"
-        
+
     l_local_types: Optional[List[str]] = _local_types_as_c_types(arg_debug=arg_debug)
     if l_local_types is None:
         log_print('_local_types_as_c_types() failed.', arg_type="ERROR")
@@ -4282,7 +4341,7 @@ def win_LoadLibraryA(arg_dll: str, arg_debug: bool = False) -> Optional[int]:
             if l_error_message is None: # Can this even happen? mypy say it can but Pylance say it can't
                  l_error_message = "<<< unknown error >>>"
             log_print(f"LoadLibraryA('{arg_dll}') failed with error code: {l_last_error} (0x{l_last_error:x}), error description: '{l_error_message}'", arg_type="ERROR") #
-            
+
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
