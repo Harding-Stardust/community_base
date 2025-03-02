@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-02-18 23:02:01"
+__version__ = "2025-02-22 22:22:22"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -89,7 +89,8 @@ import os # https://peps.python.org/pep-0008/#imports
 import sys
 import re
 import time
-import datetime
+from datetime import datetime
+from datetime import timezone
 import ctypes
 import json # TODO: Change to json5?
 from typing import Union, List, Dict, Tuple, Any, Optional, Callable
@@ -162,8 +163,10 @@ def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, D
         'ASG': "Assign",
         'BPU': "Bytes Per Unit",
         'CC' : "Calling Convention or Compiler",
+        'CHCOL' : "Chooser Column",
         'EA' : "Effective Address, just an address in the process",
         'MBA': "Microcode",
+        'MD' : "MetaData",
         'PEB': "Process Environment Block",
         'TEB': "Thread Environment Block, a.k.a. TIB (Thread Information Block)",
         'TIB': "Thread Information Block, a.k.a. TEB (Thread Environment Block)",
@@ -235,7 +238,7 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
 
     @return The full path to the bug report.
     '''
-    l_timestamp: str = time.strftime("%Y_%m_%d_%H_%M_%S", datetime.datetime.timetuple(datetime.datetime.now()))
+    l_timestamp: str = time.strftime("%Y_%m_%d_%H_%M_%S", datetime.timetuple(datetime.now()))
     l_bug_report_file: str = f"{input_file.idb_path}.{l_timestamp}.bug_report.json"
     l_bug_report: Dict[str, str] = {}
     l_bug_report["bug_in_module"] = _python_module_to_str(arg_module_to_blame)
@@ -309,7 +312,7 @@ def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
     if (l_now - _g_timestamp_of_last_checked) > 30:
         _g_timestamp_of_last_checked = l_now
         if arg_debug:
-            l_timestamp: str = time.strftime("%Y-%m-%d %H:%M:%S", datetime.datetime.timetuple(datetime.datetime.now()))
+            l_timestamp: str = time.strftime("%Y-%m-%d %H:%M:%S", datetime.timetuple(datetime.now()))
             print(f"{l_timestamp} _long_running_script_should_abort(): Checking for abort.ida in clipboard...")
 
         clipboard = QApplication.clipboard()
@@ -468,7 +471,7 @@ def _timestamped_line(arg_str: str) -> str:
     ''' Add a timestamp at the beginning of the line
      e.g. 2024-12-31 13:59:59 This is the string I send in as argument
     '''
-    return time.strftime("%Y-%m-%d %H:%M:%S", datetime.datetime.timetuple(datetime.datetime.now())) + " " + arg_str
+    return time.strftime("%Y-%m-%d %H:%M:%S", datetime.timetuple(datetime.now())) + " " + arg_str
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _file_and_line_number(arg_num_function_away: int = 2) -> Optional[_inspect.Traceback]:
@@ -827,7 +830,7 @@ def _compiler_str() -> str:
     Official docs for compiler id: <https://cpp.docs.hex-rays.com/group___c_o_m_p__.html>
     more info: <https://youtu.be/2w8LdSCPUQc?t=1369>
     '''
-    l_compiler_info = _compiler_info()
+    l_compiler_info: _ida_ida.compiler_info_t = _compiler_info()
     l_compiler_id: int = l_compiler_info.id & _ida_typeinf.COMP_MASK
     l_unsure: bool = bool(l_compiler_info.id & _ida_typeinf.COMP_UNSURE)
     res = _ida_typeinf.get_compiler_name(l_compiler_id)
@@ -878,19 +881,20 @@ def pe_header_os_version() -> Tuple[int, int]:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pe_header_compiled_time() -> str:
     ''' Reads the compiled from the PE header. Warning! In win10+ , this is a hash so we can get reproducable builds <https://devblogs.microsoft.com/oldnewthing/20180103-00/?p=97705> '''
+    l_os_version = pe_header_os_version()
+    if l_os_version >= (10, 0):
+        log_print(f"This is file from windows {l_os_version[0]}.{l_os_version[1]} which has reproducable builds so the timestamp is not valid", arg_type="ERROR")
+        return ""
+
     l_pe_header = pe_header()
     if l_pe_header is None:
         return ""
 
     l_timestamp_and_hash: bytes = (l_pe_header[8:12])
     l_timestamp = int.from_bytes(l_timestamp_and_hash, byteorder="little")
-    l_datetime = datetime.datetime.timetuple(datetime.datetime.fromtimestamp(l_timestamp, tz=datetime.UTC))
-
-    l_os_version = pe_header_os_version()
-    if l_os_version >= (10, 0):
-        log_print(f"This is file from windows {l_os_version[0]}.{l_os_version[1]} which has reproducable builds so the timestamp is not valid", arg_type="ERROR")
-        return ""
+    l_datetime = datetime.timetuple(datetime.fromtimestamp(l_timestamp, tz=timezone.utc))
     return time.strftime("%Y-%m-%d %H:%M:%S (UTC)", l_datetime)
+    
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pdb_path() -> str:
@@ -995,11 +999,11 @@ def _netnode_list_sups(arg_netnode: Optional[_ida_netnode.netnode] = None) -> No
 def _netnode_special_netnodes(arg_filter: str = "") -> List[str]:
     ''' Internal function. <https://python.docs.hex-rays.com/namespaceida__netnode.html> Used to play with the netnodes  '''
     res = []
-    nod = _ida_netnode.netnode()
-    nod.start()
+    l_node = _ida_netnode.netnode()
+    l_node.start()
     for i in range(0, 10000000):
-        nod.next()
-        l_name = nod.get_name()
+        l_node.next()
+        l_name = l_node.get_name()
         if l_name and l_name.startswith("$") and arg_filter in l_name:
             res.append(l_name)
     return res
@@ -1016,7 +1020,7 @@ class _input_file_object():
     entry_point = property(fget=lambda self: _ida_ida.inf_get_start_ip(), doc='Address of the first instruction that is executed')
     filename = property(fget=lambda self: _ida_nalt.get_input_file_path() or "", doc='Full path and filename to the file WHEN IT WAS LOADED INTO IDA. The file might been moved by the user and this path might not be valid.')
     format = property(fget=lambda self: _ida_loader.get_file_type_name() if self.filename else "<<< no file loaded >>>", doc='Basically PE or ELF. e.g. PE gives "Portable executable for 80386 (PE)"')
-    # idb_creation_time = property(fget=lambda self: time.strftime("%Y-%m-%d %H:%M:%S", datetime.datetime.timetuple(datetime.datetime.fromtimestamp(_ida_nalt.get_idb_ctime()))), doc='When the IDB was created') # useless?
+    # idb_creation_time = property(fget=lambda self: time.strftime("%Y-%m-%d %H:%M:%S", datetime.timetuple(datetime.fromtimestamp(_ida_nalt.get_idb_ctime()))), doc='When the IDB was created') # useless?
     # idb_opened_number_of_times = property(fget=lambda self: _ida_nalt.get_idb_nopens(), doc='Number of times the IDB have been opened') # useless?
     idb_path = property(fget=lambda self: _ida_loader.get_path(_ida_loader.PATH_TYPE_IDB), doc='Full path to the IDB. Replacement for ida_utils.GetIdbDir()')
     # idb_work_seconds = property(fget=lambda self: _ida_nalt.get_elapsed_secs(), doc='Number of seconds the IDB have been open') # useless?
@@ -2399,7 +2403,7 @@ def export_h_file(arg_h_file: str = "", arg_add_comment_at_top: bool = True, arg
             f.write("\n*/")
         f.write("\n".join(l_local_types))
 
-    return arg_h_file
+    return l_save_to_file
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def string_encoding(arg_ea: EvaluateType, arg_detect: bool = False, arg_debug: bool = False) -> Optional[str]:
@@ -3977,7 +3981,10 @@ _ida_idaapi.notify_when(_ida_idaapi.NW_OPENIDB, _new_file_opened_notification_ca
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _add_links_to_docstring(arg_function: Callable, arg_link: str) -> None:
     ''' If there is no link the official documentation for the given function, add a link to to the official documentation '''
-    l_docstring: str = getattr(arg_function, "__doc__")
+    l_docstring: Optional[str] = getattr(arg_function, "__doc__")
+    if l_docstring is None:
+        l_docstring = ""
+
     if "hex-rays.com" in l_docstring:
         # log_print(f"Function already has a link, ignoring", arg_type="WARNING")
         return
@@ -4715,10 +4722,14 @@ def _ipyida_find_connection_file(arg_copy_to_clipboard: bool = True) -> str:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ipyida_jupyter_console_from_cmd(arg_copy_to_clipboard: bool = True) -> str:
     ''' The command you can run in your shell to connect to [IPyIda](https://github.com/eset/ipyida) and have it outside of IDA (But IDA and IPyIDA must both be up and running)
+
+        Read more: <https://hex-rays.com/blog/plugin-focus-ipyida> # TODO: Verify that we really are using IpyIDA to the max
+
         @param arg_copy_to_clipboard Copy the command to the clipboard
+
     '''
     log_print("OBS! When leaving the external Jupyter-console, write: exit(keep_kernel=True)", arg_type="INFO")
-    l_connection_file: str = _ipyida_find_connection_file()
+    l_connection_file: str = _ipyida_find_connection_file(arg_copy_to_clipboard=arg_copy_to_clipboard)
     if l_connection_file:
         res = f"jupyter-console --existing {l_connection_file}"
         if arg_copy_to_clipboard:
@@ -4731,7 +4742,7 @@ def ipyida_exit(arg_copy_to_clipboard: bool = True) -> str:
     ''' If you have connected to the Jupyter kernel from the shell using ipyida_jupyter_console_from_cmd() use this command to exit the shell window without killing the kernel
         @param arg_copy_to_clipboard Copy the command to the clipboard
     '''
-    l_connection_file: str = _ipyida_find_connection_file()
+    l_connection_file: str = _ipyida_find_connection_file(arg_copy_to_clipboard=arg_copy_to_clipboard)
     if l_connection_file:
         res = "exit(keep_kernel=True)"
         if arg_copy_to_clipboard:
