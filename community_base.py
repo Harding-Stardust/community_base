@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-02-22 22:22:22"
+__version__ = "2025-03-02 19:02:06"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -107,6 +107,7 @@ import ida_allins as _ida_allins # type: ignore[import-untyped]
 import ida_auto as _ida_auto # type: ignore[import-untyped]
 import ida_bytes as _ida_bytes # type: ignore[import-untyped]
 import ida_dbg as _ida_dbg # type: ignore[import-untyped]
+import ida_expr as _ida_expr # type: ignore[import-untyped]
 import ida_funcs as _ida_funcs # type: ignore[import-untyped]
 import ida_hexrays as _ida_hexrays # type: ignore[import-untyped]
 import ida_idaapi as _ida_idaapi # type: ignore[import-untyped]
@@ -122,6 +123,7 @@ import ida_nalt as _ida_nalt # type: ignore[import-untyped] # Definitions of var
 import ida_netnode as _ida_netnode # type: ignore[import-untyped] # Functions that provide the lowest level public interface to the database.
 import ida_pro as _ida_pro # type: ignore[import-untyped]
 import ida_range as _ida_range # type: ignore[import-untyped]
+import ida_registry as _ida_registry # type: ignore[import-untyped]
 import ida_search as _ida_search # type: ignore[import-untyped]
 import ida_segment as _ida_segment # type: ignore[import-untyped]
 import idc as _idc # type: ignore[import-untyped]
@@ -266,9 +268,11 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
 
 # TODO: This can be used as "poor mans thread" to poll external data
 # TODO: This is not working as expected since it runs in it's own thread
-class _check_if_long_running_script_should_abort_not_working():
+class __check_if_long_running_script_should_abort_not_working():
     ''' Periodically check if any of the strings "abort.ida", "ida.abort", "ida.stop", "stop.ida" are in the clipboard. If anyone is, then throw an exception to abort the long running task.
     This is also an example on how to use timers. Read more: <https://github.com/HexRaysSA/IDAPython/blob/9.0sp1/examples/ui/register_timer.py>
+
+    OBS! This function is not working as expected and is only left here as an example on how to use _ida_kernwin.register_timer()
     '''
     def __init__(self):
         l_time_between_calls_in_milliseconds = 1000
@@ -385,16 +389,48 @@ def ida_arguments() -> List[str]:
     return PyQt5.Qt.qApp.instance().arguments()
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_save_and_exit(arg_exit_code: int = 0) -> None:
-    ''' Save the IDB and clean exit IDA
+def _process_config_directive(arg_key: str, arg_value: str) -> bool:
+    ''' in ida.cfg, there are many settings that one can set. Use this function to change them. 
+    
+    Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-116-ida-startup-files>
+    '''
+    arg_key = arg_key.upper()
+    arg_value = arg_value.upper()
+    
+    if arg_key == "PACK_DATABASE" and arg_value not in ("0", "1", "2"):
+        log_print("PACK_DATABASE only accepts values 0, 1 or 2", arg_type="ERROR")
+        return False
+    elif arg_key in ("COLLECT_GARBAGE", "ABANDON_DATABASE") and arg_value not in ("YES", "NO"):
+        if arg_value in ("OFF", "0", "FALSE", "F"):
+            arg_value = "NO"
+        elif arg_value in ("ON", "1", "TRUE", "T"):
+            arg_value = "YES"
+        else:
+            log_print(f"{arg_key} only accepts values YES or NO", arg_type="ERROR")
+            return False
+    
+    _ida_idp.process_config_directive(f"{arg_key}={arg_value}")
+    return True
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def ida_exit(arg_exit_code: int = 0, arg_save_database: bool = True, arg_pack_database: bool = False, arg_collect_garbage: bool = False) -> None:
+    ''' Exit IDA and optionally save the IDB
     A good use for this function is as the last call in a script run in batch mode.
     See links() for more info about batch mode
 
-    To exit without saving the IDB, see: <https://docs.hex-rays.com/developer-guide/idc/idc-api-reference/alphabetical-list-of-idc-functions/197>
+    To exit without saving the IDB, see: <https://docs.hex-rays.com/9.0sp1/developer-guide/idc/idc-api-reference/alphabetical-list-of-idc-functions/197>
     and <https://hex-rays.com/blog/igors-tip-of-the-week-116-ida-startup-files>
 
-    process_config_directive(): <https://python.docs.hex-rays.com/namespaceida__idp.html#a8f7be5936a3a9e1f1f2bc7e406654f38>
+    process_config_directive(): <https://python.docs.hex-rays.com/namespaceida__idp.html#aedcce95bb99e9feae1aa799e5f95295c>
     '''
+    if arg_collect_garbage:
+        _process_config_directive("COLLECT_GARBAGE", "YES")
+    
+    if not arg_save_database:
+        _process_config_directive("ABANDON_DATABASE", "YES")
+    elif arg_pack_database:
+        _process_config_directive("PACK_DATABASE", "2") #  set the default database packing option to "deflate" in old IDA and "zstd" in 9.1+; 
+
     _ida_pro.qexit(arg_exit_code)
     return # We will never reach this line
 
@@ -514,7 +550,7 @@ def ida_is_64bit() -> bool:
     return _ida_idaapi.__EA64__
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _ida_DLL() -> Any: # TODO: This used to be Union[ctypes.CDLL, ctypes.WinDLL] but WinDLL is not supported on Linux
+def _ida_DLL() -> Any: # TODO: This used to be Union[ctypes.CDLL, ctypes.WinDLL] but WinDLL is not supported on Linux, what to do?
     ''' Load correct version of ida.dll. Work on IDA 8.4 and 9.0. Example of how to use ctypes. '''
 
     l_bits: str = "64" if ida_is_64bit() else "32"
@@ -791,7 +827,7 @@ def google(arg_search: str) -> str:
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_licence_info() -> Dict[str, str]:
+def ida_licence_info(arg_delete_user_info_from_IDB: bool = False) -> Dict[str, str]:
     ''' Gets the license info. This function serves as example of 2 things: 1. How to get info that is not easy to get in a real way. 2. That your name is in every IDB, privacy warning!
 
     @return {"serial_number": serial_number: str, "name_info": name_info: str}
@@ -810,7 +846,23 @@ def ida_licence_info() -> Dict[str, str]:
             if l_license_info_match:
                 res["serial_number"] = l_license_info_match.group(1)
                 l_next_line_is_user_info = True
+    
+    if arg_delete_user_info_from_IDB:
+        _ = _ida_licence_info_delete()
+    
     return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _ida_licence_info_delete() -> bool:
+    ''' Deletes the user info in the IDB, if you do not want your licence info to be in the database, edit ida.cfg and set STORE_USER_INFO = NO '''
+    
+    l_idc_return_value = _ida_expr.idc_value_t()
+    _ida_expr.eval_idc_expr(l_idc_return_value, 0, "del_user_info()")
+    if l_idc_return_value.vtype != chr(_ida_expr.VT_LONG): # https://cpp.docs.hex-rays.com/group___v_t__.html
+        log_print("Unknown error", arg_type="ERROR")
+        return False
+    return True
+
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _compiler_info() -> _ida_ida.compiler_info_t:
@@ -5195,6 +5247,8 @@ def _export_names_and_types(arg_save_to_file: str = "",
                                          arg_full_export: bool = False,
                                          arg_debug: bool = False) -> Dict[str, Dict[str,str]]:
     ''' Exports functions name and function type so we can import that file in another project that use the same name and function prototype
+    TODO: Export the notepad, and optionally the C header file, and optionally the pseudo code
+    
     # TODO: WARNING! This function is "working" but is very slow and I am not happy with how it works right now, consider it experimental
     '''
     res = {}
@@ -5275,3 +5329,57 @@ def errors_find_type_errors(arg_ea: EvaluateType, arg_force_fresh_decompilation:
                         log_print(f'WARNING! Found possible invalid types at "{_t}" where {left} is ptr and {right} is num')
                         return True
     return False
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _idaapi_reg_data_type(arg_key: str, arg_subkey: Optional[str] = None) -> int:
+    ''' Wrapper around ida_registry.reg_data_type() that honors the type hints 
+    The following is taken from the registry.hpp:
+    reg_unknown = 0, ///< unknown
+    reg_sz      = 1, ///< utf8 string
+    reg_binary  = 3, ///< binary data
+    reg_dword   = 4  ///< 32-bit number
+    
+    @return -1 on fail (the arg_key does NOT exist) and the regval_type_t (int) otherwise
+
+    '''
+
+    # TODO: The subkey doesn't seem to work at all? I need to investigate...
+
+    l_temp = _ida_registry.reg_data_type(arg_key, arg_subkey)
+    if l_temp == False:
+        return -1
+    return l_temp
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _registy_read(arg_key: str, arg_subkey: Optional[str] = None) -> Tuple[int, str]:
+    ''' Read from IDAs registy
+    
+    @ returns (reg_type: int, value: str) The reg_type can be found in the docstring of _idaapi_reg_data_type()
+    Read more <https://python.docs.hex-rays.com/namespaceida__registry.html>  
+    '''
+    
+    l_reg_type: int = _idaapi_reg_data_type(arg_key, arg_subkey)
+    if l_reg_type == -1: # ERROR
+        l_error = f'<<< idaapi_reg_data_type("{arg_key}", "{arg_subkey}") failed >>>'
+        log_print(l_error)
+        return (-1, l_error)
+    
+    if l_reg_type == 1: # REG_STRING
+        res = _ida_registry.reg_read_string(arg_key, arg_subkey, "<<< default >>>")
+        if res == "<<< default >>>":
+            log_print(f'ida_registry.reg_read_string("{arg_key}", "{arg_subkey}") failed', arg_type="ERROR")
+            return (-1, "")
+        return (l_reg_type, res)
+
+    elif l_reg_type == 3: # REG_BINARY
+        res = " ".join(hex_parse(_ida_registry.reg_read_binary(arg_key, arg_subkey)))
+        return (l_reg_type, res)
+
+    elif l_reg_type == 4: # REG_DWORD
+        res = str(_ida_registry.reg_read_int(arg_key, -12345, arg_subkey))
+        if res == "-12345":
+            log_print(f'ida_registry.reg_read_int("{arg_key}", "{arg_subkey}") failed', arg_type="ERROR")
+            return (-1, "")
+        return (l_reg_type, res)
+
+    return (-1, f"<<< Not implemented read for type: {l_reg_type} >>>")
