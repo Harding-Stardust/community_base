@@ -61,7 +61,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 
 
 # Tested with
-```Windows 10 + IDA 9.0 + Python 3.12``` and ```Windows 10 + IDA 8.4 + Python 3.8```
+```Windows 10 + IDA 9.1 + Python 3.12```, ```Windows 10 + IDA 9.0 + Python 3.12``` and ```Windows 10 + IDA 8.4 + Python 3.8```
 
 # Future
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!
@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-03-03 22:01:08"
+__version__ = "2025-03-11 21:28:11"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -2248,10 +2248,10 @@ def exports(arg_debug: bool = False) -> Dict[int, Tuple[int, int, str]]:
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def byte(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
+def byte(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, arg_debug: bool = False) -> Optional[int]:
     ''' Reads a byte (8 bits) from the IDB. OBS! The IDB might not match the file on disk or active memory
 
-    Replacement for ida_bytes.get_byte()
+    Replacement for ida_bytes.get_byte() and ida_bytes.patch_byte()
 
     OBS! See ida_idd.dbg_read_memory(ea, size) for some other memory read
     '''
@@ -2259,10 +2259,23 @@ def byte(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
     if l_addr == _ida_idaapi.BADADDR:
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
         return None
+    
+    if arg_set_value is not None:
+        l_value = eval_expression(arg_set_value, arg_debug=arg_debug)
+        if l_value is None:
+            log_print("arg_set_value evaluated to None", arg_type="ERROR")
+            return None
+        
+        if l_value > 0xFF:
+            log_print("arg_set_value is too large for BYTE: 0x{l_value:x}", arg_type="ERROR")
+            return None
+        
+        _ida_bytes.patch_byte(l_addr, l_value)
+
     return _ida_bytes.get_byte(l_addr)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def word(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
+def word(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, arg_debug: bool = False) -> Optional[int]:
     ''' Reads a word (16 bits) from the IDB. OBS! The IDB might not match the file on disk or active memory
 
     Replacement for ida_bytes.get_word()
@@ -2273,13 +2286,26 @@ def word(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
     if l_addr == _ida_idaapi.BADADDR:
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
         return None
+    
+    if arg_set_value is not None:
+        l_value = eval_expression(arg_set_value, arg_debug=arg_debug)
+        if l_value is None:
+            log_print("arg_set_value evaluated to None", arg_type="ERROR")
+            return None
+        
+        if l_value > 0xFFFFFFFF:
+            log_print("arg_set_value is too large for WORD: 0x{l_value:x}", arg_type="ERROR")
+            return None
+        
+        _ida_bytes.patch_word(l_addr, l_value)
+
     return _ida_bytes.get_word(l_addr)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def dword(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
+def dword(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, arg_debug: bool = False) -> Optional[int]:
     ''' Reads a dword (32 bits) from the IDB. OBS! The IDB might not match the file on disk or active memory
 
-    Replacement for ida_bytes.get_dword()
+    Replacement for ida_bytes.get_dword() and ida_bytes.patch_dword()
 
     OBS! See ida_idd.dbg_read_memory(ea, size) for some other memory read
     '''
@@ -2287,10 +2313,23 @@ def dword(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
     if l_addr == _ida_idaapi.BADADDR:
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
         return None
+    
+    if arg_set_value is not None:
+        l_value = eval_expression(arg_set_value, arg_debug=arg_debug)
+        if l_value is None:
+            log_print("arg_set_value evaluated to None", arg_type="ERROR")
+            return None
+        
+        if l_value > 0xFFFFFFFF:
+            log_print("arg_set_value is too large for DWORD: 0x{l_value:x}", arg_type="ERROR")
+            return None
+        
+        _ida_bytes.patch_dword(l_addr, l_value)
+    
     return _ida_bytes.get_dword(l_addr)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def qword(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
+def qword(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, arg_debug: bool = False) -> Optional[int]:
     ''' Reads a qword (64 bits) from the IDB. OBS! The IDB might not match the file on disk or active memory
 
     Replacement for ida_bytes.get_qword()
@@ -2301,6 +2340,19 @@ def qword(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
     if l_addr == _ida_idaapi.BADADDR:
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
         return None
+    
+    if arg_set_value is not None:
+        l_value = eval_expression(arg_set_value, arg_debug=arg_debug)
+        if l_value is None:
+            log_print("arg_set_value evaluated to None", arg_type="ERROR")
+            return None
+        
+        if l_value > 0xFFFFFFFFFFFFFFFF:
+            log_print("arg_set_value is too large for QWORD: 0x{l_value:x}", arg_type="ERROR")
+            return None
+        
+        _ida_bytes.patch_qword(l_addr, l_value)
+
     return _ida_bytes.get_qword(l_addr)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -4809,14 +4861,17 @@ def lumina_pull_all() -> bool:
     return _ida_kernwin.process_ui_action('LuminaPullAllMds') # TODO: Is there any better way to control Lumina?
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def lumina_push_all() -> bool:
+    ''' Same as the Menu: Lumina -> Push all (Ctrl-F12) '''
+    return _ida_kernwin.process_ui_action('LuminaPushAllMds') # TODO: Is there any better way to control Lumina?
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _idaapi_reg_data_type(arg_key: str, arg_subkey: Optional[str] = None) -> int:
     ''' Wrapper around ida_registry.reg_data_type() that honors the type hints
     ida_registry.reg_sz, ida_registry.reg_binary and ida_registry.reg_dword
 
     @return -1 on fail (the arg_key does NOT exist) and the regval_type_t (int) otherwise
-
     '''
-
     # TODO: The subkey doesn't seem to work at all? I need to investigate...
 
     l_temp = _ida_registry.reg_data_type(arg_key, arg_subkey)

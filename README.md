@@ -10,7 +10,7 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 
 # Why you should use this script
 - Easier to write plugins and scripts for IDA Python
-- Type hints on everything! 
+- Type hints on everything!
 - Strong typing. I use [Pydantic](https://docs.pydantic.dev/latest/) to force types. This makes the code much easier to read since you get an idea what a function expects and what it returns. I try to follow [PEP 484](https://peps.python.org/pep-0484/) as much as I can.
 - Full function/variable names. This makes variables and functions easy to read at a glance.
 - Properly documented. I try to document as extensive I can without making redundent comments.
@@ -56,10 +56,11 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 
 
 # Tested with
-```Windows 10 + IDA 9.0 + Python 3.12``` and ```Windows 10 + IDA 8.4 + Python 3.8```
+```Windows 10 + IDA 9.1 + Python 3.12```, ```Windows 10 + IDA 9.0 + Python 3.12``` and ```Windows 10 + IDA 8.4 + Python 3.8```
 
 # Future
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!
 - I'm planning on doing some short clips on how the script is supposed to be used, this takes time and video editing is not my strong side
 - Need help with more testing
 - More of everything :-D
+'''
