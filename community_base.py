@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-03-13 22:50:48"
+__version__ = "2025-03-13 23:52:22"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -1185,7 +1185,7 @@ def eval_expression(arg_expression: EvaluateType, arg_supress_error: bool = Fals
         log_print(f"arg_expression is a {type(arg_expression)} which I can handle", arg_debug)
         return arg_expression.ea
 
-    known_address_attributes = ['ea',       # _ida_ua.insn_t, _ida_hexrays.cinsn_t, _ida_hexrays.cexpr_t
+    l_known_address_attributes = ['ea',       # _ida_ua.insn_t, _ida_hexrays.cinsn_t, _ida_hexrays.cexpr_t
                                 'start_ea', # _ida_hexrays.cfuncptr_t, _ida_segment.segment_t, _ida_range.range_t
                                 'entry_ea', # _ida_funcs.func_t
                                 'value',    # _ida_idaapi.PyIdc_cvt_int64__ (from appcalls in x64)
@@ -1193,10 +1193,10 @@ def eval_expression(arg_expression: EvaluateType, arg_supress_error: bool = Fals
                                 'base'      # _ida_idd.modinfo_t
                                ]
 
-    for attribute in known_address_attributes:
-        if hasattr(arg_expression, attribute):
-            log_print(f"arg_expression is of type: {type(arg_expression)} which has an attribute called '{attribute}' which is what I use", arg_debug)
-            return getattr(arg_expression, attribute)
+    for l_attribute in l_known_address_attributes:
+        if hasattr(arg_expression, l_attribute):
+            log_print(f"arg_expression is of type: {type(arg_expression)} which has an attribute called '{l_attribute}' which is what I use", arg_debug)
+            return getattr(arg_expression, l_attribute)
 
     if not isinstance(arg_expression, str):
         if arg_debug or not arg_supress_error:
@@ -1292,6 +1292,7 @@ def relative_virtual_address(arg_ea: EvaluateType, arg_debug: bool = False) -> O
     if l_addr == _ida_idaapi.BADADDR:
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
         return None
+    # TODO: In a DLL, you want the possibility to get the RVA from the DLL start and not the EXE start
     return l_addr - input_file.imagebase
 
 rva = relative_virtual_address
@@ -2084,7 +2085,7 @@ def _comment_set_decompiler(arg_ea: EvaluateType,
     if arg_cached_cfunc is None:
         return False
 
-    l_c_instruction = _ea_to_hexrays_insn(l_addr, arg_debug=arg_debug)
+    l_c_instruction = _ea_to_hexrays_insn(l_addr, arg_cached_cfunc=arg_cached_cfunc, arg_debug=arg_debug)
     if not l_c_instruction:
         log_print(f"_ea_to_hexrays_insn(0x{l_addr:x}) returned None", arg_type="ERROR")
         return False
@@ -5479,4 +5480,26 @@ def errors_find_type_errors(arg_ea: EvaluateType, arg_force_fresh_decompilation:
                         log_print(f'WARNING! Found possible invalid types at "{_t}" where {left} is ptr and {right} is num')
                         return True
     return False
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _comment_copy_from_disassembly_to_decompiler(arg_function: EvaluateType,  arg_debug: bool = False) -> bool:
+    ''' Read comments from the disassembly view and set them in the decompiler view
+    EXPERIMENTAL
+    '''
+    l_func = function(arg_function, arg_debug=arg_debug)
+    if l_func is None:
+        log_print(f"No function at {_hex_str_if_int(arg_function)}", arg_type="ERROR")
+        return False
+
+    l_cfunc = decompile(l_func.start_ea)
+    l_function_items_iterator = _ida_funcs.func_item_iterator_t(l_func)
+    for l_ea in l_function_items_iterator:
+        if is_code(l_ea, arg_debug=arg_debug):
+            l_repeatable_comment = False
+            l_disassembly_comment = _ida_bytes.get_cmt(l_ea, l_repeatable_comment)
+            # TODO: Verify if it is a auto comment from IDA?
+            if l_disassembly_comment:
+                _comment_set_decompiler(l_ea, l_disassembly_comment, arg_cached_cfunc=l_cfunc)
+
+    return True
 
