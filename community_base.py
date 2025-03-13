@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-03-11 21:28:11"
+__version__ = "2025-03-13 22:50:48"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -1330,7 +1330,7 @@ def function(arg_ea: EvaluateType,
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _is_lumina_name(arg_function: EvaluateType, arg_debug: bool = False) -> Optional[bool]:
+def function_is_lumina_name(arg_function: EvaluateType, arg_debug: bool = False) -> Optional[bool]:
     l_func = function(arg_function, arg_debug=arg_debug)
     if l_func is None:
         log_print(f"Could not locate any function at {_hex_str_if_int(arg_function)}", arg_type="ERROR")
@@ -1848,7 +1848,7 @@ def function_prototype(arg_function_name_or_ea: EvaluateType,
 
     l_function_prototype: str = _ida_lines.tag_remove(arg_cached_cfunc.print_dcl()) + ';'
     if arg_allow_comments:
-        l_comment: str = _comment_get(arg_function_name_or_ea, arg_debug=arg_debug)
+        l_comment: str = _comment_get(arg_cached_cfunc.entry_ea, arg_debug=arg_debug)
         if l_comment:
             l_function_prototype += " // " + l_comment
 
@@ -2011,7 +2011,7 @@ def _comment_get(arg_ea: EvaluateType,
                 arg_add_source: bool = True,
                 arg_oneliner: bool = False,
                 arg_debug: bool = False) -> str:
-    ''' Internal function. Use comment() '''
+    ''' Internal function. Use comment() instead '''
 
     l_addr = address(arg_ea, arg_debug=arg_debug)
     res = ""
@@ -2020,52 +2020,151 @@ def _comment_get(arg_ea: EvaluateType,
     if arg_cached_cfunc:
         insn: Optional[_ida_hexrays.cinsn_t] = _ea_to_hexrays_insn(l_addr, arg_cached_cfunc, arg_debug=arg_debug)
         if insn and not insn.is_epilog():
-            ea = insn.ea
-            cmts = _ida_hexrays.restore_user_cmts(arg_cached_cfunc.entry_ea)
-
-            if cmts is not None:
-                for tree_location, cmt in cmts.items(): # tree_location == treeloc_t
-                    log_print(f"tree_location.ea: {tree_location.ea:x} --> {str(cmt)}", arg_debug)
-                    if tree_location.ea == ea:
-                        res += str(cmt).strip() # There can be many comment on the same address, like after the ; and on the line before
-            _ida_hexrays.user_cmts_free(cmts)
-            res = res.strip()
+            l_comments: _ida_hexrays.user_cmts_t = _ida_hexrays.restore_user_cmts(arg_cached_cfunc.entry_ea)
+            if l_comments is not None:
+                l_tree_location: _ida_hexrays.treeloc_t
+                for l_tree_location, l_comment in l_comments.items(): # tree_location == treeloc_t
+                    log_print(f"tree_location.ea: 0x{l_tree_location.ea:x} --> {str(l_comment)}", arg_debug)
+                    if l_tree_location.ea == insn.ea:
+                        res += str(l_comment).strip() + "; " # There can be many comment on the same address, like after the ; and on the line before
+            _ida_hexrays.user_cmts_free(l_comments)
             if arg_add_source and res:
-                res += "  [decompiler]; "
+                res += " [decompiler]; "
 
     # No decompiler comments, let's try the old ones
-    is_repeatable = False
-    _disassembly_comment = _ida_bytes.get_cmt(l_addr, is_repeatable) # Get the comment on that line
-    if _disassembly_comment:
-        res += _disassembly_comment
+    l_is_repeatable = False
+    l_disassembly_comment = _ida_bytes.get_cmt(l_addr, l_is_repeatable) # Get the comment on that line
+    if l_disassembly_comment:
+        res += l_disassembly_comment
         if arg_add_source:
-            res += "  [disassembly]; "
+            res += " [disassembly]; "
 
-    is_repeatable = True
-    _disassembly_comment_repeatable = _ida_bytes.get_cmt(l_addr, is_repeatable)
+    l_is_repeatable = True
+    _disassembly_comment_repeatable = _ida_bytes.get_cmt(l_addr, l_is_repeatable)
     if _disassembly_comment_repeatable:
         res += _disassembly_comment_repeatable
         if arg_add_source:
-            res += "  [disassembly repeatable]; "
+            res += " [disassembly repeatable]; "
 
-    is_repeatable = False
-    _function_comment = _ida_funcs.get_func_cmt(_ida_funcs.get_func(l_addr), is_repeatable)
+    l_is_repeatable = False
+    _function_comment = _ida_funcs.get_func_cmt(_ida_funcs.get_func(l_addr), l_is_repeatable)
     if _function_comment:
         res += _function_comment
         if arg_add_source:
-            res += "  [function]; "
+            res += " [function]; "
 
-    is_repeatable = True
-    _function_comment_repeatable = _ida_funcs.get_func_cmt(_ida_funcs.get_func(l_addr), is_repeatable)
+    l_is_repeatable = True
+    _function_comment_repeatable = _ida_funcs.get_func_cmt(_ida_funcs.get_func(l_addr), l_is_repeatable)
     if _function_comment_repeatable:
         res += _function_comment_repeatable
         if arg_add_source:
-            res += "  [function repeatable]; "
+            res += " [function repeatable]; "
 
     if arg_oneliner:
         res = res.replace('\n', '; ')
 
     return res.strip()
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _comment_set_decompiler(arg_ea: EvaluateType,
+                arg_comment: str,
+                arg_cached_cfunc: Optional[_ida_hexrays.cfuncptr_t] = None,
+                arg_type_of_comment: Optional[int] = None,
+                arg_debug: bool = False
+                ) -> bool:
+    ''' Internal function. Use comment() instead
+    This function sets the decompiler comment
+    @param arg_type_of_comment is one of ida_hexrays.ITP_* where ida_hexrays.ITP_BLOCK1 is the line above (same as pressing INSERT)
+
+    @return True if everything is OK, False otherwise
+    '''
+    l_addr: int = address(arg_ea, arg_debug=arg_debug)
+    if not arg_cached_cfunc and is_code(l_addr, arg_debug=arg_debug):
+        arg_cached_cfunc = decompile(l_addr, arg_debug=arg_debug)
+    if arg_cached_cfunc is None:
+        return False
+
+    l_c_instruction = _ea_to_hexrays_insn(l_addr, arg_debug=arg_debug)
+    if not l_c_instruction:
+        log_print(f"_ea_to_hexrays_insn(0x{l_addr:x}) returned None", arg_type="ERROR")
+        return False
+
+    if l_c_instruction.is_epilog():
+        log_print("l_c_instruction.is_epilog() == True", arg_type="ERROR")
+        return False
+
+    l_tree_location = _ida_hexrays.treeloc_t()
+    l_tree_location.ea = l_c_instruction.ea
+
+    l_dict_of_types_of_comments: Dict[int, str] = {
+        _ida_hexrays.ITP_SEMI :   "SEMI",   # ';'
+        _ida_hexrays.ITP_CURLY1 : "CURLY1", # '{'
+        _ida_hexrays.ITP_CURLY2 : "CURLY2", # '}'
+        _ida_hexrays.ITP_BRACE1 : "BRACE1", # '(' Same as ida_hexrays.ITP_INNER_LAST
+        _ida_hexrays.ITP_BRACE2 : "BRACE2", # ')'
+        _ida_hexrays.ITP_COLON :  "COLON",  # ':'
+        _ida_hexrays.ITP_ARG1 :   "ARG1",
+        _ida_hexrays.ITP_ARG64 :  "ARG64",
+        _ida_hexrays.ITP_CASE :   "CASE",
+        _ida_hexrays.ITP_DO :     "DO",
+        _ida_hexrays.ITP_ELSE :   "ELSE",
+        _ida_hexrays.ITP_ASM :    "ASM",
+        _ida_hexrays.ITP_EMPTY :  "EMPTY",
+        _ida_hexrays.ITP_SIGN :   "SIGN",
+        _ida_hexrays.ITP_BLOCK1 : "BLOCK1", # This means line above ( ITP_BLOCK1 == 74 )
+        _ida_hexrays.ITP_BLOCK2 : "BLOCK2"  # No idea what this is  ( ITP_BLOCK2 == 75 )
+        # _ida_hexrays.ITP_INNER_LAST : "INNER_LAST", # _ida_hexrays.ITP_INNER_LAST == _ida_hexrays.ITP_BRACE1 == 65, bug?
+    }
+
+    if ida_version() >= 900:
+        l_dict_of_types_of_comments[_ida_hexrays.ITP_TRY] = "TRY" # New in IDA 9.0
+
+    if arg_type_of_comment:
+        if arg_type_of_comment not in l_dict_of_types_of_comments:
+            log_print(f"arg_type_of_comment: {arg_type_of_comment} is not valid. It should be one of ida_hexrays.ITP_*", arg_type="ERROR")
+            return False
+
+        l_replacement_dict_of_types_of_comments = {}
+        l_replacement_dict_of_types_of_comments[arg_type_of_comment] = l_dict_of_types_of_comments[arg_type_of_comment]
+        l_dict_of_types_of_comments = l_replacement_dict_of_types_of_comments
+
+    # The following for loop is REALLY ugly but I can't find any better way to do this :-(
+    l_decompiler_comment_set_ok = False
+    for l_itp in l_dict_of_types_of_comments:
+        log_print(f"testing: arg_cached_cfunc.set_user_cmt(_addr = 0x{l_tree_location.ea:x}, itp = {l_dict_of_types_of_comments[l_itp]}, comment = '{arg_comment}')", arg_debug)
+        l_tree_location.itp = l_itp
+        arg_cached_cfunc.set_user_cmt(l_tree_location, arg_comment)
+        arg_cached_cfunc.save_user_cmts()
+        arg_cached_cfunc = decompile(l_addr, arg_force_fresh_decompilation=True) # Forced refresh
+        if not arg_cached_cfunc.has_orphan_cmts():
+            l_decompiler_comment_set_ok = True
+            arg_cached_cfunc.save_user_cmts()
+            log_print(f"arg_cached_cfunc.set_user_cmt(_addr = 0x{l_tree_location.ea:x}, itp = {l_dict_of_types_of_comments[l_itp]}, comment = '{arg_comment}') worked!", arg_debug)
+            break
+        arg_cached_cfunc.del_orphan_cmts()
+        arg_cached_cfunc.save_user_cmts()
+
+    if not l_decompiler_comment_set_ok:
+        log_print("Could NOT set the decompiler comment correct. l_decompiler_comment_set_ok == False", arg_type="ERROR")
+        return False
+    return True
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _comment_set_disassembly(arg_ea: EvaluateType,
+                arg_comment: str,
+                arg_repeatable: bool = False,
+                arg_debug: bool = False
+                ) -> bool:
+    ''' Internal function. Use comment(). This function sets the comment in the  disassembly view
+
+    @return True if everything is OK, False otherwise
+    '''
+    l_addr: int = address(arg_ea, arg_debug=arg_debug)
+    if l_addr == _ida_idaapi.BADADDR:
+        log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
+        return False
+    log_print(f"ida_bytes.set_cmt(0x{l_addr:x}, '{arg_comment}', is_repeatable = {arg_repeatable})", arg_debug)
+    return _ida_bytes.set_cmt(l_addr, arg_comment, arg_repeatable) or False
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _comment_set(arg_ea: EvaluateType,
@@ -2076,79 +2175,14 @@ def _comment_set(arg_ea: EvaluateType,
                 ) -> bool:
     ''' Internal function. Use comment(). Comments can be set at many different levels at the same address.
     This function sets the decompiler comment (if possible) and the disassembly view.
-    arg_type_of_comment is one of ida_hexrays.ITP_* where ida_hexrays.ITP_BLOCK1 is the line above
+    @param arg_type_of_comment is one of ida_hexrays.ITP_* where ida_hexrays.ITP_BLOCK1 is the line above (same as pressing INSERT)
+
+    @return True if everything is OK, False otherwise
     '''
 
-    l_addr: int = address(arg_ea, arg_debug=arg_debug)
-    res = True
-    # Set the comment in the decompiler view (if possible)
-    if not arg_cached_cfunc and is_code(l_addr):
-        arg_cached_cfunc = decompile(l_addr, arg_debug=arg_debug)
-    if arg_cached_cfunc:
-        insn = _ea_to_hexrays_insn(l_addr, arg_debug=arg_debug)
-        if not insn:
-            log_print(f"_ea_to_hexrays_insn(0x{l_addr:x}) returned None", arg_type="ERROR")
-            return False
-
-        if insn.is_epilog():
-            log_print("insn.is_epilog() == True", arg_type="ERROR")
-            return False
-
-        tree_location = _ida_hexrays.treeloc_t()
-        tree_location.ea = insn.ea
-
-        dict_of_types_of_comments: Dict[int, str] = {
-            _ida_hexrays.ITP_SEMI :   "SEMI",   # ';'
-            _ida_hexrays.ITP_CURLY1 : "CURLY1", # '{'
-            _ida_hexrays.ITP_CURLY2 : "CURLY2", # '}'
-            _ida_hexrays.ITP_BRACE1 : "BRACE1", # '(' Same as ida_hexrays.ITP_INNER_LAST
-            _ida_hexrays.ITP_BRACE2 : "BRACE2", # ')'
-            _ida_hexrays.ITP_COLON :  "COLON",  # ':'
-            _ida_hexrays.ITP_ARG1 :   "ARG1",
-            _ida_hexrays.ITP_ARG64 :  "ARG64",
-            _ida_hexrays.ITP_CASE :   "CASE",
-            _ida_hexrays.ITP_DO :     "DO",
-            _ida_hexrays.ITP_ELSE :   "ELSE",
-            _ida_hexrays.ITP_ASM :    "ASM",
-            _ida_hexrays.ITP_EMPTY :  "EMPTY",
-            _ida_hexrays.ITP_SIGN :   "SIGN",
-            _ida_hexrays.ITP_BLOCK1 : "BLOCK1", # This means line above ( ITP_BLOCK1 == 74 )
-            _ida_hexrays.ITP_BLOCK2 : "BLOCK2"  # No idea what this is  ( ITP_BLOCK2 == 75 )
-            # _ida_hexrays.ITP_INNER_LAST : "INNER_LAST", # _ida_hexrays.ITP_INNER_LAST == _ida_hexrays.ITP_BRACE1 == 65, bug?
-        }
-
-        if arg_type_of_comment:
-            if arg_type_of_comment not in dict_of_types_of_comments:
-                log_print(f"arg_type_of_comment: {arg_type_of_comment} is not valid. It should be one of _ida_hexrays.ITP_*", arg_type="ERROR")
-                return False
-
-            _replacement_dict_of_types_of_comments = {}
-            _replacement_dict_of_types_of_comments[arg_type_of_comment] = dict_of_types_of_comments[arg_type_of_comment]
-            dict_of_types_of_comments = _replacement_dict_of_types_of_comments
-
-        # The following for loop is REALLY ugly but I can't find any better way to do this :-(
-        l_decompiler_comment_set_ok = False
-        for itp in dict_of_types_of_comments:
-            log_print(f"testing: arg_cached_cfunc.set_user_cmt(_addr = 0x{tree_location.ea:x}, itp = {dict_of_types_of_comments[itp]}, comment = '{arg_comment}')", arg_debug)
-            tree_location.itp = itp
-            arg_cached_cfunc.set_user_cmt(tree_location, arg_comment)
-            arg_cached_cfunc.save_user_cmts()
-            arg_cached_cfunc = decompile(l_addr, arg_force_fresh_decompilation=True) # Forced refresh
-            if not arg_cached_cfunc.has_orphan_cmts():
-                l_decompiler_comment_set_ok = True
-                arg_cached_cfunc.save_user_cmts()
-                log_print(f"arg_cached_cfunc.set_user_cmt(_addr = 0x{tree_location.ea:x}, itp = {dict_of_types_of_comments[itp]}, comment = '{arg_comment}') worked!", arg_debug)
-                break
-            arg_cached_cfunc.del_orphan_cmts()
-            arg_cached_cfunc.save_user_cmts()
-
-        if not l_decompiler_comment_set_ok:
-            log_print("Could NOT set the decompiler comment correct. l_decompiler_comment_set_ok == False", arg_type="ERROR")
-
-    # Set the comment in the disassembly view also
-    l_is_repeatable = False
-    log_print(f"_ida_bytes.set_cmt(0x{l_addr:x}, '{arg_comment}', is_repeatable = {l_is_repeatable})", arg_debug)
-    res = _ida_bytes.set_cmt(l_addr, arg_comment, l_is_repeatable)
+    l_comment_set_decompiler_set_ok = _comment_set_decompiler(arg_ea=arg_ea, arg_comment=arg_comment, arg_cached_cfunc=arg_cached_cfunc, arg_type_of_comment=arg_type_of_comment, arg_debug=arg_debug)
+    log_print(f"_comment_set_decompiler() returned {l_comment_set_decompiler_set_ok}", arg_debug)
+    res = _comment_set_disassembly(arg_ea=arg_ea, arg_comment=arg_comment, arg_repeatable=False, arg_debug=arg_debug)
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -2166,12 +2200,16 @@ def _comment_append(arg_ea: EvaluateType, arg_comment: str, arg_cached_cfunc: Op
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def is_library_function(arg_ea: EvaluateType, arg_heavy_analysis: bool = False, arg_debug: bool = False) -> Optional[bool]:
-    ''' Is the given EA (Effective Address) in a function IDA thinks is incompiled library function? '''
+def function_is_library_function(arg_ea: EvaluateType, arg_heavy_analysis: bool = False, arg_debug: bool = False) -> Optional[bool]:
+    ''' Is the given EA (Effective Address) in a function IDA thinks is incompiled library function?
 
-    # TODO: This function should have an extra argument with "heavy analysis" that make heuristic checks (if the function is not already marked as libfunc) that checks:
+    @param arg_heavy_analysis (NOT YET IMPLEMENTED!) Do some checks that can take long time
+    '''
+
+    # TODO: "heavy analysis" --> heuristic checks (if the function is not already marked as libfunc) that checks:
     # 1. Neighboring functions, are they libfuncs?
     # 2. Are there any calls to NON libfuncs coming from this function?
+
     if isinstance(arg_ea, _ida_funcs.func_t):
         l_func: _ida_funcs.func_t = arg_ea
     else:
@@ -2208,7 +2246,7 @@ def functions(arg_allow_library_functions: bool = True, arg_debug: bool = False)
     if arg_allow_library_functions:
         return l_all_functions
 
-    return [func for func in l_all_functions if not is_library_function(func, arg_debug=arg_debug)]
+    return [func for func in l_all_functions if not function_is_library_function(func, arg_debug=arg_debug)]
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def imports(arg_debug: bool = False) -> Dict[str, Dict[str, Tuple[int, int]]]:
@@ -2259,17 +2297,17 @@ def byte(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, arg
     if l_addr == _ida_idaapi.BADADDR:
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
         return None
-    
+
     if arg_set_value is not None:
         l_value = eval_expression(arg_set_value, arg_debug=arg_debug)
         if l_value is None:
             log_print("arg_set_value evaluated to None", arg_type="ERROR")
             return None
-        
+
         if l_value > 0xFF:
             log_print("arg_set_value is too large for BYTE: 0x{l_value:x}", arg_type="ERROR")
             return None
-        
+
         _ida_bytes.patch_byte(l_addr, l_value)
 
     return _ida_bytes.get_byte(l_addr)
@@ -2286,17 +2324,17 @@ def word(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, arg
     if l_addr == _ida_idaapi.BADADDR:
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
         return None
-    
+
     if arg_set_value is not None:
         l_value = eval_expression(arg_set_value, arg_debug=arg_debug)
         if l_value is None:
             log_print("arg_set_value evaluated to None", arg_type="ERROR")
             return None
-        
-        if l_value > 0xFFFFFFFF:
+
+        if l_value > 0xFFFF:
             log_print("arg_set_value is too large for WORD: 0x{l_value:x}", arg_type="ERROR")
             return None
-        
+
         _ida_bytes.patch_word(l_addr, l_value)
 
     return _ida_bytes.get_word(l_addr)
@@ -2313,19 +2351,19 @@ def dword(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, ar
     if l_addr == _ida_idaapi.BADADDR:
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
         return None
-    
+
     if arg_set_value is not None:
         l_value = eval_expression(arg_set_value, arg_debug=arg_debug)
         if l_value is None:
             log_print("arg_set_value evaluated to None", arg_type="ERROR")
             return None
-        
+
         if l_value > 0xFFFFFFFF:
             log_print("arg_set_value is too large for DWORD: 0x{l_value:x}", arg_type="ERROR")
             return None
-        
+
         _ida_bytes.patch_dword(l_addr, l_value)
-    
+
     return _ida_bytes.get_dword(l_addr)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -2340,17 +2378,17 @@ def qword(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, ar
     if l_addr == _ida_idaapi.BADADDR:
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
         return None
-    
+
     if arg_set_value is not None:
         l_value = eval_expression(arg_set_value, arg_debug=arg_debug)
         if l_value is None:
             log_print("arg_set_value evaluated to None", arg_type="ERROR")
             return None
-        
+
         if l_value > 0xFFFFFFFFFFFFFFFF:
             log_print("arg_set_value is too large for QWORD: 0x{l_value:x}", arg_type="ERROR")
             return None
-        
+
         _ida_bytes.patch_qword(l_addr, l_value)
 
     return _ida_bytes.get_qword(l_addr)
@@ -2549,6 +2587,7 @@ def string_encoding(arg_ea: EvaluateType, arg_detect: bool = False, arg_debug: b
         log_print(f"IDA does _NOT_ think there is a string at {_hex_str_if_int(arg_ea)} but you can try to detect what encoding is used by calling string_encoding(<address>, arg_detect=True)", arg_type="ERROR")
         res = ""
     return res
+
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _is_invalid_strtype(arg_strtype: int) -> bool:
     ''' It's not clear what is ida_nalt.get_str_type() should return that is a valid strtype.
@@ -4982,8 +5021,8 @@ setattr(_ida_funcs.func_t, 'prototype', property(fget=function_prototype, fset=s
 setattr(_ida_funcs.func_t, 'name', property(fget=name, fset=name, doc="Get or set the name of the function")) # type: ignore[arg-type]
 setattr(_ida_funcs.func_t, 'address', property(fget=address))
 setattr(_ida_funcs.func_t, 'return_type', property(fget=lambda self: decompile(self).type.get_rettype())) # type: ignore[union-attr]
-setattr(_ida_funcs.func_t, 'is_library_function', property(fget=is_library_function))
-setattr(_ida_funcs.func_t, 'is_lumina_name', property(fget=_is_lumina_name))
+setattr(_ida_funcs.func_t, 'is_library_function', property(fget=function_is_library_function))
+setattr(_ida_funcs.func_t, 'is_lumina_name', property(fget=function_is_lumina_name))
 
 __GLOBAL_KEEP_REFERENCE_TO_AVOID_MEMORY_CORRUPTION__ = 0
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -5158,7 +5197,7 @@ setattr(_ida_hexrays.cfuncptr_t, 'return_type', property(fget=lambda self: self.
 setattr(_ida_hexrays.cfuncptr_t, 'name', property(fget=name, fset=lambda self, new_name: name(self, arg_set_name=new_name, arg_force=True))) # type: ignore[union-attr, arg-type]
 setattr(_ida_hexrays.cfuncptr_t, 'local_variables', property(fget=lambda self: {var.name: var for var in self.lvars}))
 setattr(_ida_hexrays.cfuncptr_t, 'calls', property(fget=_decompiler_calls))
-setattr(_ida_hexrays.cfuncptr_t, 'is_lumina_name', property(fget=_is_lumina_name))
+setattr(_ida_hexrays.cfuncptr_t, 'is_lumina_name', property(fget=function_is_lumina_name))
 setattr(_ida_hexrays.citem_t, '__str__', lambda self: f"{_ida_lines.tag_remove(self.print1(None))}")
 setattr(_ida_hexrays.citem_t, '__repr__', __repr__type_address_str)
 setattr(_ida_hexrays.cexpr_t, '__repr__', lambda self: f"{type(self)} with opname: '{self.opname}' and to_specific_type.opname: '{self.to_specific_type.opname}' @ 0x{address(self):x} which looks like:\n{str(self)}"  ) # TODO: address of cexpr_t is not OK according to the type hints
@@ -5360,7 +5399,7 @@ def _export_names_and_types(arg_save_to_file: str = "",
     ''' Exports functions name and function type so we can import that file in another project that use the same name and function prototype
     TODO: Export the notepad, and optionally the C header file, and optionally the pseudo code
 
-    # TODO: WARNING! This function is "working" but is very slow and I am not happy with how it works right now, consider it experimental
+    TODO: WARNING! This function is "working" but is very slow and I am not happy with how it works right now, consider it experimental
     '''
     res = {}
     if not arg_save_to_file:
