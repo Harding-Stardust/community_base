@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-03-13 23:52:22"
+__version__ = "2025-03-15 22:21:45"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -1339,6 +1339,35 @@ def function_is_lumina_name(arg_function: EvaluateType, arg_debug: bool = False)
     return bool(l_func.flags & _ida_funcs.FUNC_LUMINA)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _to_bool(arg_user_input: Union[bool, int, str]) -> bool:
+    ''' Try to convert a user input to a boolean True or False in a smart way.
+    If I cannot parse it, I will return False (and print an error message)
+    
+    @returns True if I can parse it to something the user want to be true, False otherwise (incl. a string I cannot parse anything useful from)
+    '''
+
+    if isinstance(arg_user_input, str):
+        arg_user_input = arg_user_input.upper()
+        if arg_user_input in ("Y", "YES", "ON", "1", "TRUE", "T"):
+            return True
+        elif arg_user_input in ("N", "NO", "OFF", "0", "FALSE", "F"):
+            return False
+        else:
+            log_print(f"I could not figure out what you want with the input: '{arg_user_input}'", arg_type="ERROR")
+            return False
+
+    return bool(arg_user_input)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _change_hexrays_config(arg_key: str, arg_value: str) -> bool:
+    ''' In hexrays.cfg, there are many settings that one can set. Use this function to change them '''
+    arg_key = arg_key.upper()
+    
+    if arg_key in ("PSEUDOCODE_SYNCED", "PSEUDOCODE_SYNC_XPOS", "DISPLAY_WAIT_BOX", "COLLAPSE_LVARS", "GENERATE_EA_LABELS", "AUTO_UNHIDE", "GENERATE_EMPTY_LINES"):
+        arg_value = "YES" if _to_bool(arg_value) else "NO"
+    return bool(_ida_hexrays.change_hexrays_config(f"{arg_key} = {arg_value}"))
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def decompile(arg_ea: EvaluateType,
               arg_hf: Optional[_ida_hexrays.hexrays_failure_t] = None,
               arg_flags: int = _ida_hexrays.DECOMP_GXREFS_DEFLT,
@@ -1375,11 +1404,12 @@ def decompile(arg_ea: EvaluateType,
 
     if arg_force_fresh_decompilation:
         log_print(f"arg_force_fresh_decompilation set so we call ida_hexrays.mark_cfunc_dirty(0x{l_function_address:x})", arg_debug)
-        _ida_hexrays.mark_cfunc_dirty(l_function_address)
+        l_was_cached = _ida_hexrays.mark_cfunc_dirty(l_function_address) # TODO: This is flaky, do I need to bring the sledgehammer _ida_hexrays.clear_cached_cfuncs() ?
+        log_print(f"Function was cached: {l_was_cached}", arg_debug)
 
     try:
         l_cfunc = _ida_hexrays.decompile(ea=l_function_address, hf=arg_hf, flags=arg_flags) # This will _NOT_ populate the l_cfunc.treeitems
-        l_cfunc.get_pseudocode()                                  # Forces the l_cfunc.treeitems to be populated
+        _ = l_cfunc.get_pseudocode()                                  # Forces the l_cfunc.treeitems to be populated
         return l_cfunc
     except Exception as exc:
         log_print(f"0x{l_function_address:x} failed to decompile", arg_debug, arg_type="ERROR")
@@ -1387,31 +1417,51 @@ def decompile(arg_ea: EvaluateType,
         return None
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def decompile_many(arg_outfile: str = input_file.idb_path + '.c',
+def decompile_many(arg_outfile: str = "",
                    arg_functions: Optional[List[EvaluateType]] = None,
-                   arg_flags: int = _ida_hexrays.VDRUN_MAYSTOP,
+                   arg_allow_overwrite_c_file: bool = True,
+                   arg_allow_user_to_stop: bool = True,
+                   arg_use_lumina: bool = False, 
                    arg_debug: bool = False) -> bool:
     '''Decompile many (all) functions to a file on disk
        Replacement for ida_hexrays.decompile_many()
 
-       @param arg_flags: int Default is ida_hexrays.VDRUN_MAYSTOP which means that the user can cancel decompilation. <https://python.docs.hex-rays.com/namespaceida__hexrays.html#a5dbc567822242aa3a25402cd87a9b8d5>
+       @param arg_outfile Where to save the decompiled file. If this is not set, then create the C file in the same directory as the IDB
+       @param arg_functions List of functions that should be decompiled, if this is empty then all functions that are not library functions are decompiled
+       @param arg_allow_overwrite_c_file Default True. Create a new file or overwrite existing file, if this is False then the fail if the file already exists
     '''
-    # TODO: Make this an internal function and put the arg_functions into decompile() ?
+    _ida_auto.auto_wait() # We always want to have the auto analysis done before we start decompiling. This is important when we call this function in batch mode
+    
     if not _ida_hexrays.init_hexrays_plugin():
-        log_print(f"The decompiler for this architecture ({input_file.processor}) is not loaded.", arg_debug, arg_type="ERROR")
+        log_print(f"The decompiler for this architecture ({input_file.processor}) is not loaded.", arg_type="ERROR")
         return False
 
-    _ida_auto.auto_wait() # We always want to have the auto analysis done before we start decompiling. This is mostly important when we call this function in batch mode
+    if not arg_outfile:
+        arg_outfile = input_file.idb_path + '.c'
 
-    if arg_functions:
-        arg_functions = [address(func, arg_debug=arg_debug) for func in arg_functions]
-        log_print(f"Decompiling {len(arg_functions)} functions", arg_type="INFO")
-    else:
-        log_print("Decompiling all functions", arg_type="INFO")
+    l_functions = [address(func, arg_debug=arg_debug) for func in arg_functions] if arg_functions else functions(arg_allow_library_functions=False, arg_debug=arg_debug)
+    log_print(f"Decompiling {len(l_functions)} functions", arg_type="INFO")
 
-    log_print(f"Decompiling to {arg_outfile}", arg_type="INFO")
-    res = _ida_hexrays.decompile_many(arg_outfile, arg_functions, arg_flags)
-    log_print(f"done: Decompiling to {arg_outfile}", arg_type="INFO")
+    l_flags: int = 0
+    if arg_allow_overwrite_c_file:
+        l_flags |= _ida_hexrays.VDRUN_NEWFILE if arg_allow_overwrite_c_file else _ida_hexrays.VDRUN_ONLYNEW
+    if arg_allow_user_to_stop:
+        l_flags |= _ida_hexrays.VDRUN_MAYSTOP
+    if arg_use_lumina:
+        l_flags |= _ida_hexrays.VDRUN_LUMINA
+
+    if arg_debug:
+        l_flags |= _ida_hexrays.VDRUN_STATS # Print statistics into vd_stats.txt
+        l_flags |= _ida_hexrays.VDRUN_PERF # Print performance stats to ida.log
+
+    _ = _change_hexrays_config("COLLAPSE_LVARS", "NO") # If this is set to YES (which I usually have when I do manually work) the decompiled C file will have them collapsed also
+
+    # Unfortunately, the COLLAPSE_LVARS = NO force us to recompile ALL functions that are gonna be decompiled... YIKES!
+    log_print(f"starting decompile_many() --> {arg_outfile}", arg_type="INFO")
+    _ida_hexrays.clear_cached_cfuncs()
+    res = _ida_hexrays.decompile_many(arg_outfile, arg_functions, l_flags)
+    log_print(f"done with decompile_many() --> {arg_outfile}", arg_type="INFO")
+    _ = _change_hexrays_config("COLLAPSE_LVARS", "YES") # TODO: I can't find any way to read if this variable was set before and since I prefer to have it to YES, I hardcoded it here. Sorry!
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -3003,7 +3053,7 @@ def pointer_size(arg_debug: bool = False) -> int:
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def pointer(arg_ea: EvaluateType, arg_value: Optional[EvaluateType] = None, arg_debug: bool = False) -> Optional[int]:
+def pointer(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, arg_debug: bool = False) -> Optional[int]:
     ''' Reads a pointer from memory. If no memory is active, then read from the IDB.
     If arg_value is set, then write that pointer to the memory. Works like WinDBG poi() '''
 
@@ -3012,8 +3062,8 @@ def pointer(arg_ea: EvaluateType, arg_value: Optional[EvaluateType] = None, arg_
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
         return None
 
-    if arg_value is not None:
-        l_value: int = address(arg_value, arg_debug=arg_debug)
+    if arg_set_value is not None:
+        l_value: int = address(arg_set_value, arg_debug=arg_debug)
         if input_file.bits == 64:
             _ida_bytes.patch_qword(l_addr, l_value) # _ida_bytes.patch_qword() and _ida_bytes.patch_dword() returns False if the data you want to write is already on that place.
         elif input_file.bits == 32:
@@ -4109,7 +4159,7 @@ registers = _registers_object() # Recreated in the "_new_file_opened_notificatio
 def _new_file_opened_notification_callback(arg_nw_code: int, arg_is_old_database: int) -> None:
     ''' Callback that is triggered whenever a file is opened in IDA Pro.
 
-    @param arg_nw_code: int is the event number that caused this callback.
+    @param arg_nw_code is the event number that caused this callback.
     @param arg_is_old_database == 1 if there was an IDB/I64 and 0 if it's a new file
     '''
     del arg_nw_code # This is never used but needed in the prototype
@@ -4137,21 +4187,22 @@ def _add_links_to_docstring(arg_function: Callable, arg_link: str) -> None:
     return
 
 # Add links to the official documentation for some functions, more will be added
-_add_links_to_docstring(_ida_nalt.get_ida_notepad_text, "https://python.docs.hex-rays.com/namespaceida__nalt.html#afbce150733a7444c14e83db7411cf3c9")
-_add_links_to_docstring(_ida_dbg.refresh_debugger_memory, "https://python.docs.hex-rays.com/namespaceida__dbg.html#a6145474492fcf696e33d9ff1c8b86dfb")
-_add_links_to_docstring(_ida_idp.process_config_directive, "https://python.docs.hex-rays.com/namespaceida__idp.html#a8f7be5936a3a9e1f1f2bc7e406654f38")
-_add_links_to_docstring(_ida_kernwin.str2ea, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#a08d928125a472cc31098defe54be7382")
-_add_links_to_docstring(_ida_dbg.wait_for_next_event, "https://python.docs.hex-rays.com/namespaceida__dbg.html#a53d4d2d6a9426d06f758adea1cfeeee3")
-_add_links_to_docstring(_ida_bytes.get_strlit_contents, "https://python.docs.hex-rays.com/namespaceida__bytes.html#aafc64f6145bfe2e7d3e49a6e1e4e217c")
-_add_links_to_docstring(_ida_kernwin.execute_ui_requests, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#a31cf8b9bf7e6ba055f92bb1c2e6a5858")
-_add_links_to_docstring(_ida_kernwin.process_ui_action, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#ab67f049dcd5c47b16f5230ebc3e71d1b")
-_add_links_to_docstring(_ida_loader.load_and_run_plugin, "https://python.docs.hex-rays.com/namespaceida__loader.html#a1b29b29a91dceb429d7b85018303a92e")
-_add_links_to_docstring(_ida_idaapi.notify_when, "https://python.docs.hex-rays.com/namespaceida__idaapi.html#a0b63655706845252b36a543e550d884e")
-_add_links_to_docstring(_ida_dbg.update_bpt, "https://python.docs.hex-rays.com/namespaceida__dbg.html#a65a328849707f223bf166d0a8df5d695")
-_add_links_to_docstring(_ida_kernwin.get_widget_title, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#ac5f4837e630e94da28ef013d1f2a7ca1")
-_add_links_to_docstring(_ida_kernwin.activate_widget, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#a8bed9c56f3be8cf8136b890d5cc36809")
-_add_links_to_docstring(_ida_kernwin.display_widget, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#ac193e1bc4ae205059edc4d67c6820b80")
-_add_links_to_docstring(_ida_dbg.start_process, "https://python.docs.hex-rays.com/namespaceida__dbg.html#a0d6ca89f3573e306b9ecdced17b2ced1")
+# TODO: fuuuuuuuuuu... these weird links are autogenerated different in IDA 9.1... >:-(
+# _add_links_to_docstring(_ida_nalt.get_ida_notepad_text, "https://python.docs.hex-rays.com/namespaceida__nalt.html#afbce150733a7444c14e83db7411cf3c9")
+# _add_links_to_docstring(_ida_dbg.refresh_debugger_memory, "https://python.docs.hex-rays.com/namespaceida__dbg.html#a6145474492fcf696e33d9ff1c8b86dfb")
+# _add_links_to_docstring(_ida_idp.process_config_directive, "https://python.docs.hex-rays.com/namespaceida__idp.html#a8f7be5936a3a9e1f1f2bc7e406654f38")
+# _add_links_to_docstring(_ida_kernwin.str2ea, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#a08d928125a472cc31098defe54be7382")
+# _add_links_to_docstring(_ida_dbg.wait_for_next_event, "https://python.docs.hex-rays.com/namespaceida__dbg.html#a53d4d2d6a9426d06f758adea1cfeeee3")
+# _add_links_to_docstring(_ida_bytes.get_strlit_contents, "https://python.docs.hex-rays.com/namespaceida__bytes.html#aafc64f6145bfe2e7d3e49a6e1e4e217c")
+# _add_links_to_docstring(_ida_kernwin.execute_ui_requests, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#a31cf8b9bf7e6ba055f92bb1c2e6a5858")
+# _add_links_to_docstring(_ida_kernwin.process_ui_action, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#ab67f049dcd5c47b16f5230ebc3e71d1b")
+# _add_links_to_docstring(_ida_loader.load_and_run_plugin, "https://python.docs.hex-rays.com/namespaceida__loader.html#a1b29b29a91dceb429d7b85018303a92e")
+# _add_links_to_docstring(_ida_idaapi.notify_when, "https://python.docs.hex-rays.com/namespaceida__idaapi.html#a0b63655706845252b36a543e550d884e")
+# _add_links_to_docstring(_ida_dbg.update_bpt, "https://python.docs.hex-rays.com/namespaceida__dbg.html#a65a328849707f223bf166d0a8df5d695")
+# _add_links_to_docstring(_ida_kernwin.get_widget_title, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#ac5f4837e630e94da28ef013d1f2a7ca1")
+# _add_links_to_docstring(_ida_kernwin.activate_widget, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#a8bed9c56f3be8cf8136b890d5cc36809")
+# _add_links_to_docstring(_ida_kernwin.display_widget, "https://python.docs.hex-rays.com/namespaceida__kernwin.html#ac193e1bc4ae205059edc4d67c6820b80")
+# _add_links_to_docstring(_ida_dbg.start_process, "https://python.docs.hex-rays.com/namespaceida__dbg.html#a0d6ca89f3573e306b9ecdced17b2ced1")
 
 # TODO: Check out the trick with highlight: https://python.docs.hex-rays.com/namespaceida__search.html#:~:text=find_text()
 # Another: https://github.com/Harding-Stardust/community_base/blob/main/community_base.py#:~:text=def%20search_text
@@ -5075,7 +5126,7 @@ def _funcarg_t_str(arg_funcarg_t: _ida_typeinf.funcarg_t) -> str:
 
     res = f"argument: '{str(arg_funcarg_t.type)} {arg_funcarg_t.name if arg_funcarg_t.name else '<no name>' }' with argument location: {str(arg_funcarg_t.argloc)}"
     if arg_funcarg_t.argloc.is_reg1():
-        res += f'\nRegister: {str(arg_funcarg_t.register.name)}: {(f"0x{_register(arg_funcarg_t.register):x}" if debugger_is_running() else "<only when debugger is running>")}'
+        res += f'\nRegister: {str(arg_funcarg_t.register.name)}: {(f"0x{_register(arg_funcarg_t.register):x}" if debugger_is_running() else "<value only available when debugger is running>")}'
     # TODO: elif on stack: print stack var
     return res
 setattr(_ida_typeinf.funcarg_t, '__str__', _funcarg_t_str)
@@ -5174,7 +5225,7 @@ setattr(_ida_ua.op_t, 'register', property(fget=_op_t_to_register))
 setattr(_ida_ua.op_t, 'name', property(fget=name))
 setattr(_ida_ua.op_t, 'as_dict', property(fget=_operand_parser))
 setattr(_ida_ua.op_t, '__eq__', lambda self, other: self.type == other.type and self.dtype == other.dtype and self.value == other.value and self.value64 == other.value64 and self.specflag1 == other.specflag1 and self.specflag2 == other.specflag2 and self.reg == other.reg and self.addr == other.addr)
-setattr(_ida_idp.reg_info_t, '__str__', lambda self: f".name: {_ida_idp.get_reg_name(self.reg, self.size)}, .size: 0x{self.size:x}, .register_index: {self.reg}, .value: " + (_hex_str_if_int(_register(self)) if debugger_is_running() else "<only when debugger is running>") + "\n")
+setattr(_ida_idp.reg_info_t, '__str__', lambda self: f".name: {_ida_idp.get_reg_name(self.reg, self.size)}, .size: 0x{self.size:x}, .register_index: {self.reg}, .value: " + (_hex_str_if_int(_register(self)) if debugger_is_running() else "<value only available when debugger is running>") + "\n")
 setattr(_ida_idp.reg_info_t, '__repr__', __repr__type_str)
 setattr(_ida_idp.reg_info_t, '__len__', lambda self: self.size)
 setattr(_ida_idp.reg_info_t, 'name', property(fget=lambda self: _ida_idp.get_reg_name(self.reg, self.size)))
