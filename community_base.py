@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-03-17 23:33:28"
+__version__ = "2025-03-20 22:14:05"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -257,7 +257,7 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
     l_bug_report["IDA_version"] = str(ida_version())
     l_bug_report["decompiler_version"] = ida_decompiler_version()
     l_bug_report["community_base_version"] = __version__
-    l_bug_report["python_version"] = str(python_version()[0]) + "." + str(python_version()[1]) # Tuple[major: int, minor: int] --> "3.12"
+    l_bug_report["python_version"] = str(_python_version()[0]) + "." + str(_python_version()[1]) # Tuple[major: int, minor: int] --> "3.12"
     l_bug_report["datetime"] = _timestamped_line("").strip()
     for key, value in input_file._as_dict().items():
         l_bug_report["input_file_" + key] = value
@@ -423,7 +423,7 @@ def _process_config_directive(arg_key: str, arg_value: str) -> bool:
     return True
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_exit(arg_exit_code: int = 0, arg_save_database: bool = True, arg_pack_database: bool = False, arg_collect_garbage: bool = False) -> None:
+def ida_exit(arg_exit_code: int = 0, arg_save_database: bool = True, arg_pack_database: bool = True, arg_collect_garbage: bool = False) -> None:
     ''' Exit IDA and optionally save the IDB
     A good use for this function is as the last call in a script run in batch mode.
     See links() for more info about batch mode
@@ -433,20 +433,25 @@ def ida_exit(arg_exit_code: int = 0, arg_save_database: bool = True, arg_pack_da
 
     process_config_directive(): <https://python.docs.hex-rays.com/namespaceida__idp.html#:~:text=process_config_directive()>
     '''
+    if not arg_save_database:
+        _process_config_directive("ABANDON_DATABASE", "YES")
+        _ida_pro.qexit(arg_exit_code)
+        return # We will never reach this line
+
     if arg_collect_garbage:
         _process_config_directive("COLLECT_GARBAGE", "YES")
 
-    if not arg_save_database:
-        _process_config_directive("ABANDON_DATABASE", "YES")
-    elif arg_pack_database:
-        _process_config_directive("PACK_DATABASE", "2") #  set the default database packing option to "deflate" in old IDA and "zstd" in 9.1+;
+    if arg_pack_database:
+        _process_config_directive("PACK_DATABASE", "2") # set the default database packing option to "deflate" in old IDA and "zstd" in 9.1+;
+    else:
+        _process_config_directive("PACK_DATABASE", "1")
 
     _ida_pro.qexit(arg_exit_code)
     return # We will never reach this line
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _idaapi_get_ida_notepad_text() -> str:
-    ''' Wrapper around ida_nalt.get_ida_notepad_text() that actually honors the type hints
+    ''' Wrapper around ida_nalt.get_ida_notepad_text() that actually honors the type hints.
     Read more: <https://python.docs.hex-rays.com/namespaceida__nalt.html#:~:text=get_ida_notepad_text()>
 
     Tag: Community fix, IDA Bug
@@ -479,7 +484,7 @@ def ida_decompiler_version() -> str:
     return l_temp
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def python_version() -> Tuple[int, int]:
+def _python_version() -> Tuple[int, int]:
     ''' Find the Python version we are running.
     Returns a tuple with (major_version: int, minor_version: int)
     '''
@@ -984,19 +989,26 @@ def pdb_path() -> str:
 def pdb_load(arg_local_pdb_file: str = "",
              arg_image_base: Optional[EvaluateType] = None,
              arg_force_reload: bool = False,
-             arg_local_symbol_cache: str = r"C:\symbols",
+             arg_local_symbol_cache: str = "",
              arg_debug: bool = False) -> Optional[bool]:
-    ''' Try to load the PDB for this file.
+    ''' Try to load the PDB for this file
     Code taken from <https://gist.github.com/patois/b3f329868934710fbc81218ce1d6d722>
     Microsoft symbol server info: <https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/microsoft-public-symbols>
+
+    @param arg_local_pdb_file If you have a local PDB file, then set this. If this is not set, download from Microsofts Symbol server
+    @param arg_force_reload If you have PDB data, force a new reload and parse
+    @param arg_local_symbol_cache Save the PDB here on the disk, it not set, then use os.environ.get("TEMP")
+    @param arg_debug Print debug data during the function call
+
+    @return True if everything went fine, False otherwise
     '''
-    # These come from pdb/common.h
+    # These come from IDA SDK: pdb/common.h
     PDB_CC_USER_WITH_DATA = 3
     PDB_DLLBASE_NODE_IDX = 0
     PDB_DLLNAME_NODE_IDX = 0
 
-    l_size: int = 0
-    l_create_if_not_exists: bool = True
+    l_size: int = 0 # Not interesting, can be ignored
+    l_create_if_not_exists: bool = True # Not interesting, can be ignored
     l_pdb_node = _ida_netnode.netnode("$ pdb", l_size, l_create_if_not_exists)
     if arg_force_reload:
         log_print(f"arg_force_reload set so I will delete the PDB node", arg_debug)
@@ -1007,12 +1019,14 @@ def pdb_load(arg_local_pdb_file: str = "",
         log_print("PDB info is already loaded", arg_type="ERROR")
         return False
 
-    l_temp_imagebase = input_file.imagebase if arg_image_base is None else eval_expression(arg_image_base, arg_debug=arg_debug)
+    l_temp_imagebase: Optional[int] = input_file.imagebase if arg_image_base is None else eval_expression(arg_image_base, arg_debug=arg_debug)
     if l_temp_imagebase is None:
         log_print("arg_image_base resolved to None", arg_type="ERROR")
         return False
-    l_imagebase = l_temp_imagebase
-    l_default_NT_SYMBOL_PATH = f"srv*{arg_local_symbol_cache}*https://msdl.microsoft.com/download/symbols"
+    l_imagebase: int = l_temp_imagebase
+
+    l_local_symbol_cache: str = arg_local_symbol_cache if arg_local_symbol_cache else os.environ.get("TEMP")
+    l_default_NT_SYMBOL_PATH = f"srv*{l_local_symbol_cache}*https://msdl.microsoft.com/download/symbols"
 
     if os.environ.get('_NT_SYMBOL_PATH', None) is None:
         log_print(f"Your '_NT_SYMBOL_PATH' is not set at all, setting this to {l_default_NT_SYMBOL_PATH}", arg_type="WARNING")
@@ -1025,37 +1039,37 @@ def pdb_load(arg_local_pdb_file: str = "",
 
     plugin_load_and_run("pdb", PDB_CC_USER_WITH_DATA, arg_debug=arg_debug) # See https://reverseengineering.stackexchange.com/questions/8171/
 
-    rc = l_pdb_node.altval(PDB_DLLBASE_NODE_IDX)
-    if not rc:
+    l_return_code = l_pdb_node.altval(PDB_DLLBASE_NODE_IDX)
+    if not l_return_code:
       log_print("Could NOT load PDB", arg_type="ERROR")
       return False
 
+    # The log message window have something like this now, try to parse it
+    # PDB: using PDBIDA provider
+    # PDB: loading E:\temp\ntdll.pdb\9FF79BBA19EBED309623072EA067B20F1\ntdll.pdb
+    # PDB: loaded 1265 types
+    # PDB: total 5018 symbols loaded for "ntdll.pdb"
+
+    l_pdb_load_result: Dict[str, str] = {}
+    l_num_log_lines = 4
+    l_output_msg_lines = ida_output_text(100) # Only 4 lines are output but I read some more if some other plugin/IDA writes to the log
+    for l_line in l_output_msg_lines[::-1]:
+        if l_line.startswith("PDB:"):
+            l_line = l_line[5:] # Strip the "PDB: " prefix"
+
+            if l_line.startswith("loading"):
+                l_pdb_load_result["path"] = l_line[8:] # "loading E:\temp\ntdll.pdb\9FF79BBA19EBED309623072EA067B20F1\ntdll.pdb"
+            elif l_line.startswith("loaded"):
+                l_pdb_load_result["num_types"] = l_line[7:] # "l"oaded 1265 types"
+            elif l_line.startswith("total"):
+                l_pdb_load_result["total"] = l_line[6:] # 'total 5018 symbols loaded for "ntdll.pdb"'
+
+            l_num_log_lines -= 1
+            if l_num_log_lines <= 0:
+                break
+
+    log_print(f"Saved PDB to: {l_pdb_load_result.get('path', '<<< no path >>>')}, total: {l_pdb_load_result.get('total', '<<< no total >>>')}", arg_type="INFO")
     return True
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _netnode_list_sups(arg_netnode: Optional[_ida_netnode.netnode] = None) -> None:
-    ''' Internal function to list first 100 items in the netnode. I'm not sure how to work with these at all '''
-
-    l_netnode = arg_netnode if arg_netnode else _ida_netnode.netnode('$ PE header')
-    log_print("vals:", arg_type="INFO")
-    current_idx = l_netnode.supfirst()
-    for _ in range(0, 100):
-        print(f"valobj(0x{current_idx:x}) =")
-        if l_netnode.valobj() is None:
-            print("<<< valobj == None >>>")
-            continue
-        hex_dump(l_netnode.valobj())
-        print()
-        if l_netnode.supval(current_idx) is None:
-            print("<<< supval == None >>>")
-            continue
-        print(f"supval(0x{current_idx:x}) = ")
-        hex_dump(l_netnode.supval(current_idx))
-        print()
-
-        current_idx = l_netnode.supnext(current_idx)
-        if current_idx == _ida_idaapi.BADADDR:
-            break
 
 class _input_file_object():
     ''' Information about the file that is loaded in IDA such as filename, file type and so on
@@ -1339,7 +1353,7 @@ def function_is_lumina_name(arg_function: EvaluateType, arg_debug: bool = False)
 def _to_bool(arg_user_input: Union[bool, int, str]) -> bool:
     ''' Try to convert a user input to a boolean True or False in a smart way.
     If I cannot parse it, I will return False (and print an error message)
-    
+
     @returns True if I can parse it to something the user want to be true, False otherwise (incl. a string I cannot parse anything useful from)
     '''
 
@@ -1359,7 +1373,7 @@ def _to_bool(arg_user_input: Union[bool, int, str]) -> bool:
 def _change_hexrays_config(arg_key: str, arg_value: str) -> bool:
     ''' In hexrays.cfg, there are many settings that one can set. Use this function to change them '''
     arg_key = arg_key.upper()
-    
+
     if arg_key in ("PSEUDOCODE_SYNCED", "PSEUDOCODE_SYNC_XPOS", "DISPLAY_WAIT_BOX", "COLLAPSE_LVARS", "GENERATE_EA_LABELS", "AUTO_UNHIDE", "GENERATE_EMPTY_LINES"):
         arg_value = "YES" if _to_bool(arg_value) else "NO"
     return bool(_ida_hexrays.change_hexrays_config(f"{arg_key} = {arg_value}"))
@@ -1418,7 +1432,7 @@ def decompile_many(arg_outfile: str = "",
                    arg_functions: Optional[List[EvaluateType]] = None,
                    arg_allow_overwrite_c_file: bool = True,
                    arg_allow_user_to_stop: bool = True,
-                   arg_use_lumina: bool = False, 
+                   arg_use_lumina: bool = False,
                    arg_debug: bool = False) -> bool:
     '''Decompile many (all) functions to a file on disk
        Replacement for ida_hexrays.decompile_many()
@@ -1428,7 +1442,7 @@ def decompile_many(arg_outfile: str = "",
        @param arg_allow_overwrite_c_file Default True. Create a new file or overwrite existing file, if this is False then the fail if the file already exists
     '''
     _ida_auto.auto_wait() # We always want to have the auto analysis done before we start decompiling. This is important when we call this function in batch mode
-    
+
     if not _ida_hexrays.init_hexrays_plugin():
         log_print(f"The decompiler for this architecture ({input_file.processor}) is not loaded.", arg_type="ERROR")
         return False
@@ -2972,7 +2986,7 @@ def disassemble(arg_ea: EvaluateType,
     ''' Disassemble bytes at the given address into assembly string. If you want an object, use ```instruction()``` instead
 
         @param arg_flags Default to ida_lines.GENDSM_FORCE_CODE. Read more: <https://python.docs.hex-rays.com/namespaceida__lines.html#:~:text=GENDSM_FORCE_CODE>
-        
+
         Replacement for idc.generate_disasm_line() and ida_lines.generate_disasm_line() <https://python.docs.hex-rays.com/namespaceida__lines.html#:~:text=generate_disasm_line()>
     '''
     l_addr = address(arg_ea, arg_debug=arg_debug)
@@ -3752,7 +3766,7 @@ def set_type(arg_original_type_name_or_ea: EvaluateType, arg_new_type: Union[str
     if l_addr != _ida_idaapi.BADADDR:
         log_print(f"{arg_original_type_name_or_ea} resolved to 0x{l_addr:x} which means I have to use ida_typeinf.apply_tinfo()", arg_debug)
         log_print(f"Calling _ida_typeinf.apply_tinfo(0x{l_addr:x}, '{l_new_type}', ida_typeinf.TINFO_DEFINITE)", arg_debug)
-        
+
         if not l_new_type.is_func() and not l_new_type.is_funcptr():
             log_print("The type system and the disassembly view can get out of sync. This make_unknown() hack makes sure that whatever was on that address before is now gone", arg_debug)
             make_unknown(l_addr, arg_debug=arg_debug)
@@ -4064,7 +4078,7 @@ def process_list(arg_name_filter_regex: str = ".*", arg_debug: bool = False) -> 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def process_suspend() -> bool:
-    ''' Passthru ida_dbg.suspend_process() '''
+    ''' Passthru for ida_dbg.suspend_process() '''
     return _ida_dbg.suspend_process()
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -4190,7 +4204,7 @@ def _add_link_to_docstring(arg_function: Callable, arg_link: str = "") -> None:
         return
 
     l_link = arg_link if arg_link else _url(arg_function)
-    
+
     setattr(arg_function, "__doc__", l_docstring + "\nRead more: " + l_link)
     return
 
@@ -4211,6 +4225,7 @@ _add_link_to_docstring(_ida_kernwin.process_ui_action)
 _add_link_to_docstring(_ida_kernwin.str2ea)
 _add_link_to_docstring(_ida_loader.load_and_run_plugin)
 _add_link_to_docstring(_ida_nalt.get_ida_notepad_text)
+_add_link_to_docstring(_ida_pro.qexit)
 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -4301,15 +4316,18 @@ def allocate_memory_in_target(arg_size: EvaluateType, arg_executable: bool = Fal
     This function is using the Appcall magic in IDA, it can only be used in an active debugger session.
     It saves the current state and sets the arguments and then calls the function. After the function call is complete, IDA sets the state back to what it was before.
     To know where to set the arguments, the function must have a proper type. You can se how I use the function here under in my code.
+
+    OBS! There are many moving parts in this function and it needs more testing, please report any problems/bugs if you find any!
+
     '''
     # TODO: Needs to be tested more
     # TODO: Split into different functions depending on OS?
-    l_t_size = eval_expression(arg_size, arg_debug=arg_debug)
-    if l_t_size is None:
+    l_temp_size = eval_expression(arg_size, arg_debug=arg_debug)
+    if l_temp_size is None:
         log_print(f"eval_expression({_hex_str_if_int(arg_size)}) failed", arg_type="ERROR")
         return None
-    l_size: int = l_t_size
-    if _ida_name.get_name_ea(_ida_idaapi.BADADDR, '__libc_malloc') != _ida_idaapi.BADADDR:                    # Linux
+    l_size: int = l_temp_size
+    if _ida_name.get_name_ea(_ida_idaapi.BADADDR, '__libc_malloc') != _ida_idaapi.BADADDR:  # Linux
         # TODO: arg_executable is not working. Switch to mmap
         l_malloc = appcall('__libc_malloc', 'void *__fastcall(size_t size)', arg_debug=arg_debug)
         if l_malloc is None:
@@ -4317,7 +4335,7 @@ def allocate_memory_in_target(arg_size: EvaluateType, arg_executable: bool = Fal
             return None
 
         res = l_malloc(l_size)
-    elif _ida_name.get_name_ea(_ida_idaapi.BADADDR, 'kernelbase_VirtualAlloc') != _ida_idaapi.BADADDR:    # Windows
+    elif _ida_name.get_name_ea(_ida_idaapi.BADADDR, 'kernelbase_VirtualAlloc') != _ida_idaapi.BADADDR:  # Windows
         MEM_COMMIT = 0x1000
         PAGE_READWRITE = 0x04
         PAGE_EXECUTE_READWRITE = 0x40
@@ -4808,7 +4826,7 @@ def _idaapi_close_widget(arg_widget: TWidget, arg_options: bool = False) -> None
 
     ida_kernwin.close_widget official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=close_widget()>
 
-    @param arg_options True --> form is closed normally as if the user pressed Enter. False --> form is closed abnormally as if the user pressed Esc. 
+    @param arg_options True --> form is closed normally as if the user pressed Enter. False --> form is closed abnormally as if the user pressed Esc.
     Source: <https://python.docs.hex-rays.com/classida__kernwin_1_1_form.html#:~:text=Close()>
     '''
     if arg_widget.m_IDAs_TWidget_ptr is None:
@@ -5053,7 +5071,7 @@ def function_set_return_type(arg_ea: EvaluateType, arg_new_ret_type: Union[str, 
         return False
     l_function_details = _ida_typeinf.func_type_data_t()
     l_function_tinfo.get_func_details(l_function_details)
-    
+
     l_function_details.rettype = get_type(arg_new_ret_type, arg_debug=arg_debug)
 
     l_function_tinfo.create_func(l_function_details)
@@ -5154,7 +5172,7 @@ setattr(_ida_funcs.func_t, '__bytes__', lambda f: read_bytes(f.start_ea,  f.end_
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _argloc_t_type_to_str(arg_argloc: Union[_ida_typeinf.argloc_t, _ida_typeinf.funcarg_t]) -> Optional[str]:
     ''' Internal function. Convert the int from argloc.atype() to a human readable string '''
-    
+
     l_argloc: _ida_typeinf.argloc_t = arg_argloc.argloc if isinstance(arg_argloc, _ida_typeinf.funcarg_t) else arg_argloc
     l_argloc_dict: Dict[int, str] = _int_to_str_dict_from_module(_ida_typeinf, "ALOC_.*") # l_argloc_dict[_ida_typeinf.ALOC_STACK: int] -> "ALOC_STACK": str
     res = l_argloc_dict.get(l_argloc.atype(), None)
@@ -5210,7 +5228,7 @@ def _op_t_is_reg(self: _ida_ua.op_t, arg_register_name_or_index: Union[int, str,
         if not _ida_idp.parse_reg_name(l_reg_info, arg_register_name_or_index):
             log_print("Invalid register name", arg_type="ERROR")
             return False
-       
+
         return l_reg_info.reg == self.reg and _g_data_type_sizes[self.dtype] == l_reg_info.size
     # isinstance(arg_register_name_or_index, _ida_idp.reg_info_t):
     return arg_register_name_or_index.reg == self.reg and _g_data_type_sizes[self.dtype] == arg_register_name_or_index.size
@@ -5268,7 +5286,7 @@ def _op_t_to_register(arg_operand: _ida_ua.op_t, arg_debug: bool = False) -> Opt
         _ida_idp.parse_reg_name(res, l_reg_name)
         log_print(f"res: {repr(res)}", arg_debug)
         return res
-    
+
     log_print(f"arg_operand is {str(arg_operand)} which is something I cannot handle right now", arg_type="ERROR")
     return None
 
@@ -5633,3 +5651,28 @@ def _netnode_special_netnodes(arg_filter: str = "") -> List[str]:
         if l_name and l_name.startswith("$") and arg_filter in l_name:
             res.append(l_name)
     return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _netnode_list_sups(arg_netnode: Optional[_ida_netnode.netnode] = None) -> None:
+    ''' Internal function to list first 100 items in the netnode. I'm not sure how to work with these at all. Experimental '''
+
+    l_netnode = arg_netnode if arg_netnode else _ida_netnode.netnode('$ PE header')
+    log_print("vals:", arg_type="INFO")
+    current_idx = l_netnode.supfirst()
+    for _ in range(0, 100):
+        print(f"valobj(0x{current_idx:x}) =")
+        if l_netnode.valobj() is None:
+            print("<<< valobj == None >>>")
+            continue
+        hex_dump(l_netnode.valobj())
+        print()
+        if l_netnode.supval(current_idx) is None:
+            print("<<< supval == None >>>")
+            continue
+        print(f"supval(0x{current_idx:x}) = ")
+        hex_dump(l_netnode.supval(current_idx))
+        print()
+
+        current_idx = l_netnode.supnext(current_idx)
+        if current_idx == _ida_idaapi.BADADDR:
+            break
