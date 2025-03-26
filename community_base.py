@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-03-25 22:45:44"
+__version__ = "2025-03-26 23:04:01"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -141,23 +141,42 @@ HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT = 'shift-c' # Select bytes and press Shif
 HOTKEY_COPY_CURRENT_ADDRESS = 'alt-ins' # Copy the current address as hex text into the clipboard. Same shortcut as x64dbg.
 
 BufferType = Union[str, bytes, bytearray, List[str], List[bytes], List[bytearray]]
-
+BoolishType = Union[bool, int, str] # Can be evaluted by my function named _bool()
 # EvaluateType is anything that can be evalutad to an int. E.g. the address() function can take this type and then try to resolve an adress. Give it a str (a label) and it will work, give it a ida_segment.segment_t object and it will give the address to the start of the segment
 EvaluateType = Union[str, int, _ida_idp.reg_info_t, _ida_ua.insn_t, _ida_hexrays.cinsn_t, _ida_hexrays.cfuncptr_t, _ida_funcs.func_t, _ida_idaapi.PyIdc_cvt_int64__, _ida_segment.segment_t, _ida_ua.op_t, _ida_typeinf.funcarg_t, _idautils.Strings.StringItem, _ida_dbg.bpt_t, _ida_idd.modinfo_t, _ida_hexrays.carg_t, _ida_hexrays.cexpr_t, _ida_range.range_t]
 __GLOBAL_LOG_EVERYTHING = False # If this is set to True, then all calls to log_print() will be printed, this can cause massive logs but good for hard to find bugs
 
 # HELPERS ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _int_to_str_dict_from_module(arg_module: Union[ModuleType, str], arg_regexp: str, arg_swap_key_and_value: bool = False) -> Dict[int, str]:
+def _bool(arg_user_input: BoolishType) -> bool:
+    ''' Try to convert a user input to a boolean True or False in a smart way.
+    If I cannot parse it, I will return False (and print an error message)
+
+    @returns True if I can parse it to something the user want to be true, False otherwise (incl. a string I cannot parse anything useful from)
+    '''
+    if isinstance(arg_user_input, str):
+        arg_user_input = arg_user_input.upper()
+        if arg_user_input in ("Y", "YES", "ON", "1", "TRUE", "T"):
+            return True
+
+        if arg_user_input in ("N", "NO", "OFF", "0", "FALSE", "F"):
+            return False
+
+        log_print(f"I could not figure out what you want with the input: '{arg_user_input}'", arg_type="ERROR")
+        return False
+
+    return bool(arg_user_input)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _int_to_str_dict_from_module(arg_module: Union[ModuleType, str], arg_regexp: str) -> Dict[int, str]:
     ''' Internal function. Used to build dict from module enums.
         e.g. _int_to_str_dict_from_module(ida_ua, 'o_.*') -> {0: 'o_void', 1: 'o_reg', 2: 'o_mem', 3: 'o_phrase', 4: 'o_displ', 5: 'o_imm',  6: 'o_far',  7: 'o_near', ... }
- 
+
         @param arg_module The module to find the values in
         @param arg_regexp Regexp to find the enum prefix
-        @param arg_swap_key_and_value You can set this argument to make it Dict[str, int] instead
     '''
     l_module: ModuleType = sys.modules[arg_module] if isinstance(arg_module, str) else arg_module
-    return {getattr(l_module, key): key for key in dir(l_module) if re.fullmatch(arg_regexp, key)}
+    return {getattr(l_module, key): key for key in dir(l_module) if re.fullmatch(arg_regexp, key) and isinstance(getattr(l_module, key), int)}
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _dict_swap_key_and_value(arg_dict: dict) -> dict:
@@ -387,7 +406,7 @@ def ida_plugin_dirs() -> List[str]:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_is_running_in_batch_mode() -> bool:
     ''' Are we running in batch mode? a.k.a. headless
-     Credits goes to https://github.com/arizvisa: <https://github.com/Harding-Stardust/community_base/issues/1>
+    Credits goes to [arizvisa](https://github.com/arizvisa) : <https://github.com/Harding-Stardust/community_base/issues/1>
     '''
     return _ida_kernwin.cvar.batch
 
@@ -401,8 +420,11 @@ def ida_arguments() -> List[str]:
     return PyQt5.Qt.qApp.instance().arguments() # TODO: Ida 9.2 will break this (Qt6)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _process_config_directive(arg_key: str, arg_value: str) -> bool:
+def ida_set_config(arg_key: str, arg_value: str) -> bool:
     ''' in ida.cfg, there are many settings that one can set. Use this function to change them.
+    OBS! There are many IDA settings saved in the registy, see ida_registy_read() on how to read them
+
+    Replacement for ida_idp.process_config_directive()
 
     Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-116-ida-startup-files>
     '''
@@ -412,22 +434,17 @@ def _process_config_directive(arg_key: str, arg_value: str) -> bool:
     if arg_key == "PACK_DATABASE" and arg_value not in ("0", "1", "2"):
         log_print("PACK_DATABASE only accepts values 0, 1 or 2", arg_type="ERROR")
         return False
-    elif arg_key in ("COLLECT_GARBAGE", "ABANDON_DATABASE") and arg_value not in ("YES", "NO"):
-        if arg_value in ("OFF", "0", "FALSE", "F"):
-            arg_value = "NO"
-        elif arg_value in ("ON", "1", "TRUE", "T"):
-            arg_value = "YES"
-        else:
-            log_print(f"{arg_key} only accepts values YES or NO", arg_type="ERROR")
-            return False
+
+    if arg_key in ("COLLECT_GARBAGE", "ABANDON_DATABASE"):
+        arg_value = "YES" if _bool(arg_value) else "NO"
 
     _ida_idp.process_config_directive(f"{arg_key}={arg_value}")
     return True
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_save_database(arg_new_filename: str = "", arg_database_flags: int = -1, arg_snapshot_root: Optional[_ida_loader.snapshot_t] = None, arg_snapshot_attribute: Optional[_ida_loader.snapshot_t] = None) -> bool:
-    ''' Save current database using a new file name. 
-        
+    ''' Save current database using a new file name.
+
     @param arg_new_filename: output database file name; not set means the current path
     @param arg_database_flags: -1 means the current flags, See ida_loader.DBFL_* for flags
     @param arg_snapshot_root: optional, snapshot tree root.
@@ -436,7 +453,7 @@ def ida_save_database(arg_new_filename: str = "", arg_database_flags: int = -1, 
     '''
     l_new_filename = arg_new_filename if arg_new_filename else None
     # return _ida_loader.save_database(outfile=l_new_filename, flags=arg_database_flags, root=arg_snapshot_root, attr=arg_snapshot_attribute)
-    
+
     # TODO: Work here, this will not work whatever I do... >:-(
     # TODO: if arg_database_flags is NOT -1 then it works?
     return _ida_loader.save_database(l_new_filename, arg_database_flags, arg_snapshot_root, arg_snapshot_attribute)
@@ -462,17 +479,17 @@ def ida_exit(arg_exit_code: int = 0, arg_save_database: bool = True, arg_pack_da
     process_config_directive(): <https://python.docs.hex-rays.com/namespaceida__idp.html#:~:text=process_config_directive()>
     '''
     if not arg_save_database:
-        _process_config_directive("ABANDON_DATABASE", "YES")
+        ida_set_config("ABANDON_DATABASE", "YES")
         _ida_pro.qexit(arg_exit_code)
         return # We will never reach this line
 
     if arg_collect_garbage:
-        _process_config_directive("COLLECT_GARBAGE", "YES")
+        ida_set_config("COLLECT_GARBAGE", "YES")
 
     if arg_pack_database:
-        _process_config_directive("PACK_DATABASE", "2") # set the default database packing option to "deflate" in old IDA and "zstd" in 9.1+;
+        ida_set_config("PACK_DATABASE", "2") # set the default database packing option to "deflate" in old IDA and "zstd" in 9.1+;
     else:
-        _process_config_directive("PACK_DATABASE", "1")
+        ida_set_config("PACK_DATABASE", "1")
 
     _ida_pro.qexit(arg_exit_code)
     return # We will never reach this line
@@ -920,7 +937,7 @@ def _compiler_str() -> str:
     '''
     l_compiler_info: _ida_ida.compiler_info_t = _compiler_info()
     l_compiler_id: int = l_compiler_info.id & _ida_typeinf.COMP_MASK
-    l_unsure: bool = bool(l_compiler_info.id & _ida_typeinf.COMP_UNSURE)
+    l_unsure: bool = _bool(l_compiler_info.id & _ida_typeinf.COMP_UNSURE)
     res = _ida_typeinf.get_compiler_name(l_compiler_id)
     res += " (unsure)" if l_unsure else " (sure)"
     return res
@@ -961,32 +978,57 @@ def _add_link_to_docstring(arg_function: Callable, arg_link: str = "") -> None:
 
 # TODO: Add more links
 # Add links to the official documentation for some functions, more will be added
+_add_link_to_docstring(_ida_bytes.bin_search)
+_add_link_to_docstring(_ida_bytes.get_bytes)
 _add_link_to_docstring(_ida_bytes.get_strlit_contents)
+_add_link_to_docstring(_ida_bytes.get_strlit_contents)
+_add_link_to_docstring(_ida_bytes.parse_binpat_str)
+_add_link_to_docstring(_ida_bytes.patch_bytes)
+_add_link_to_docstring(_ida_dbg.get_process_options)
+_add_link_to_docstring(_ida_dbg.get_processes)
 _add_link_to_docstring(_ida_dbg.get_reg_val)
 _add_link_to_docstring(_ida_dbg.refresh_debugger_memory)
 _add_link_to_docstring(_ida_dbg.start_process)
 _add_link_to_docstring(_ida_dbg.update_bpt)
 _add_link_to_docstring(_ida_dbg.wait_for_next_event)
 _add_link_to_docstring(_ida_diskio.get_ida_subdirs)
+_add_link_to_docstring(_ida_funcs.get_func)
+_add_link_to_docstring(_ida_funcs.get_func_name)
+_add_link_to_docstring(_ida_hexrays.decompile)
+_add_link_to_docstring(_ida_hexrays.get_widget_vdui)
 _add_link_to_docstring(_ida_idaapi.notify_when)
+_add_link_to_docstring(_ida_idp.get_reg_name)
 _add_link_to_docstring(_ida_idp.process_config_directive)
 _add_link_to_docstring(_ida_kernwin.activate_widget)
 _add_link_to_docstring(_ida_kernwin.display_widget)
 _add_link_to_docstring(_ida_kernwin.execute_ui_requests)
+_add_link_to_docstring(_ida_kernwin.get_screen_ea)
 _add_link_to_docstring(_ida_kernwin.get_widget_title)
-_add_link_to_docstring(_ida_kernwin.read_range_selection)
+_add_link_to_docstring(_ida_kernwin.get_widget_type)
+_add_link_to_docstring(_ida_kernwin.msg)
 _add_link_to_docstring(_ida_kernwin.process_ui_action)
+_add_link_to_docstring(_ida_kernwin.read_range_selection)
 _add_link_to_docstring(_ida_kernwin.str2ea)
+_add_link_to_docstring(_ida_loader.get_plugin_options)
 _add_link_to_docstring(_ida_loader.load_and_run_plugin)
 _add_link_to_docstring(_ida_loader.save_database)
 _add_link_to_docstring(_ida_nalt.get_ida_notepad_text)
+_add_link_to_docstring(_ida_name.get_name)
+_add_link_to_docstring(_ida_name.set_name)
+_add_link_to_docstring(_ida_netnode.netnode)
 _add_link_to_docstring(_ida_pro.qexit)
+_add_link_to_docstring(_ida_registry.reg_data_type)
+_add_link_to_docstring(_ida_registry.reg_read_binary)
+_add_link_to_docstring(_ida_registry.reg_read_int)
+_add_link_to_docstring(_ida_registry.reg_read_string)
+_add_link_to_docstring(_ida_segment.get_segm_by_name)
 _add_link_to_docstring(_ida_typeinf.get_idati)
+_add_link_to_docstring(_ida_typeinf.parse_decl)
+_add_link_to_docstring(_ida_ua.create_insn)
+_add_link_to_docstring(_ida_ua.decode_insn)
+_add_link_to_docstring(_ida_ua.print_insn_mnem)
 
 
-# _add_link_to_docstring()
-# _add_link_to_docstring()
-# _add_link_to_docstring()
 
 # API extension ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -1030,7 +1072,7 @@ def pe_header_os_version() -> Tuple[int, int]:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pe_header_compiled_time() -> str:
-    ''' Reads the compiled from the PE header. Warning! In win10+ , this is a hash so we can get reproducable builds <https://devblogs.microsoft.com/oldnewthing/20180103-00/?p=97705> '''
+    ''' Reads the compiled from the PE header. Warning! In win10+ , this is a hash so we can get [reproducable builds](https://devblogs.microsoft.com/oldnewthing/20180103-00/?p=97705) '''
     l_os_version = pe_header_os_version()
     if l_os_version >= (10, 0):
         log_print(f"This is file from windows {l_os_version[0]}.{l_os_version[1]} which has reproducable builds so the timestamp is not valid", arg_type="ERROR")
@@ -1040,7 +1082,7 @@ def pe_header_compiled_time() -> str:
     if l_pe_header is None:
         return ""
 
-    l_timestamp_and_hash: bytes = (l_pe_header[8:12])
+    l_timestamp_and_hash: bytes = l_pe_header[8:12]
     l_timestamp = int.from_bytes(l_timestamp_and_hash, byteorder="little")
     l_datetime = datetime.timetuple(datetime.fromtimestamp(l_timestamp, tz=timezone.utc))
     return time.strftime("%Y-%m-%d %H:%M:%S (UTC)", l_datetime)
@@ -1079,7 +1121,7 @@ def pdb_load(arg_local_pdb_file: str = "",
 
     @param arg_local_pdb_file If you have a local PDB file, then set this. If this is not set, download from Microsofts Symbol server
     @param arg_force_reload If you have PDB data, force a new reload and parse
-    @param arg_local_symbol_cache Save the PDB here on the disk, it not set, then use os.environ.get("TEMP")
+    @param arg_local_symbol_cache Save the PDB here on the disk, it not set, then use the same directory as where the IDB is
     @param arg_debug Print debug data during the function call
 
     @return True if everything went fine, False otherwise
@@ -1107,7 +1149,7 @@ def pdb_load(arg_local_pdb_file: str = "",
         return False
     l_imagebase: int = l_temp_imagebase
 
-    l_local_symbol_cache: str = arg_local_symbol_cache if arg_local_symbol_cache else str(os.environ.get("TEMP")) if os.environ.get("TEMP") else str(os.path.dirname(input_file.idb_path))
+    l_local_symbol_cache: str = arg_local_symbol_cache if arg_local_symbol_cache else str(os.path.dirname(input_file.idb_path))
     l_default_NT_SYMBOL_PATH = f"srv*{l_local_symbol_cache}*https://msdl.microsoft.com/download/symbols"
 
     if os.environ.get('_NT_SYMBOL_PATH', None) is None:
@@ -1120,13 +1162,13 @@ def pdb_load(arg_local_pdb_file: str = "",
     l_pdb_node.supset(PDB_DLLNAME_NODE_IDX, l_pdb_file) # the sup* part is usually a str
 
     # TODO: Verify that l_pdb_file actually is set to something
-    
+
     plugin_load_and_run("pdb", PDB_CC_USER_WITH_DATA, arg_debug=arg_debug) # See https://reverseengineering.stackexchange.com/questions/8171/
 
     l_return_code = l_pdb_node.altval(PDB_DLLBASE_NODE_IDX)
     if not l_return_code:
-      log_print("Could NOT load PDB", arg_type="ERROR")
-      return False
+        log_print("Could NOT load PDB", arg_type="ERROR")
+        return False
 
     # The log message window have something like this now, try to parse it
     # PDB: using PDBIDA provider
@@ -1431,36 +1473,16 @@ def function_is_lumina_name(arg_function: EvaluateType, arg_debug: bool = False)
     if l_func is None:
         log_print(f"Could not locate any function at {_hex_str_if_int(arg_function)}", arg_type="ERROR")
         return None
-    return bool(l_func.flags & _ida_funcs.FUNC_LUMINA)
+    return _bool(l_func.flags & _ida_funcs.FUNC_LUMINA)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _to_bool(arg_user_input: Union[bool, int, str]) -> bool:
-    ''' Try to convert a user input to a boolean True or False in a smart way.
-    If I cannot parse it, I will return False (and print an error message)
-
-    @returns True if I can parse it to something the user want to be true, False otherwise (incl. a string I cannot parse anything useful from)
-    '''
-
-    if isinstance(arg_user_input, str):
-        arg_user_input = arg_user_input.upper()
-        if arg_user_input in ("Y", "YES", "ON", "1", "TRUE", "T"):
-            return True
-        elif arg_user_input in ("N", "NO", "OFF", "0", "FALSE", "F"):
-            return False
-        else:
-            log_print(f"I could not figure out what you want with the input: '{arg_user_input}'", arg_type="ERROR")
-            return False
-
-    return bool(arg_user_input)
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _change_hexrays_config(arg_key: str, arg_value: str) -> bool:
+def decompiler_set_config(arg_key: str, arg_value: BoolishType) -> bool:
     ''' In hexrays.cfg, there are many settings that one can set. Use this function to change them '''
     arg_key = arg_key.upper()
 
     if arg_key in ("PSEUDOCODE_SYNCED", "PSEUDOCODE_SYNC_XPOS", "DISPLAY_WAIT_BOX", "COLLAPSE_LVARS", "GENERATE_EA_LABELS", "AUTO_UNHIDE", "GENERATE_EMPTY_LINES"):
-        arg_value = "YES" if _to_bool(arg_value) else "NO"
-    return bool(_ida_hexrays.change_hexrays_config(f"{arg_key} = {arg_value}"))
+        arg_value = "YES" if _bool(arg_value) else "NO"
+    return _bool(_ida_hexrays.change_hexrays_config(f"{arg_key} = {arg_value}"))
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def decompile(arg_ea: EvaluateType,
@@ -1549,14 +1571,14 @@ def decompile_many(arg_outfile: str = "",
         l_flags |= _ida_hexrays.VDRUN_STATS # Print statistics into vd_stats.txt
         l_flags |= _ida_hexrays.VDRUN_PERF # Print performance stats to ida.log
 
-    _ = _change_hexrays_config("COLLAPSE_LVARS", "NO") # If this is set to YES (which I usually have when I do manually work) the decompiled C file will have them collapsed also
+    _ = decompiler_set_config("COLLAPSE_LVARS", "NO") # If this is set to YES (which I usually have when I do manually work) the decompiled C file will have them collapsed also
 
     # Unfortunately, the COLLAPSE_LVARS = NO force us to recompile ALL functions that are gonna be decompiled... YIKES!
     log_print(f"starting decompile_many() --> {arg_outfile}", arg_type="INFO")
     _ida_hexrays.clear_cached_cfuncs()
     res = _ida_hexrays.decompile_many(arg_outfile, arg_functions, l_flags)
     log_print(f"done with decompile_many() --> {arg_outfile}", arg_type="INFO")
-    _ = _change_hexrays_config("COLLAPSE_LVARS", "YES") # TODO: I can't find any way to read if this variable was set before and since I prefer to have it to YES, I hardcoded it here. Sorry!
+    _ = decompiler_set_config("COLLAPSE_LVARS", "YES") # TODO: I can't find any way to read if this variable was set before and since I prefer to have it to YES, I hardcoded it here. Sorry!
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -3091,7 +3113,7 @@ def disassemble(arg_ea: EvaluateType,
     if arg_show_size:
         res += f' ; size: 0x{l_ins.size:x}'
     if arg_show_bytes:
-        res += ' ; bytes: ' + " ".join(f"{b:02x}" for b in l_ins.bytes) # type: ignore[union-attr]
+        res += ' ; bytes: ' + " ".join(f"{b:02x}" for b in bytes(l_ins)) # type: ignore[union-attr]
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -4596,7 +4618,7 @@ def win_LoadLibraryA(arg_dll: str, arg_debug: bool = False) -> Optional[int]:
         else:
             l_error_message: Optional[str] = ctypes.WinError(l_last_error).strerror
             if l_error_message is None: # Can this even happen? mypy say it can but Pylance say it can't
-                 l_error_message = "<<< unknown error >>>"
+                l_error_message = "<<< unknown error >>>"
             log_print(f"LoadLibraryA('{arg_dll}') failed with error code: {l_last_error} (0x{l_last_error:x}), error description: '{l_error_message}'", arg_type="ERROR") #
 
     return res
@@ -4646,7 +4668,7 @@ def win_FreeLibrary(arg_hmodule: EvaluateType, arg_debug: bool = False) -> bool:
         return False
 
     log_print(f"Freeing {l_module.name}", arg_debug)
-    res = bool(l_free_library(l_module.base))
+    res = _bool(l_free_library(l_module.base))
     if not res:
         l_last_error: Optional[int] = win_GetLastError()
         l_error_message: Optional[str] = ctypes.WinError(l_last_error).strerror
@@ -4702,7 +4724,7 @@ def _is_TWidget_TWidget_ptr_or_QtWidget(arg_widget: Any) -> str:
     if ".QtWidgets." in str(type(arg_widget)):
         return "QtWidget"
 
-    log_print(f"arg_widget should be either window title (type: str) or the twidget* object (type: SwigPyObject) or a QtWidget (type: .QtWidgets.)", arg_type="ERROR")
+    log_print("arg_widget should be either window title (type: str) or the twidget* object (type: SwigPyObject) or a QtWidget (type: .QtWidgets.)", arg_type="ERROR")
     return "<<< unknown Widget Type >>>"
 
 class TWidget():
@@ -4728,7 +4750,7 @@ class TWidget():
         elif _is_TWidget_TWidget_ptr_or_QtWidget(arg_TWidget) == "TWidget":
             self.m_IDAs_TWidget_ptr = arg_TWidget.m_IDAs_TWidget_ptr
         else:
-            log_print(f"arg_TWidget should be either window title (type: str) or the twidget* object (type: SwigPyObject) or a QtWidget (type: .QtWidgets.*)", arg_type="ERROR")
+            log_print("arg_TWidget should be either window title (type: str) or the twidget* object (type: SwigPyObject) or a QtWidget (type: .QtWidgets.*)", arg_type="ERROR")
             self.m_IDAs_TWidget_ptr = None
 
         if not self.m_IDAs_TWidget_ptr is None:
@@ -4890,7 +4912,7 @@ def _read_range_selection(arg_TWidget: Optional[TWidget] = None) -> Tuple[bool, 
     ''' Reads the selected addresses that you selected with your mouse (or keyboard)
 
     @param arg_TWidget: TWidget None --> "the last used widget"
-    @return (valid_selection: bool, sel_start: int, sel_end: int)
+    @return (valid_selection: bool, selection_start: int, selection_end: int)
 
     Replacement for ida_kernwin.read_range_selection()
     '''
@@ -5020,43 +5042,43 @@ def _idaapi_reg_data_type(arg_key: str, arg_subkey: Optional[str] = None) -> int
     # TODO: The subkey doesn't seem to work at all? I need to investigate...
 
     l_temp = _ida_registry.reg_data_type(arg_key, arg_subkey)
-    if l_temp == False:
-        return -1
-    return l_temp
+    return l_temp if l_temp else -1
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_registy_read(arg_key: str, arg_subkey: Optional[str] = None) -> Tuple[int, str]:
-    ''' Read from IDAs registy
+def ida_registy_read(arg_key: str, arg_subkey: Optional[str] = None) -> Tuple[str, str]:
+    r''' Read from IDAs registy, on Windows this is the Windows registry: Computer\HKEY_CURRENT_USER\SOFTWARE\Hex-Rays\IDA and on Linux/MAC IDA emulates a registry
+    e.g. print(ida_registy_read("AutoHighlight"))
 
-    @ returns Tuple[reg_type: int, value: str] The reg_type can be found in the docstring of _idaapi_reg_data_type()
+    @ returns Tuple[reg_type: str, value: str]
     Read more <https://python.docs.hex-rays.com/namespaceida__registry.html>
     '''
 
     l_reg_type: int = _idaapi_reg_data_type(arg_key, arg_subkey)
     if l_reg_type == -1: # ERROR
         l_error = f'<<< idaapi_reg_data_type("{arg_key}", "{arg_subkey}") failed >>>'
-        log_print(l_error)
-        return (-1, l_error)
+        log_print(l_error, arg_type="ERROR")
+        return ("ERROR", l_error)
 
+    l_reg_type_as_str: str = _int_to_str_dict_from_module(_ida_registry, "reg_.*").get(l_reg_type, f"<<< Unknown reg type: 0x{l_reg_type:x} >>>")
     if l_reg_type == _ida_registry.reg_sz:
         res = _ida_registry.reg_read_string(arg_key, arg_subkey, "<<< default >>>")
         if res == "<<< default >>>":
             log_print(f'ida_registry.reg_read_string("{arg_key}", "{arg_subkey}") failed', arg_type="ERROR")
-            return (-1, "")
-        return (l_reg_type, res)
+            return ("ERROR", "")
+        return (l_reg_type_as_str, res)
 
-    elif l_reg_type == _ida_registry.reg_binary:
+    if l_reg_type == _ida_registry.reg_binary:
         res = " ".join(hex_parse(_ida_registry.reg_read_binary(arg_key, arg_subkey)))
-        return (l_reg_type, res)
+        return (l_reg_type_as_str, res)
 
-    elif l_reg_type == _ida_registry.reg_dword:
+    if l_reg_type == _ida_registry.reg_dword:
         res = str(_ida_registry.reg_read_int(arg_key, -12345, arg_subkey))
         if res == "-12345":
             log_print(f'ida_registry.reg_read_int("{arg_key}", "{arg_subkey}") failed', arg_type="ERROR")
-            return (-1, "")
-        return (l_reg_type, res)
+            return ("ERROR", "")
+        return (l_reg_type_as_str, res)
 
-    return (-1, f"<<< Not implemented read for type: {l_reg_type} >>>")
+    return ("ERROR", f"<<< Not implemented read for type: 0x{l_reg_type:x} >>>")
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def function_convert_to_usercall(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
@@ -5087,7 +5109,7 @@ def function_convert_to_usercall(arg_ea: EvaluateType, arg_debug: bool = False) 
         log_print("Unknown calling convention, I don't know what to do with: 0x{l_calling_convention:x}", arg_type="ERROR")
         return False
     l_function_tinfo.create_func(l_function_details)
-    return bool(_ida_typeinf.apply_tinfo(l_cfunc.entry_ea, l_function_tinfo, _ida_typeinf.TINFO_DEFINITE))
+    return _bool(_ida_typeinf.apply_tinfo(l_cfunc.entry_ea, l_function_tinfo, _ida_typeinf.TINFO_DEFINITE))
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def function_set_return_type(arg_ea: EvaluateType, arg_new_ret_type: Union[str, _ida_typeinf.tinfo_t], arg_debug: bool = False) -> bool:
@@ -5110,7 +5132,7 @@ def function_set_return_type(arg_ea: EvaluateType, arg_new_ret_type: Union[str, 
     l_function_details.rettype = l_temp_type
 
     l_function_tinfo.create_func(l_function_details)
-    return bool(_ida_typeinf.apply_tinfo(l_cfunc.entry_ea, l_function_tinfo, _ida_typeinf.TINFO_DEFINITE))
+    return _bool(_ida_typeinf.apply_tinfo(l_cfunc.entry_ea, l_function_tinfo, _ida_typeinf.TINFO_DEFINITE))
 
 
 # New members/functions of IDA pythons objects -------------------------------------------------------------------------------------------------
@@ -5246,9 +5268,9 @@ setattr(_ida_pro.strvec_t, '__str__', lambda self: "\n".join([str(simpleline) fo
 setattr(_ida_segment.segment_t, '__repr__', __repr__type_str)
 setattr(_ida_segment.segment_t, '__str__', lambda self: f".name_as_str: {self.name_as_str}, .class_as_str: {self.class_as_str}, .start_ea: 0x{self.start_ea:x}, .end_ea: 0x{self.end_ea:x}, .readable: {self.readable}, .writable: {self.writable}, .executable: {self.executable}")
 setattr(_ida_segment.segment_t, '__len__', lambda self: self.size())
-setattr(_ida_segment.segment_t, 'readable', property(fget=lambda self: bool(self.perm & _ida_segment.SEGPERM_READ), fset=lambda self, value: _segment_permissions(self, arg_readable=value))) # type: ignore[arg-type]
-setattr(_ida_segment.segment_t, 'writable', property(fget=lambda self: bool(self.perm & _ida_segment.SEGPERM_WRITE), fset=lambda self, value: _segment_permissions(self, arg_writable=value))) # type: ignore[arg-type]
-setattr(_ida_segment.segment_t, 'executable', property(fget=lambda self: bool(self.perm & _ida_segment.SEGPERM_EXEC), fset=lambda self, value: _segment_permissions(self, arg_executable=value))) # type: ignore[arg-type]
+setattr(_ida_segment.segment_t, 'readable', property(fget=lambda self: _bool(self.perm & _ida_segment.SEGPERM_READ), fset=lambda self, value: _segment_permissions(self, arg_readable=value))) # type: ignore[arg-type]
+setattr(_ida_segment.segment_t, 'writable', property(fget=lambda self: _bool(self.perm & _ida_segment.SEGPERM_WRITE), fset=lambda self, value: _segment_permissions(self, arg_writable=value))) # type: ignore[arg-type]
+setattr(_ida_segment.segment_t, 'executable', property(fget=lambda self: _bool(self.perm & _ida_segment.SEGPERM_EXEC), fset=lambda self, value: _segment_permissions(self, arg_executable=value))) # type: ignore[arg-type]
 setattr(_ida_segment.segment_t, 'name_as_str', property(fget=_ida_segment.get_segm_name, fset=_ida_segment.set_segm_name)) # '.name' is already taken but it contains an int?
 setattr(_ida_segment.segment_t, 'class_as_str', property(fget=_ida_segment.get_segm_class, fset=_ida_segment.set_segm_class))
 setattr(_ida_segment.segment_t, 'bits', property(fget=lambda self: 0x10 << self.bitness))
@@ -5725,20 +5747,24 @@ def _netnode_list_sups(arg_netnode: Optional[_ida_netnode.netnode] = None) -> No
             break
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _get_highlight(arg_viewer: Optional[TWidget] = None) -> str:
-        ''' If you have clicked in a window on an identifier so that the window highlights the identifer, this can read that identifer.
-        EXPERIMENTAL
-        '''
-        l_viewer = arg_viewer.as_TWidget_ptr() if arg_viewer else _idaapi_get_current_viewer().as_TWidget_ptr()
-        l_ret = _ida_kernwin.get_highlight(l_viewer)
-        if l_ret is None:
-            log_print("No highlighted identifer", arg_type="ERROR")
-            return ""
-        l_highlighted = l_ret[0]
-        l_is_valid = l_ret[1]
-        if l_is_valid:
-            log_print(str(l_is_valid))
-            return l_highlighted
-        
-        log_print("l_is_valid is not valid", arg_type="ERROR")
+def _highlighted_identifier(arg_viewer: Optional[TWidget] = None) -> str:
+    ''' If you have clicked in a window on an identifier so that the window highlights the identifer, this can read that identifer.
+    EXPERIMENTAL
+    '''
+    if not _bool(ida_registy_read("AutoHighlight")[1]):
+        log_print("You have turned off hightlighting in Options -> General -> Browser -> Auto highlight the current identifier which means this function will not work", arg_type="ERROR")
+        return "<<< Auto hightlight is turned OFF >>>"
+
+    l_viewer = arg_viewer.as_TWidget_ptr() if arg_viewer else _idaapi_get_current_viewer().as_TWidget_ptr()
+    l_ret = _ida_kernwin.get_highlight(l_viewer) # TODO: Break out to own function with the check in it
+    if l_ret is None:
+        log_print("No highlighted identifer", arg_type="ERROR")
         return ""
+    l_highlighted = l_ret[0]
+    l_is_valid = l_ret[1]
+    if l_is_valid:
+        log_print(str(l_is_valid))
+        return l_highlighted
+
+    log_print("l_is_valid is not valid", arg_type="ERROR")
+    return ""
