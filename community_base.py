@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-03-26 23:04:01"
+__version__ = "2025-03-30 23:51:23"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -151,7 +151,7 @@ __GLOBAL_LOG_EVERYTHING = False # If this is set to True, then all calls to log_
 def _bool(arg_user_input: BoolishType) -> bool:
     ''' Try to convert a user input to a boolean True or False in a smart way.
     If I cannot parse it, I will return False (and print an error message)
-
+    @param arg_user_input if it's a str, then check for "Y", "YES", "ON", "1", "TRUE", "T"
     @returns True if I can parse it to something the user want to be true, False otherwise (incl. a string I cannot parse anything useful from)
     '''
     if isinstance(arg_user_input, str):
@@ -193,7 +193,7 @@ def _dict_swap_key_and_value(arg_dict: dict) -> dict:
 def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, Dict[str, str]]:
     ''' Various information to help you develop your own scripts.
 
-        Read more: https://python.docs.hex-rays.com/
+        Read more: <https://python.docs.hex-rays.com/>
        '''
     l_abbreviations = {
         'ASG': "Assign",
@@ -253,7 +253,7 @@ def _official_python_doc_url(arg_function: Callable) -> str:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def open_url(arg_text_blob_with_urls_in_it_or_function: Union[str, Callable]) -> None:
-    ''' Opens the default web browser with all URLs in the given text blob
+    ''' Opens the default web browser with all URLs in the given text blob.
         Works well on the docstrings I have enriched with URLs e.g. open_url(ida_kernwin.process_ui_action)
 
         ida_kernwin.open_url docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=open_url()>
@@ -274,11 +274,11 @@ def open_url(arg_text_blob_with_urls_in_it_or_function: Union[str, Callable]) ->
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleType, None] = None) -> str:
-    ''' If you find a bug in IDA or community_base (or any other plugin) you can easy save info about the bug by using this function
-    It will save what file you have open, the version of IDA pro, version of community_base and the bug description
-    Will write a JSON file in the same directory as the IDB
+    ''' If you find a bug in IDA or community_base (or any other plugin) you can easy save info about the bug by using this function.
+    I will save what file you have open, the version of IDA pro, version of community_base and the bug description.
+    I will write a JSON file in the same directory as the IDB
 
-    @param arg_bug_description A long description of the bug. Preferably on how to reproduce it
+    @param arg_bug_description A long description of the bug. Preferably on how to reproduce it.
     @param arg_module_to_blame The name of the module that is buggy, usually it's the plugin name or "IDA Pro"
 
     @return The full path to the bug report
@@ -288,7 +288,7 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
     l_bug_report: Dict[str, str] = {}
     l_bug_report["bug_in_module"] = _python_module_to_str(arg_module_to_blame)
     l_bug_report["IDA_version"] = str(ida_version())
-    l_bug_report["decompiler_version"] = ida_decompiler_version()
+    l_bug_report["decompiler_version"] = decompiler_version()
     l_bug_report["community_base_version"] = __version__
     l_bug_report["python_version"] = str(_python_version()[0]) + "." + str(_python_version()[1]) # Tuple[major: int, minor: int] --> "3.12"
     l_bug_report["datetime"] = _timestamped_line("").strip()
@@ -315,7 +315,7 @@ class __check_if_long_running_script_should_abort_not_working():
     ''' Periodically check if any of the strings "abort.ida", "ida.abort", "ida.stop", "stop.ida" are in the clipboard. If anyone is, then throw an exception to abort the long running task.
     This is also an example on how to use timers. Read more: <https://github.com/HexRaysSA/IDAPython/blob/9.0sp1/examples/ui/register_timer.py>
 
-    OBS! This function is not working as expected and is only left here as an example on how to use _ida_kernwin.register_timer()
+    OBS! This function is not working as expected and is only left here as an example on how to use ida_kernwin.register_timer()
     '''
     def __init__(self):
         l_time_between_calls_in_milliseconds = 1000
@@ -336,7 +336,7 @@ class __check_if_long_running_script_should_abort_not_working():
         res = clipboard.text().strip() in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]
         if res:
             log_print(f"String {clipboard.text().strip()} found in clipboard")
-            log_print("Here should I don something smart to stop the long running script, any ideas?")
+            log_print("Here should I do something smart to stop the long running script, any ideas?")
 
         return -1 if self.times == 0 else self.interval
 
@@ -456,6 +456,7 @@ def ida_save_database(arg_new_filename: str = "", arg_database_flags: int = -1, 
 
     # TODO: Work here, this will not work whatever I do... >:-(
     # TODO: if arg_database_flags is NOT -1 then it works?
+    arg_database_flags = 0xFFFFFFFF
     return _ida_loader.save_database(l_new_filename, arg_database_flags, arg_snapshot_root, arg_snapshot_attribute)
 
     # TypeError: Wrong number or type of arguments for overloaded function 'save_database'.
@@ -465,7 +466,6 @@ def ida_save_database(arg_new_filename: str = "", arg_database_flags: int = -1, 
     # save_database(char const *,uint32)
     # save_database(char const *)
     # save_database()
-
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_exit(arg_exit_code: int = 0, arg_save_database: bool = True, arg_pack_database: bool = True, arg_collect_garbage: bool = False) -> None:
@@ -504,18 +504,17 @@ def _idaapi_get_ida_notepad_text() -> str:
     return _ida_nalt.get_ida_notepad_text() or ""
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def notepad_text(arg_text: Optional[str] = None, arg_debug: bool = False) -> str:
+def notepad_text(arg_text: Optional[str] = None) -> str:
     ''' IDA has a text field that the user can write whatever they want in.
     This function can read and write this text field. '''
 
     if arg_text is not None:
         _ida_nalt.set_ida_notepad_text(str(arg_text))
-    res = _idaapi_get_ida_notepad_text()
-    log_print(f"ida_nalt.get_ida_notepad_text() returned {res}", arg_debug)
-    return res
+
+    return _idaapi_get_ida_notepad_text()
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_decompiler_version() -> str:
+def decompiler_version() -> str:
     ''' What version of Hexrays decompiler we are running '''
     l_arch = f"{input_file.format}, {input_file.bits} bits, {input_file.endian} endian"
     l_error_str: str = f"<<< No decompiler for {l_arch} is loaded >>>"
@@ -560,6 +559,18 @@ def reload_module(arg_module: Union[str, ModuleType, None] = None) -> bool:
     except ModuleNotFoundError as exc:
         log_print(f"Could NOT reload {l_module_name}, exception: {exc}", arg_type="ERROR")
         res = False
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _python_load_module(arg_filepath: str) -> bool:
+    ''' Load a given Python file by full file path '''
+    # TODO: Merge this into reload_module() ?
+    l_directory = os.path.dirname(arg_filepath)
+    l_filename = os.path.basename(arg_filepath)
+    l_saved_cwd = os.getcwd()
+    os.chdir(l_directory)
+    res = reload_module(os.path.splitext(l_filename)[0])
+    os.chdir(l_saved_cwd)
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -611,7 +622,10 @@ def ida_is_64bit() -> bool:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _ida_DLL() -> Any: # TODO: This used to be Union[ctypes.CDLL, ctypes.WinDLL] but WinDLL is not supported on Linux, what to do?
-    ''' Load correct version of ida.dll. Work on IDA 8.4 and 9.0. Example of how to use ctypes. '''
+    ''' Load correct version of ida.dll. Work on IDA 8.4 and 9.0. Example of how to use ctypes.
+
+    Hex-Rays blog about it (OBS! Outdated!): <https://hex-rays.com/blog/calling-ida-apis-from-idapython-with-ctypes>
+    '''
 
     l_bits: str = "64" if ida_is_64bit() else "32"
     if ida_version() >= 900:
@@ -630,8 +644,8 @@ def _ida_DLL() -> Any: # TODO: This used to be Union[ctypes.CDLL, ctypes.WinDLL]
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _loader_name() -> str:
     ''' Internal function. Example of how to use ctypes to call IDA C api.
-    Read more: <https://hex-rays.com/blog/calling-ida-apis-from-idapython-with-ctypes>
-    get_loader_name: <https://cpp.docs.hex-rays.com/loader_8hpp.html#a9c79e47be0a36e47363409f3ce9ce6c5>
+    Hex-Rays blog about it (OBS! Outdated!): <https://hex-rays.com/blog/calling-ida-apis-from-idapython-with-ctypes>
+    [get_loader_name](https://cpp.docs.hex-rays.com/loader_8hpp.html#:~:text=get_loader_name())
     '''
     l_IDA_dll = _ida_DLL()
     l_buf_size: int = 0x100
@@ -1027,6 +1041,14 @@ _add_link_to_docstring(_ida_typeinf.parse_decl)
 _add_link_to_docstring(_ida_ua.create_insn)
 _add_link_to_docstring(_ida_ua.decode_insn)
 _add_link_to_docstring(_ida_ua.print_insn_mnem)
+_add_link_to_docstring(_ida_loader.get_fileregion_ea) # TODO: Implement wrapper
+_add_link_to_docstring(_ida_loader.get_fileregion_offset) # TODO: Implement wrapper
+_add_link_to_docstring(_ida_loader.gen_file) # TODO: Implement wrapper
+_add_link_to_docstring(_ida_loader.base2file) # TODO: Implement wrapper
+_add_link_to_docstring(_ida_kernwin.get_viewer_user_data) # TODO: Implement wrapper
+_add_link_to_docstring(_ida_kernwin.twinpos_t) # TODO: Implement wrapper
+_add_link_to_docstring(_ida_kernwin.read_selection) # TODO: Implement wrapper
+# _add_link_to_docstring() # TODO: Implement wrapper
 
 
 
@@ -1039,10 +1061,7 @@ def pe_header() -> Optional[bytes]:
 
         returns The PE header as bytes if we are in a PE file and None if we don't have any PE header
     '''
-    l_pe_node = _ida_netnode.netnode("$ PE header")
-    if l_pe_node == _ida_netnode.BADNODE:
-        return None
-    return l_pe_node.valobj()
+    return _idautils.peutils_t().header()
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pe_header_linker_version() -> Tuple[int, int]:
@@ -1053,6 +1072,7 @@ def pe_header_linker_version() -> Tuple[int, int]:
     '''
     l_pe_header = pe_header()
     if l_pe_header is None:
+        log_print("No PE header found", arg_type="ERROR")
         return (0, 0)
 
     l_major_version: int = l_pe_header[0x1A]
@@ -1064,6 +1084,7 @@ def pe_header_os_version() -> Tuple[int, int]:
     ''' Get the OS version from the PE header '''
     l_pe_header = pe_header()
     if l_pe_header is None:
+        log_print("No PE header found", arg_type="ERROR")
         return (0, 0)
 
     l_major_version: int = int.from_bytes(l_pe_header[0x40:0x41], byteorder="little")
@@ -1080,6 +1101,7 @@ def pe_header_compiled_time() -> str:
 
     l_pe_header = pe_header()
     if l_pe_header is None:
+        log_print("No PE header found", arg_type="ERROR")
         return ""
 
     l_timestamp_and_hash: bytes = l_pe_header[8:12]
@@ -1099,7 +1121,7 @@ def pdb_path() -> str:
         if res:
             return res
 
-    l_pe_netnode = _ida_netnode.netnode('$ PE header') # No PDB is loaded, let's read some info from the PE header
+    l_pe_netnode = _ida_netnode.netnode(_idautils.peutils_t().PE_NODE) # No PDB is loaded, let's read some info from the PE header
     if l_pe_netnode == _ida_netnode.BADNODE:
         return ""
 
@@ -1119,8 +1141,8 @@ def pdb_load(arg_local_pdb_file: str = "",
     Code taken from <https://gist.github.com/patois/b3f329868934710fbc81218ce1d6d722>
     Microsoft symbol server info: <https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/microsoft-public-symbols>
 
-    @param arg_local_pdb_file If you have a local PDB file, then set this. If this is not set, download from Microsofts Symbol server
-    @param arg_force_reload If you have PDB data, force a new reload and parse
+    @param arg_local_pdb_file If you have a local PDB file, then set this. If this is not set then download from Microsofts Symbol server
+    @param arg_force_reload If you already have PDB data, force a new reload and parse
     @param arg_local_symbol_cache Save the PDB here on the disk, it not set, then use the same directory as where the IDB is
     @param arg_debug Print debug data during the function call
 
@@ -1701,7 +1723,7 @@ def dump_to_disk(arg_ea_start: EvaluateType = 0,
         log_print("You need to give arg_ea_start and arg_len OR select the range of bytes you want to dump.", arg_type="ERROR")
         return None
 
-    l_valid_selection, l_selection_start, l_selection_end = _read_range_selection()
+    l_valid_selection, l_selection_start, l_selection_end = _read_range_selection(arg_TWidget=None, arg_allow_one_line=True)
     if l_valid_selection:
         arg_ea_start = min(l_selection_start, l_selection_end)
         l_len: int = max(l_selection_end, l_selection_start) - arg_ea_start
@@ -1757,9 +1779,10 @@ def dump_to_disk(arg_ea_start: EvaluateType = 0,
 def bookmark(arg_ea: EvaluateType, arg_description: Optional[str] = None, arg_debug: bool = False) -> Optional[str]:
     ''' Get bookmark at given EA (Effective Address), returns an empty str "" if there is no bookmark on that EA
     IDA has started to call these "marked positions"
-    Read more on get_marked_pos: <https://python.docs.hex-rays.com/namespaceida__idc.html#:~:text=get_marked_pos()>
-    Read more on mark_position: <https://python.docs.hex-rays.com/namespaceida__idc.html#:~:text=mark_position()>
-    Read more on IDC reference: <https://docs.hex-rays.com/developer-guide/idc/idc-api-reference/alphabetical-list-of-idc-functions/367>
+    [Read more on get_marked_pos](https://python.docs.hex-rays.com/namespaceida__idc.html#:~:text=get_marked_pos())
+    [Read more on mark_position](https://python.docs.hex-rays.com/namespaceida__idc.html#:~:text=mark_position())
+    [Read more on IDC reference](https://docs.hex-rays.com/developer-guide/idc/idc-api-reference/alphabetical-list-of-idc-functions/367)
+
     You can delete a bookmark by setting arg_description = ""
     @param arg_ea The address you want the bookmark on
     @param arg_description if this is set, then we create a bookmark on that ea (overwriting whatever was there before), if this is the empty str, the the bookmark is deleted
@@ -2026,8 +2049,6 @@ def function_prototype(arg_function_name_or_ea: EvaluateType,
 def _idaapi_get_func_name(arg_ea: int) -> str:
     ''' Wrapper for ida_funcs.get_func_name()
     IDA Bug: The docstring say "@return: length of the function name" which is wrong
-
-    Tag: community fix, IDA bug
     '''
     l_get_func_name_res = _ida_funcs.get_func_name(arg_ea)
     return l_get_func_name_res or  ""
@@ -2050,6 +2071,7 @@ def name(arg_ea: EvaluateType,
     Replacement for ida_name.get_name_ea() and ida_name.set_name()
 
     '''
+    # TODO: This will not work with setting name on lvar_t, modinfo_t, ida_ua_op_t, segment_t
     if isinstance(arg_ea, _ida_hexrays.lvar_t):
         res = arg_ea.name
         log_print(f"arg_ea is ida_hexrays.lvar_t, so instead of looking up the address, I use the member 'name' == {res}", arg_debug)
@@ -2113,33 +2135,41 @@ def _idaapi_demangle_name(arg_name: str, arg_disable_mask: int, arg_demreq=_ida_
     IDA bug: Docstring say "demangle_name(name, disable_mask, demreq=DQT_FULL) -> int32" which is wrong
     In idc.py, we can read "If the input name cannot be demangled, returns None"
 
+    @param arg_name: The string to demangle
+    @param arg_disable_mask: No idea what this is
+    @param arg_demreq: How to show the name, see ida_name.DQT_* for more info
+
     @return Returns the demangled name, empty str "" on fail
     '''
     return _ida_name.demangle_name(arg_name, arg_disable_mask, arg_demreq) or ""
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def demangle_string(arg_mangled_name: str,
-                  arg_flags: int = 0,
-                  arg_debug: bool = False,
-                  arg_allow_brute_force: bool = False
+                  arg_disable_mask: int = 0,
+                  arg_demangle_type: int =_ida_name.DQT_FULL,
+                  arg_allow_brute_force: bool = False,
+                  arg_debug: bool = False
                   ) -> str:
     ''' Demangles a string. Can try to brute force demangle some names that IDA usually doesn't like.
-    @param arg_flags: int extra flags to ida_name.demangle_name(). To he honest, I don't know what these flags are.
+    @param arg_mangled_name: str, the string to demangle
+    @param arg_disable_mask: int, extra flags to ida_name.demangle_name(). To he honest, I don't know what these flags are.
+    @param arg_demangle_type: int, [How to demangle the name](https://cpp.docs.hex-rays.com/name_8hpp.html#:~:text=enum%20demreq_type_t)
+    @param arg_allow_brute_force: If the name cannot be mangled as it is, I can try to "fuzzy" demangle it. Use on your own risk.
 
     @return Returns the demangled name, empty str "" on fail
     '''
-    res = _idaapi_demangle_name(arg_mangled_name, arg_flags)
+    res = _idaapi_demangle_name(arg_mangled_name, arg_disable_mask, arg_demangle_type)
     if not res:
         if arg_allow_brute_force:
             for i in range(1, len(arg_mangled_name)):
-                res = _idaapi_demangle_name(arg_mangled_name[i:], arg_flags)
-                log_print(f"ida_name.demangle_name('{arg_mangled_name[i:]}', {arg_flags}) resulted in {res} on try number {i}", arg_debug)
+                res = _idaapi_demangle_name(arg_mangled_name[i:], arg_disable_mask, arg_demangle_type)
+                log_print(f"ida_name.demangle_name('{arg_mangled_name[i:]}', {arg_disable_mask}) resulted in {res} on try number {i}", arg_debug)
                 if res != "":
                     return res
         log_print(f"Could not demangle the name '{arg_mangled_name}' in any meaningful way", arg_type="WARNING")
         return ""
 
-    log_print(f"ida_name.demangle_name('{arg_mangled_name}', {arg_flags}) resulted in {res}", arg_debug)
+    log_print(f"ida_name.demangle_name('{arg_mangled_name}', {arg_disable_mask}) resulted in {res}", arg_debug)
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -2446,7 +2476,7 @@ def imports(arg_debug: bool = False) -> Dict[str, Dict[str, Tuple[int, int]]]:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def exports(arg_debug: bool = False) -> Dict[int, Tuple[int, int, str]]:
-    ''' Get all exported functions including start/entrypoint. The dict returned is Dict[ea: int] -> (index: int, ordinal: int, name: str) '''
+    ''' Get all exported functions including start/entrypoint. The dict returned is Dict[ea: int, (index: int, ordinal: int, name: str)] '''
     res = {}
     for index, ordinal, ea, l_name in _idautils.Entries():
         res[ea] = (index, ordinal, l_name)
@@ -4908,10 +4938,11 @@ def _idaapi_get_last_widget(arg_mask: int = -1) -> TWidget:
     return TWidget(_ida_kernwin.get_last_widget(arg_mask))
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _read_range_selection(arg_TWidget: Optional[TWidget] = None) -> Tuple[bool, int, int]:
+def _read_range_selection(arg_TWidget: Optional[TWidget] = None, arg_allow_one_line: bool = True) -> Tuple[bool, int, int]:
     ''' Reads the selected addresses that you selected with your mouse (or keyboard)
 
     @param arg_TWidget: TWidget None --> "the last used widget"
+    @param arg_allow_one_line: If you mark text on 1 line and run IDAs ida_kernwin.read_range_selection() then you will get an invalid selection, with this argument set then return current_address() instead
     @return (valid_selection: bool, selection_start: int, selection_end: int)
 
     Replacement for ida_kernwin.read_range_selection()
@@ -4919,9 +4950,86 @@ def _read_range_selection(arg_TWidget: Optional[TWidget] = None) -> Tuple[bool, 
     l_widget = arg_TWidget.as_TWidget_ptr() if arg_TWidget else None
     l_valid_selection, l_start_address, l_end_address = _ida_kernwin.read_range_selection(l_widget)
     if not l_valid_selection:
+
+        if arg_allow_one_line:
+            return (True, current_address(), _ida_bytes.get_item_end(current_address()))
+
+        log_print("You haven't selected any addresses", arg_type="ERROR")
         return (False, 0, 0)
 
     return (l_valid_selection, l_start_address, l_end_address)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _get_widget_lines(arg_TWidget: TWidget, arg_twin_pos_start: _ida_kernwin.twinpos_t, arg_twin_pos_end: _ida_kernwin.twinpos_t) -> List[str]:
+    """
+    get lines between places arg_twin_pos_start and arg_twin_pos_end in widget
+
+    Code taken from examples: dump_selection.py but changed to fix the bug where the user select some bytes on on the same line and to remove the prepended spaces
+    """
+    l_user_data = _ida_kernwin.get_viewer_user_data(arg_TWidget.as_TWidget_ptr())
+    l_line_array = _ida_kernwin.linearray_t(l_user_data)
+    l_line_array.set_place(arg_twin_pos_start.at)
+    lines = []
+    while True:
+        cur_place = l_line_array.get_place()
+        first_line_ref = _ida_kernwin.l_compare2(cur_place, arg_twin_pos_start.at, l_user_data)
+        last_line_ref = _ida_kernwin.l_compare2(cur_place, arg_twin_pos_end.at, l_user_data)
+        if last_line_ref > 0: # beyond last line
+            break
+        line = _ida_lines.tag_remove(l_line_array.down())
+        if last_line_ref == 0: # at last line
+            if first_line_ref == last_line_ref:
+                line = line[arg_twin_pos_start.x:arg_twin_pos_end.x]
+            else:
+                line = line[0:arg_twin_pos_end.x]
+        elif first_line_ref == 0: # at first line
+            line = line[arg_twin_pos_start.x:]
+        lines.append(line)
+    return lines
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def ui_selected_text(arg_TWidget: Optional[TWidget] = None) -> str:
+    ''' Returns the selected text
+
+    @param arg_TWidget The widget to get the selected text from, if set to None, then get the selected text from the last used widget
+
+    Code taken from examples: dump_selection.py
+    '''
+    res = ""
+    l_start_pos = _ida_kernwin.twinpos_t()
+    l_end_pos = _ida_kernwin.twinpos_t()
+    # l_view = TWidget(_ida_kernwin.get_current_viewer())
+    l_view = arg_TWidget if arg_TWidget else _idaapi_get_last_widget()
+    if _ida_kernwin.read_selection(l_view.as_TWidget_ptr(), l_start_pos, l_end_pos):
+        lines = _get_widget_lines(l_view, l_start_pos, l_end_pos)
+        res += "\n".join(lines)
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def ui_highlighted_identifier(arg_viewer: Optional[TWidget] = None, arg_allow_selected_text: bool = True) -> Optional[str]:
+    ''' If you have clicked in a window on an identifier so that the window highlights the identifer, this can read that identifer. '''
+    if not _bool(ida_registy_read("AutoHighlight")[1]):
+        log_print("You have turned off hightlighting in Options -> General -> Browser -> Auto highlight the current identifier which means this function will not work", arg_type="ERROR")
+        return None
+
+    l_viewer = arg_viewer.as_TWidget_ptr() if arg_viewer else _idaapi_get_current_viewer().as_TWidget_ptr()
+    l_ret = _ida_kernwin.get_highlight(l_viewer) # TODO: Break out to own function with the check in it
+    if l_ret is None:
+        log_print("No highlighted identifer", arg_type="ERROR")
+        return None
+    l_highlighted = l_ret[0]
+    l_is_valid = l_ret[1]
+    if l_is_valid:
+        return l_highlighted
+
+    # If we get there, then the user might have selected text with the mouse and not just clicked an identifer in the UI
+    if arg_allow_selected_text:
+        return ui_selected_text(arg_viewer)
+
+    log_print("l_is_valid is not valid", arg_type="ERROR")
+    return ""
+
+
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_main_window() -> TWidget:
@@ -5083,7 +5191,7 @@ def ida_registy_read(arg_key: str, arg_subkey: Optional[str] = None) -> Tuple[st
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def function_convert_to_usercall(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
     ''' Convert a function to __usercall (or __userpurge)
-    Code is taken almost a pure copy from HexraysPyTools <https://github.com/oopsmishap/HexRaysPyTools/blob/4742ce4ac7db72ad0cfb862d34cb15065b1b136e/HexRaysPyTools/callbacks/function_signature_modifiers.py#L16>
+    Code is almost a pure copy from HexraysPyTools <https://github.com/oopsmishap/HexRaysPyTools/blob/4742ce4ac7db72ad0cfb862d34cb15065b1b136e/HexRaysPyTools/callbacks/function_signature_modifiers.py#L16>
 
     Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-51-custom-calling-conventions>
 
@@ -5306,19 +5414,19 @@ def _op_t__str__(self: _ida_ua.op_t, arg_debug: bool = False) -> str:
     log_print(f"l_parsed: {l_parsed}", arg_debug)
 
     l_temp = l_parsed.get('register', None)
-    if l_temp:
+    if l_temp is not None:
         return str(l_temp)
 
     l_temp = l_parsed.get('address', None)
-    if l_temp:
+    if l_temp is not None:
         return _hex_str_if_int(l_temp, arg_debug=arg_debug)
 
     l_temp = l_parsed.get('value', None)
-    if l_temp:
+    if l_temp is not None:
         return _hex_str_if_int(l_temp, arg_debug=arg_debug)
 
     l_base_reg = l_parsed.get('base_register', None)
-    if l_base_reg:
+    if l_base_reg is not None:
         l_displacement = l_parsed['displacement']
         l_displacement_string = _signed_hex_text(l_displacement) if l_displacement else ""
         l_scale_string = ""
@@ -5703,68 +5811,3 @@ def _comment_copy_from_disassembly_to_decompiler(arg_function: EvaluateType,  ar
                 _comment_set_decompiler(l_ea, l_disassembly_comment, arg_cached_cfunc=l_cfunc)
 
     return True
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _netnode_special_netnodes(arg_filter: str = "") -> List[str]:
-    ''' Internal function. <https://python.docs.hex-rays.com/namespaceida__netnode.html> Used to play with the netnodes
-    EXPERIMENTAL
-    '''
-    res = []
-    l_node = _ida_netnode.netnode()
-    l_node.start()
-    for _ in range(0, 10000000):
-        l_node.next()
-        l_name = l_node.get_name()
-        if l_name and l_name.startswith("$") and arg_filter in l_name:
-            res.append(l_name)
-    return res
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _netnode_list_sups(arg_netnode: Optional[_ida_netnode.netnode] = None) -> None:
-    ''' Internal function to list first 100 items in the netnode. I'm not sure how to work with these at all.
-    EXPERIMENTAL
-    '''
-
-    l_netnode = arg_netnode if arg_netnode else _ida_netnode.netnode('$ PE header')
-    log_print("vals:", arg_type="INFO")
-    current_idx = l_netnode.supfirst()
-    for _ in range(0, 100):
-        print(f"valobj(0x{current_idx:x}) =")
-        if l_netnode.valobj() is None:
-            print("<<< valobj == None >>>")
-            continue
-        hex_dump(l_netnode.valobj())
-        print()
-        if l_netnode.supval(current_idx) is None:
-            print("<<< supval == None >>>")
-            continue
-        print(f"supval(0x{current_idx:x}) = ")
-        hex_dump(l_netnode.supval(current_idx))
-        print()
-
-        current_idx = l_netnode.supnext(current_idx)
-        if current_idx == _ida_idaapi.BADADDR:
-            break
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _highlighted_identifier(arg_viewer: Optional[TWidget] = None) -> str:
-    ''' If you have clicked in a window on an identifier so that the window highlights the identifer, this can read that identifer.
-    EXPERIMENTAL
-    '''
-    if not _bool(ida_registy_read("AutoHighlight")[1]):
-        log_print("You have turned off hightlighting in Options -> General -> Browser -> Auto highlight the current identifier which means this function will not work", arg_type="ERROR")
-        return "<<< Auto hightlight is turned OFF >>>"
-
-    l_viewer = arg_viewer.as_TWidget_ptr() if arg_viewer else _idaapi_get_current_viewer().as_TWidget_ptr()
-    l_ret = _ida_kernwin.get_highlight(l_viewer) # TODO: Break out to own function with the check in it
-    if l_ret is None:
-        log_print("No highlighted identifer", arg_type="ERROR")
-        return ""
-    l_highlighted = l_ret[0]
-    l_is_valid = l_ret[1]
-    if l_is_valid:
-        log_print(str(l_is_valid))
-        return l_highlighted
-
-    log_print("l_is_valid is not valid", arg_type="ERROR")
-    return ""
