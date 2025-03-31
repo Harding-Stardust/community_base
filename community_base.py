@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-03-30 23:51:23"
+__version__ = "2025-03-31 23:44:59"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -895,68 +895,6 @@ def google(arg_search: str) -> str:
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_licence_info(arg_delete_user_info_from_IDB: bool = False) -> Dict[str, str]:
-    ''' Gets the license info. This function serves as example of 2 things: 1. How to get info that is not easy to get in a real way. 2. That your name is in every IDB, privacy warning!
-
-    @return {"serial_number": serial_number: str, "name_info": name_info: str}
-    '''
-    res = {"serial_number": "Unknown", "name_info": "Unknown"}
-    l_lines: List[str] = _ida_lines.generate_disassembly(input_file.min_original_ea, max_lines=100, as_stack=False, notags=True)[1]
-    l_next_line_is_user_info: bool = False
-    for l_line in l_lines:
-        if l_next_line_is_user_info:
-            l_next_line_is_user_info = False
-            l_name_or_email_match = re.match(r".*\s\s\s([^\s].*[^\s])\s\s\s", l_line)
-            if l_name_or_email_match:
-                res["name_info"] = l_name_or_email_match.group(1)
-        else:
-            l_license_info_match = re.match(".*License info: (.*?) ", l_line)
-            if l_license_info_match:
-                res["serial_number"] = l_license_info_match.group(1)
-                l_next_line_is_user_info = True
-
-    if arg_delete_user_info_from_IDB:
-        _ = _ida_licence_info_delete()
-
-    return res
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _ida_licence_info_delete() -> bool:
-    ''' Deletes the user info in the IDB, if you do not want your licence info to be in the database for NEW databases then edit ida.cfg and set STORE_USER_INFO = NO '''
-
-    l_idc_return_value = _ida_expr.idc_value_t()
-    _ida_expr.eval_idc_expr(l_idc_return_value, 0, "del_user_info()")
-    if l_idc_return_value.vtype != chr(_ida_expr.VT_LONG): # https://cpp.docs.hex-rays.com/group___v_t__.html
-        log_print("Unknown error", arg_type="ERROR")
-        return False
-    return True
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _compiler_info() -> _ida_ida.compiler_info_t:
-    ''' Replacement for ida_ida.inf_get_cc()
-
-    Official docs: <https://cpp.docs.hex-rays.com/structcompiler__info__t.html>
-    more info: <https://youtu.be/2w8LdSCPUQc?t=1369>
-    '''
-    res = _ida_ida.compiler_info_t() # Create empty objext
-    _ida_ida.inf_get_cc(res) # Fill the object with info
-    return res
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _compiler_str() -> str:
-    ''' What compiler was used according to IDA?
-
-    Official docs for compiler id: <https://cpp.docs.hex-rays.com/group___c_o_m_p__.html>
-    more info: <https://youtu.be/2w8LdSCPUQc?t=1369>
-    '''
-    l_compiler_info: _ida_ida.compiler_info_t = _compiler_info()
-    l_compiler_id: int = l_compiler_info.id & _ida_typeinf.COMP_MASK
-    l_unsure: bool = _bool(l_compiler_info.id & _ida_typeinf.COMP_UNSURE)
-    res = _ida_typeinf.get_compiler_name(l_compiler_id)
-    res += " (unsure)" if l_unsure else " (sure)"
-    return res
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _new_file_opened_notification_callback(arg_nw_code: int, arg_is_old_database: int) -> None:
     ''' Callback that is triggered whenever a file is opened in IDA Pro.
 
@@ -1054,6 +992,67 @@ _add_link_to_docstring(_ida_kernwin.read_selection) # TODO: Implement wrapper
 
 # API extension ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def ida_licence_info(arg_delete_user_info_from_IDB: bool = False) -> Dict[str, str]:
+    ''' Gets the license info. This function serves as example of 2 things: 1. How to get info that is not easy to get in a real way. 2. That your name is in every IDB, privacy warning!
+
+    @return {"serial_number": serial_number: str, "name_info": name_info: str}
+    '''
+    res = {"serial_number": "Unknown", "name_info": "Unknown"}
+    l_lines: List[str] = _ida_lines.generate_disassembly(input_file.min_original_ea, max_lines=100, as_stack=False, notags=True)[1]
+    l_next_line_is_user_info: bool = False
+    for l_line in l_lines:
+        if l_next_line_is_user_info:
+            l_next_line_is_user_info = False
+            l_name_or_email_match = re.match(r".*\s\s\s([^\s].*[^\s])\s\s\s", l_line)
+            if l_name_or_email_match:
+                res["name_info"] = l_name_or_email_match.group(1)
+        else:
+            l_license_info_match = re.match(".*License info: (.*?) ", l_line)
+            if l_license_info_match:
+                res["serial_number"] = l_license_info_match.group(1)
+                l_next_line_is_user_info = True
+
+    if arg_delete_user_info_from_IDB:
+        _ = _ida_licence_info_delete()
+
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _ida_licence_info_delete() -> bool:
+    ''' Deletes the user info in the IDB, if you do not want your licence info to be in the database for NEW databases then edit ida.cfg and set STORE_USER_INFO = NO '''
+
+    l_idc_return_value = _ida_expr.idc_value_t()
+    _ida_expr.eval_idc_expr(l_idc_return_value, 0, "del_user_info()")
+    if l_idc_return_value.vtype != chr(_ida_expr.VT_LONG): # https://cpp.docs.hex-rays.com/group___v_t__.html
+        log_print("Unknown error", arg_type="ERROR")
+        return False
+    return True
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _compiler_info() -> _ida_ida.compiler_info_t:
+    ''' Replacement for ida_ida.inf_get_cc()
+
+    Official docs: <https://cpp.docs.hex-rays.com/structcompiler__info__t.html>
+    more info: <https://youtu.be/2w8LdSCPUQc?t=1369>
+    '''
+    res = _ida_ida.compiler_info_t() # Create empty objext
+    _ida_ida.inf_get_cc(res) # Fill the object with info
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _compiler_str() -> str:
+    ''' What compiler was used according to IDA?
+
+    Official docs for compiler id: <https://cpp.docs.hex-rays.com/group___c_o_m_p__.html>
+    more info: <https://youtu.be/2w8LdSCPUQc?t=1369>
+    '''
+    l_compiler_info: _ida_ida.compiler_info_t = _compiler_info()
+    l_compiler_id: int = l_compiler_info.id & _ida_typeinf.COMP_MASK
+    l_unsure: bool = _bool(l_compiler_info.id & _ida_typeinf.COMP_UNSURE)
+    res = _ida_typeinf.get_compiler_name(l_compiler_id)
+    res += " (unsure)" if l_unsure else " (sure)"
+    return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pe_header() -> Optional[bytes]:
@@ -1455,6 +1454,23 @@ def relative_virtual_address(arg_ea: EvaluateType, arg_debug: bool = False) -> O
     return l_addr - input_file.imagebase
 
 rva = relative_virtual_address
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def fileoffset_to_virtual_address(arg_file_offset: int) -> int:
+    ''' Take in a file offset and return the Virtual Address that matches to '''
+    return _ida_loader.get_fileregion_ea(arg_file_offset)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def virtual_address_to_fileoffset(arg_ea: EvaluateType) -> int:
+    ''' Take in a virtual address and return the file offset 
+    
+    @return -1 on fail, otherwise the file offset
+    '''
+    l_addr: int = address(arg_ea)
+    if l_addr == _ida_idaapi.BADADDR:
+        log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
+        return -1
+    return _ida_loader.get_fileregion_offset(l_addr)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def function(arg_ea: EvaluateType,
