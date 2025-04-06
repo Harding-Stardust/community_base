@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-03-31 23:44:59"
+__version__ = "2025-04-06 22:52:01"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -109,6 +109,7 @@ import ida_bytes as _ida_bytes # type: ignore[import-untyped]
 import ida_dbg as _ida_dbg # type: ignore[import-untyped]
 import ida_expr as _ida_expr # type: ignore[import-untyped]
 import ida_funcs as _ida_funcs # type: ignore[import-untyped]
+import ida_fpro as _ida_fpro # type: ignore[import-untyped]
 import ida_hexrays as _ida_hexrays # type: ignore[import-untyped]
 import ida_idaapi as _ida_idaapi # type: ignore[import-untyped]
 import ida_ida as _ida_ida # type: ignore[import-untyped]
@@ -442,30 +443,21 @@ def ida_set_config(arg_key: str, arg_value: str) -> bool:
     return True
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_save_database(arg_new_filename: str = "", arg_database_flags: int = -1, arg_snapshot_root: Optional[_ida_loader.snapshot_t] = None, arg_snapshot_attribute: Optional[_ida_loader.snapshot_t] = None) -> bool:
+def ida_save_database(arg_new_filename: str = "", arg_database_flags: int = 0xFFFFFFFF, arg_snapshot_root: Optional[_ida_loader.snapshot_t] = None, arg_snapshot_attribute: Optional[_ida_loader.snapshot_t] = None) -> bool:
     ''' Save current database using a new file name.
 
     @param arg_new_filename: output database file name; not set means the current path
-    @param arg_database_flags: -1 means the current flags, See ida_loader.DBFL_* for flags
+    @param arg_database_flags: 0xFFFFFFFF means the current flags, See ida_loader.DBFL_* for flags
     @param arg_snapshot_root: optional, snapshot tree root.
     @param arg_snapshot_attribute: optional, snapshot attributes
     @returns success
     '''
     l_new_filename = arg_new_filename if arg_new_filename else None
-    # return _ida_loader.save_database(outfile=l_new_filename, flags=arg_database_flags, root=arg_snapshot_root, attr=arg_snapshot_attribute)
+    l_my_extension = os.path.splitext(input_file.idb_path)[1]
+    if l_new_filename and not l_new_filename.endswith(l_my_extension):
+        l_new_filename += l_my_extension
 
-    # TODO: Work here, this will not work whatever I do... >:-(
-    # TODO: if arg_database_flags is NOT -1 then it works?
-    arg_database_flags = 0xFFFFFFFF
-    return _ida_loader.save_database(l_new_filename, arg_database_flags, arg_snapshot_root, arg_snapshot_attribute)
-
-    # TypeError: Wrong number or type of arguments for overloaded function 'save_database'.
-    # Possible C/C++ prototypes are:
-    # save_database(char const *,uint32,snapshot_t const *,snapshot_t const *)
-    # save_database(char const *,uint32,snapshot_t const *)
-    # save_database(char const *,uint32)
-    # save_database(char const *)
-    # save_database()
+    return _ida_loader.save_database(outfile=l_new_filename, flags=arg_database_flags, root=arg_snapshot_root, attr=arg_snapshot_attribute)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_exit(arg_exit_code: int = 0, arg_save_database: bool = True, arg_pack_database: bool = True, arg_collect_garbage: bool = False) -> None:
@@ -1198,7 +1190,7 @@ def pdb_load(arg_local_pdb_file: str = "",
     # PDB: total 5018 symbols loaded for "ntdll.pdb"
 
     l_pdb_load_result: Dict[str, str] = {}
-    l_num_log_lines = 4
+    l_num_log_lines = 8
     l_output_msg_lines = ida_output_text(100) # Only 4 lines are output but I read some more if some other plugin/IDA writes to the log
     for l_line in l_output_msg_lines[::-1]:
         if l_line.startswith("PDB:"):
@@ -1462,8 +1454,8 @@ def fileoffset_to_virtual_address(arg_file_offset: int) -> int:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def virtual_address_to_fileoffset(arg_ea: EvaluateType) -> int:
-    ''' Take in a virtual address and return the file offset 
-    
+    ''' Take in a virtual address and return the file offset
+
     @return -1 on fail, otherwise the file offset
     '''
     l_addr: int = address(arg_ea)
@@ -2530,7 +2522,7 @@ def byte(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, arg
 def word(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, arg_debug: bool = False) -> Optional[int]:
     ''' Reads a word (16 bits) from the IDB. OBS! The IDB might not match the file on disk or active memory
 
-    Replacement for ida_bytes.get_word()
+    Replacement for ida_bytes.get_word() and ida_bytes.patch_word()
 
     OBS! See ida_idd.dbg_read_memory(ea, size) for some other memory read
     '''
@@ -2584,7 +2576,7 @@ def dword(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, ar
 def qword(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, arg_debug: bool = False) -> Optional[int]:
     ''' Reads a qword (64 bits) from the IDB. OBS! The IDB might not match the file on disk or active memory
 
-    Replacement for ida_bytes.get_qword()
+    Replacement for ida_bytes.get_qword() and ida_bytes.patch_qword()
 
     OBS! See ida_idd.dbg_read_memory(ea, size) for some other memory read
     '''
@@ -2852,8 +2844,6 @@ def _encoding_to_strtype(arg_encoding: str, arg_debug: bool = False) -> int:
 def _idaapi_encoding_from_strtype(arg_strtype: int) -> str:
     ''' Wrapper around ida_nalt.encoding_from_strtype() that honors the type hints
     It does NOT return None (NULLPTR) if we send in an invalid index as the docstring say
-
-    Tags: Community fix, IDA Bug
     '''
     # TODO: Check the arg_strtype for weird input
     return _ida_nalt.encoding_from_strtype(arg_strtype)
@@ -2865,7 +2855,7 @@ def string(arg_ea: EvaluateType,
            arg_create_string: bool = False,
            arg_flags: int = _ida_bytes.ALOPT_IGNHEADS | _ida_bytes.ALOPT_IGNPRINT | _ida_bytes.ALOPT_IGNCLT,
            arg_debug: bool = False) -> Optional[str]:
-    ''' Reads a string (excluding the NULL terminator) from the IDB that can handle C strings, wide strings (UCS2/UTF-16).
+    ''' Reads a string (excluding the NULL terminator) from the IDB that can handle C strings, wide strings (UTF-16).
     If you want to force read a string use the functions c_string() or wide_string().
 
     @param arg_encoding: See ida_nalt.STRTYPE_* for valid values. If you give it a string, I use this as encoding name
@@ -2984,7 +2974,7 @@ def strings(arg_only_first: int = 100000, arg_debug: bool = False) -> List[Tuple
     ''' Returns all strings that IDA has found.
     The result is a list with tuples: (address: int, length: int, encoding: str, content: str, _ida_nalt.STRTYPE_*: enum)
 
-    @param arg_only_first: Only get the first X entries
+    @param arg_only_first: Only get the first X entries, default: 100000 (should be enough for most programs)
     '''
 
     res = []
@@ -3070,7 +3060,6 @@ def assemble(arg_ea: EvaluateType,
         This function is not tested properly and is left "as is" since IDA does _NOT_ support 64-bit code
 
         @return The address after the one we assembled, this is so we can use to it in a loop
-
     '''
     l_addr = address(arg_ea, arg_debug=arg_debug)
     if l_addr == _ida_idaapi.BADADDR:
@@ -3229,14 +3218,9 @@ def pointer(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, 
 
     if arg_set_value is not None:
         l_value: int = address(arg_set_value, arg_debug=arg_debug)
-        if input_file.bits == 64:
-            _ida_bytes.patch_qword(l_addr, l_value) # _ida_bytes.patch_qword() and _ida_bytes.patch_dword() returns False if the data you want to write is already on that place.
-        elif input_file.bits == 32:
-            _ida_bytes.patch_dword(l_addr, l_value)
-        else:
-            _ida_bytes.patch_word(l_addr, l_value)
-
-    res = _ida_bytes.get_qword(l_addr) if input_file.bits == 64 else _ida_bytes.get_dword(l_addr) if input_file.bits == 32 else _ida_bytes.get_word(l_addr)
+        res = qword(l_addr, l_value, arg_debug=arg_debug) if input_file.bits == 64 else dword(l_addr, l_value, arg_debug=arg_debug) if input_file.bits == 32 else word(l_addr, l_value, arg_debug=arg_debug)
+    else:
+        res = qword(l_addr, arg_debug=arg_debug) if input_file.bits == 64 else dword(l_addr, arg_debug=arg_debug) if input_file.bits == 32 else word(l_addr, arg_debug=arg_debug)
     return res
 p = poi = ptr = pointer # WinDBG, I love you and I hate you
 
@@ -4849,6 +4833,7 @@ class TWidget():
             WARNING! Calling this on a window that has been closed crashes IDA. IDA Bug
         '''
         _idaapi_display_widget(self, arg_options=arg_options, arg_dest_ctrl=arg_dest_ctrl)
+
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def window_title(self, arg_new_window_title: Optional[str] = "") -> str:
         ''' Get/set the window title
@@ -4943,7 +4928,7 @@ def _idaapi_get_current_widget() -> TWidget:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _idaapi_get_current_viewer() -> TWidget:
     ''' Replacement for ida_kernwin.get_current_viewer()
-    OBS! Viewer is a widget that is how you see the file. This can be IDA-View, Pseudocode or Hex View'''
+    OBS! Viewer is a widget that is how you see the file. This can be IDA-View, Pseudocode or Hex View '''
     return TWidget(_ida_kernwin.get_current_viewer())
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -4976,50 +4961,83 @@ def _read_range_selection(arg_TWidget: Optional[TWidget] = None, arg_allow_one_l
     return (l_valid_selection, l_start_address, l_end_address)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _get_widget_lines(arg_TWidget: TWidget, arg_twin_pos_start: _ida_kernwin.twinpos_t, arg_twin_pos_end: _ida_kernwin.twinpos_t) -> List[str]:
+def __widget_lines(arg_TWidget: TWidget, arg_from: _ida_kernwin.twinpos_t, arg_to: _ida_kernwin.twinpos_t, arg_debug: bool = False) -> List[str]:
     """
-    get lines between places arg_twin_pos_start and arg_twin_pos_end in widget
+    get lines between places arg_from and arg_to in widget
 
-    Code taken from examples: dump_selection.py but changed to fix the bug where the user select some bytes on on the same line and to remove the prepended spaces
+    Code taken from examples: dump_selection.py but changed to fix the bug where the user select some bytes on on the same line
     """
+
+    # TODO: This is working better than the old code but it still isn't correct. Interier comment will mess everything up
+
     l_user_data = _ida_kernwin.get_viewer_user_data(arg_TWidget.as_TWidget_ptr())
     l_line_array = _ida_kernwin.linearray_t(l_user_data)
-    l_line_array.set_place(arg_twin_pos_start.at)
-    lines = []
+    l_line_array.set_place(arg_from.at)
+    res = []
     while True:
         cur_place = l_line_array.get_place()
-        first_line_ref = _ida_kernwin.l_compare2(cur_place, arg_twin_pos_start.at, l_user_data)
-        last_line_ref = _ida_kernwin.l_compare2(cur_place, arg_twin_pos_end.at, l_user_data)
+        first_line_ref = _ida_kernwin.l_compare2(cur_place, arg_from.at, l_user_data)
+        last_line_ref = _ida_kernwin.l_compare2(cur_place, arg_to.at, l_user_data)
+
+        log_print(f"\n\nfirst_line_ref: {first_line_ref}, last_line_ref: {last_line_ref}", arg_debug)
+        if (first_line_ref == 0 and last_line_ref == 1) or (first_line_ref == 0 and last_line_ref == 0): # Special case where only 1 line is selected
+            log_print(f"first_line_ref: {first_line_ref}, last_line_ref: {last_line_ref}, special case with only 1 line. Changing to get_custom_viewer_curline()", arg_debug)
+            l_t_line =_ida_lines.tag_remove(_ida_kernwin.get_custom_viewer_curline(arg_TWidget.as_TWidget_ptr(), mouse=False))
+            res.append(l_t_line[arg_from.x : arg_to.x])
+            return res
+
         if last_line_ref > 0: # beyond last line
+            log_print(f"first_line_ref: {first_line_ref}, last_line_ref: {last_line_ref}, breaking the loop", arg_debug)
             break
-        line = _ida_lines.tag_remove(l_line_array.down())
+
+        l_line = _ida_lines.tag_remove(l_line_array.down())
+        log_print(f"l_line: {l_line}", arg_debug)
         if last_line_ref == 0: # at last line
-            if first_line_ref == last_line_ref:
-                line = line[arg_twin_pos_start.x:arg_twin_pos_end.x]
-            else:
-                line = line[0:arg_twin_pos_end.x]
+            log_print(f"first_line_ref: {first_line_ref}, last_line_ref: {last_line_ref}, l_line: {l_line}, last line?", arg_debug)
+            l_line = l_line[0:arg_to.x]
         elif first_line_ref == 0: # at first line
-            line = line[arg_twin_pos_start.x:]
-        lines.append(line)
-    return lines
+            log_print(f"first_line_ref: {first_line_ref}, last_line_ref: {last_line_ref}, l_line: {l_line}, first line?", arg_debug)
+            l_line = l_line[arg_from.x:]
+        res.append(l_line)
+
+    log_print(f"res after loop but before any mods: {res}", arg_debug)
+
+    if len(res) == 1:
+        log_print(f"sometimes we get the loop even if we only have selected part of 1 line, this hack fix that special case. Changing to get_custom_viewer_curline()", arg_debug)
+        res = []
+        l_t_line =_ida_lines.tag_remove(_ida_kernwin.get_custom_viewer_curline(arg_TWidget.as_TWidget_ptr(), mouse=False))
+        res.append(l_t_line[arg_from.x : arg_to.x])
+        return res
+
+    log_print(f"Since we cannot get any signal that we are at the last line in the loop, we have to adjust the last line afterwards", arg_debug)
+
+
+    l_last_line = res[-1]
+    l_last_line = l_last_line[0:arg_to.x]
+    res[-1] = l_last_line
+    return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ui_selected_text(arg_TWidget: Optional[TWidget] = None) -> str:
-    ''' Returns the selected text
+def ui_selected_text(arg_TWidget: Optional[TWidget] = None, arg_debug: bool = False) -> str:
+    ''' Returns the selected text, if no text is selected, then return empty string
 
     @param arg_TWidget The widget to get the selected text from, if set to None, then get the selected text from the last used widget
 
     Code taken from examples: dump_selection.py
+
+    OBS! This version is working better than dump_selection.py but it still is buggy...
     '''
-    res = ""
-    l_start_pos = _ida_kernwin.twinpos_t()
-    l_end_pos = _ida_kernwin.twinpos_t()
+    l_from = _ida_kernwin.twinpos_t()
+    l_to = _ida_kernwin.twinpos_t()
     # l_view = TWidget(_ida_kernwin.get_current_viewer())
     l_view = arg_TWidget if arg_TWidget else _idaapi_get_last_widget()
-    if _ida_kernwin.read_selection(l_view.as_TWidget_ptr(), l_start_pos, l_end_pos):
-        lines = _get_widget_lines(l_view, l_start_pos, l_end_pos)
-        res += "\n".join(lines)
-    return res
+    l_read_selection = _ida_kernwin.read_selection(l_view.as_TWidget_ptr(), l_from, l_to)
+    if not l_read_selection:
+        log_print(f"No text is selected in {l_view.window_title()}", arg_type="ERROR")
+        return ""
+
+    lines = __widget_lines(l_view, l_from, l_to, arg_debug=arg_debug)
+    return "\n".join(lines)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ui_highlighted_identifier(arg_viewer: Optional[TWidget] = None, arg_allow_selected_text: bool = True) -> Optional[str]:
@@ -5827,3 +5845,66 @@ def _comment_copy_from_disassembly_to_decompiler(arg_function: EvaluateType,  ar
                 _comment_set_decompiler(l_ea, l_disassembly_comment, arg_cached_cfunc=l_cfunc)
 
     return True
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _gen_file_experimental(arg_outfile_type: Union[str, int],
+                           arg_out_file_path: str = "",
+                           arg_start_ea: EvaluateType = 0,
+                           arg_end_ea: EvaluateType = 0,
+                           arg_flags: int = 0,
+                           arg_debug: bool = False) -> str:
+    ''' Generate a new file from the input file. This function is very weird since there is an option to generate EXE file but when you pick it in the menu, IDA say that this is not supported?!
+    Use on your own risk! I have only used it to generate .dif files.
+
+    @param arg_outfile_type is either a string with the "ASM", "DIF", "EXE", "IDC", "LST" or "MAP". If it is an int, then it should be one of ida_loader.OFILE_*
+    @param arg_out_file_path Filename to save to, it not set then use input_file.idb_path + "extension generated from the arg_outfile_type"
+    @param arg_start_ea start from this EA (Effective Address)
+    @param arg_end_ea end at this EA (Effective Address)
+    @param arg_flags see ida_loader.GENFLG_*
+    '''
+    l_ofile_int_to_str = _int_to_str_dict_from_module("_ida_loader", "OFILE_.*")
+    l_ofile_str_to_int = _dict_swap_key_and_value(l_ofile_int_to_str)
+    if isinstance(arg_outfile_type, str):
+        if not arg_outfile_type.startswith("OFILE_"):
+            arg_outfile_type = "OFILE_" + arg_outfile_type.upper()
+
+        if arg_outfile_type not in l_ofile_str_to_int:
+            log_print(f"Invalid arg_outfile_type, valid: {l_ofile_str_to_int.keys()}")
+            return ""
+
+        l_outfile_type: int = l_ofile_str_to_int[arg_outfile_type]
+    else:
+        l_outfile_type = arg_outfile_type
+
+    if l_outfile_type not in l_ofile_int_to_str:
+        log_print(f"Invalid arg_outfile_type, valid: {l_ofile_str_to_int.keys()}")
+        return ""
+
+    l_expected_extension = l_ofile_int_to_str[l_outfile_type][6:].lower()
+
+    l_outfile_path = arg_out_file_path if arg_out_file_path else input_file.idb_path + "." + l_expected_extension
+    l_start_ea = address(arg_start_ea, arg_debug=arg_debug) if arg_start_ea else input_file.min_ea
+    l_end_ea = address(arg_end_ea, arg_debug=arg_debug) if arg_end_ea else input_file.max_ea
+
+    # Code taken from https://github.com/HexRaysSA/IDAPython/blob/d12e31eae9d678f647013527596a715dd378f989/examples/disassembler/produce_lst_file.py#L32
+    l_file_wrapper = _ida_fpro.qfile_t() # FILE * wrapper
+    l_file_mode = "wb" if l_outfile_type == l_ofile_str_to_int["OFILE_EXE"] else "wt"
+    if l_file_wrapper.open(l_outfile_path, l_file_mode):
+        try:
+            _ida_loader.gen_file(l_outfile_type, l_file_wrapper.get_fp(), l_start_ea, l_end_ea, arg_flags)
+        finally:
+            l_file_wrapper.close()
+
+    # gen_file_flags = {}
+    # gen_file_flags["GENFLG_MAPSEG"] = 0x0001 # map: generate map of segments
+    # gen_file_flags["GENFLG_MAPNAME"] = 0x0002 # map: include dummy names
+    # gen_file_flags["GENFLG_MAPDMNG"] = 0x0004 # map: demangle names
+    # gen_file_flags["GENFLG_MAPLOC"] = 0x0008 # map: include local names
+    # gen_file_flags["GENFLG_IDCTYPE"] = 0x0008 # idc: gen only information about types
+    # gen_file_flags["GENFLG_ASMTYPE"] = 0x0010 # asm&lst: gen information about types too
+    # gen_file_flags["GENFLG_GENHTML"] = 0x0020 # asm&lst: generate html (ui_genfile_callback will be used)
+    # gen_file_flags["GENFLG_ASMINC"] = 0x0040 # asm&lst: gen information only about types
+
+    # gen_file_flags = _dict_swap_key_and_value(_int_to_str_dict_from_module("_ida_loader", "GENFLG_.*"))
+
+    return l_outfile_path
