@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-04-06 22:52:01"
+__version__ = "2025-04-13 23:26:07"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -140,6 +140,7 @@ from PyQt5.QtWidgets import QWidget # type: ignore[import-untyped] # TODO: Ida 9
 HOTKEY_DUMP_TO_DISK = 'w' # Select bytes and press w to dump it to disk in the same directory as the IDB. One can also call dump_to_disk(address, length) to dump from the console
 HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT = 'shift-c' # Select bytes and press Shift-C to copy the marked bytes as hex text. Same shortcut as in x64dbg.
 HOTKEY_COPY_CURRENT_ADDRESS = 'alt-ins' # Copy the current address as hex text into the clipboard. Same shortcut as x64dbg.
+HOTKEY_SMART_DELETE_BYTES = 'del' # Presing delete on code turns it into NOP (0x90) if it's alreadu NOP (or data) then write 0x00
 
 BufferType = Union[str, bytes, bytearray, List[str], List[bytes], List[bytearray]]
 BoolishType = Union[bool, int, str] # Can be evaluted by my function named _bool()
@@ -229,6 +230,7 @@ def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, D
     l_links["appcall_guide"] =                      "https://docs.hex-rays.com/user-guide/debugger/debugger-tutorials/appcall_primer"
     l_links["appcall_practical_examples"] =         "https://hex-rays.com/blog/practical-appcall-examples/"
     l_links["community_forums"] =                   "https://community.hex-rays.com/"
+    l_links["HexRays_github_examples"] =            "https://github.com/HexRaysSA/IDAPython/tree/9.0sp1/examples"
     # l_links[""] = ""
 
     l_batch_mode = {}
@@ -248,8 +250,8 @@ def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, D
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _official_python_doc_url(arg_function: Callable) -> str:
     ''' Creates an URL to the Python docs '''
-    l_module = arg_function.__module__.replace("ida_", "ida__")
-    l_function =  arg_function.__name__
+    l_module: str = arg_function.__module__.replace("ida_", "ida__")
+    l_function: str =  arg_function.__name__
     return f"https://python.docs.hex-rays.com/namespace{l_module}.html#:~:text={l_function}()"
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -1731,7 +1733,7 @@ def dump_to_disk(arg_ea_start: EvaluateType = 0,
         log_print("You need to give arg_ea_start and arg_len OR select the range of bytes you want to dump.", arg_type="ERROR")
         return None
 
-    l_valid_selection, l_selection_start, l_selection_end = _read_range_selection(arg_TWidget=None, arg_allow_one_line=True)
+    l_valid_selection, l_selection_start, l_selection_end = _idaapi_read_range_selection(arg_TWidget=None, arg_allow_one_line=True)
     if l_valid_selection:
         arg_ea_start = min(l_selection_start, l_selection_end)
         l_len: int = max(l_selection_end, l_selection_start) - arg_ea_start
@@ -1945,6 +1947,42 @@ if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_COPY_CUR
     log_print(f"register_action('{_ACTION_NAME_COPY_CURRENT_ADDRESS}') OK, shortcut: {HOTKEY_COPY_CURRENT_ADDRESS}", arg_type="INFO")
 else:
     log_print(f"register_action('{_ACTION_NAME_COPY_CURRENT_ADDRESS}') failed", arg_type="ERROR")
+
+# ---- Hotkey: Delete --> Smart delete bytes ----------------------------------------------------------------------------------------
+_ACTION_NAME_SMART_DELETE_BYTES = f"{__name__}:smart_delete_bytes"
+if _ACTION_NAME_SMART_DELETE_BYTES in _ida_kernwin.get_registered_actions():
+    if _ida_kernwin.unregister_action(_ACTION_NAME_SMART_DELETE_BYTES):
+        log_print(f"unregister_action(): '{_ACTION_NAME_SMART_DELETE_BYTES}' OK", arg_type="INFO")
+    else:
+        log_print(f"unregister_action(): '{_ACTION_NAME_SMART_DELETE_BYTES}' failed", arg_type="ERROR")
+
+class ActionHandlerSmartDeleteBytes(_ida_kernwin.action_handler_t):
+    ''' Handler for smart delete bytes'''
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
+        ''' This code is run when the hotkey is pressed '''
+        del ctx # Not used but needed in prototype
+        l_debug: bool = False
+        log_print("ActionHandlerSmartDeleteBytes activate", l_debug)
+        l_is_valid, l_start_address, l_end_address = _idaapi_read_range_selection(arg_allow_one_line=True)
+        if not l_is_valid:
+            log_print("Invalid selection", arg_type="ERROR")
+            return 1
+
+        _ = bytes_smart_delete(arg_ea=l_start_address, arg_len=l_end_address - l_start_address, arg_debug=l_debug)
+
+        return 1
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def update(self, ctx: _ida_kernwin.action_ctx_base_t):
+        ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
+        del ctx # Not used but needed in prototype
+        return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
+
+if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_SMART_DELETE_BYTES, f"{__name__}: Smart delete bytes", ActionHandlerSmartDeleteBytes(), HOTKEY_SMART_DELETE_BYTES)):
+    log_print(f"register_action('{_ACTION_NAME_SMART_DELETE_BYTES}') OK, shortcut: {HOTKEY_SMART_DELETE_BYTES}", arg_type="INFO")
+else:
+    log_print(f"register_action('{_ACTION_NAME_SMART_DELETE_BYTES}') failed", arg_type="ERROR")
 
 # -------------------------------------------------------------------------------------------------------------------------------------------------------
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -2666,6 +2704,34 @@ def write_bytes(arg_ea: EvaluateType, arg_buf: Union[BufferType, int], arg_debug
     return res
 
 bytes_write = set_bytes = patch_bytes = write_bytes
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def bytes_smart_delete(arg_ea: EvaluateType, arg_len: EvaluateType, arg_debug: bool = False) -> Optional[bool]:
+    ''' Smart delete of bytes. If the bytes are code then replace with NOP (0x90) and if you press delete again, then write 0x00 '''
+    l_start_addr = address(arg_ea, arg_debug=arg_debug)
+    if l_start_addr == _ida_idaapi.BADADDR:
+        log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
+        return None
+
+    l_len = eval_expression(arg_len, arg_debug=arg_debug)
+    if l_len is None:
+        log_print("eval_expression(arg_len) failed", arg_type="ERROR")
+        return None
+
+    l_is_code = is_code(arg_ea, arg_debug=arg_debug)
+    l_bytes = read_bytes(arg_ea, arg_len=1, arg_debug=arg_debug)
+    if l_bytes is None:
+        log_print("read_bytes() failed", arg_type="ERROR")
+        return None
+
+    l_is_already_nop = l_bytes[0] == 0x90 # Intel assmebly NOP == 0x90
+
+    if l_is_already_nop or not l_is_code:
+        res = write_bytes(arg_ea, arg_buf = "00 " * l_len, arg_debug=arg_debug)
+    else:
+        res = write_bytes(arg_ea, arg_buf = "90 " * l_len, arg_debug=arg_debug)
+
+    return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def write_string(arg_ea: EvaluateType, arg_string: str, arg_append_NULL_byte: bool = True, arg_debug: bool = False) -> bool:
@@ -4939,12 +5005,12 @@ def _idaapi_get_last_widget(arg_mask: int = -1) -> TWidget:
     return TWidget(_ida_kernwin.get_last_widget(arg_mask))
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _read_range_selection(arg_TWidget: Optional[TWidget] = None, arg_allow_one_line: bool = True) -> Tuple[bool, int, int]:
+def _idaapi_read_range_selection(arg_TWidget: Optional[TWidget] = None, arg_allow_one_line: bool = True) -> Tuple[bool, int, int]:
     ''' Reads the selected addresses that you selected with your mouse (or keyboard)
 
     @param arg_TWidget: TWidget None --> "the last used widget"
     @param arg_allow_one_line: If you mark text on 1 line and run IDAs ida_kernwin.read_range_selection() then you will get an invalid selection, with this argument set then return current_address() instead
-    @return (valid_selection: bool, selection_start: int, selection_end: int)
+    @return (is_valid_selection: bool, selection_start: int, selection_end: int)
 
     Replacement for ida_kernwin.read_range_selection()
     '''
@@ -5043,7 +5109,7 @@ def ui_selected_text(arg_TWidget: Optional[TWidget] = None, arg_debug: bool = Fa
 def ui_highlighted_identifier(arg_viewer: Optional[TWidget] = None, arg_allow_selected_text: bool = True) -> Optional[str]:
     ''' If you have clicked in a window on an identifier so that the window highlights the identifer, this can read that identifer. '''
     if not _bool(ida_registy_read("AutoHighlight")[1]):
-        log_print("You have turned off hightlighting in Options -> General -> Browser -> Auto highlight the current identifier which means this function will not work", arg_type="ERROR")
+        log_print("You have turned off highlighting in Options -> General -> Browser -> Auto highlight the current identifier which means this function will not work", arg_type="ERROR")
         return None
 
     l_viewer = arg_viewer.as_TWidget_ptr() if arg_viewer else _idaapi_get_current_viewer().as_TWidget_ptr()
@@ -5223,16 +5289,21 @@ def ida_registy_read(arg_key: str, arg_subkey: Optional[str] = None) -> Tuple[st
     return ("ERROR", f"<<< Not implemented read for type: 0x{l_reg_type:x} >>>")
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def ida_registy_write(arg_key: str, arg_subkey: Optional[str] = None) -> Tuple[str, str]:
+    ''' # TODO: Implement '''
+    return ("# TODO: Implement", "# TODO: Implement")
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def function_convert_to_usercall(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
     ''' Convert a function to __usercall (or __userpurge)
-    Code is almost a pure copy from HexraysPyTools <https://github.com/oopsmishap/HexRaysPyTools/blob/4742ce4ac7db72ad0cfb862d34cb15065b1b136e/HexRaysPyTools/callbacks/function_signature_modifiers.py#L16>
+    Code is almost a pure copy from [HexraysPyTools](https://github.com/oopsmishap/HexRaysPyTools/blob/4742ce4ac7db72ad0cfb862d34cb15065b1b136e/HexRaysPyTools/callbacks/function_signature_modifiers.py#L15)
 
     Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-51-custom-calling-conventions>
 
     '''
     l_cfunc = decompile(arg_ea, arg_debug=arg_debug)
     if l_cfunc is None:
-        log_print(f"decompile({arg_ea}) failed", arg_type="ERROR")
+        log_print(f"decompile({_hex_str_if_int(arg_ea)}) failed", arg_type="ERROR")
         return False
     l_function_tinfo = _ida_typeinf.tinfo_t()
     if not l_cfunc.get_func_type(l_function_tinfo):
@@ -5240,7 +5311,7 @@ def function_convert_to_usercall(arg_ea: EvaluateType, arg_debug: bool = False) 
         return False
     l_function_details = _ida_typeinf.func_type_data_t()
     l_function_tinfo.get_func_details(l_function_details)
-    l_calling_convention = _ida_typeinf.CM_CC_MASK & l_function_details.cc
+    l_calling_convention: int = _ida_typeinf.CM_CC_MASK & l_function_details.cc
     if l_calling_convention == _ida_typeinf.CM_CC_CDECL:
         l_function_details.cc = _ida_typeinf.CM_CC_SPECIAL
     elif l_calling_convention in (_ida_typeinf.CM_CC_STDCALL, _ida_typeinf.CM_CC_FASTCALL, _ida_typeinf.CM_CC_PASCAL, _ida_typeinf.CM_CC_THISCALL):
@@ -5248,7 +5319,7 @@ def function_convert_to_usercall(arg_ea: EvaluateType, arg_debug: bool = False) 
     elif l_calling_convention == _ida_typeinf.CM_CC_ELLIPSIS:
         l_function_details.cc = _ida_typeinf.CM_CC_SPECIALE
     else:
-        log_print("Unknown calling convention, I don't know what to do with: 0x{l_calling_convention:x}", arg_type="ERROR")
+        log_print(f"Unknown calling convention, I don't know what to do with: 0x{l_calling_convention:x}", arg_type="ERROR")
         return False
     l_function_tinfo.create_func(l_function_details)
     return _bool(_ida_typeinf.apply_tinfo(l_cfunc.entry_ea, l_function_tinfo, _ida_typeinf.TINFO_DEFINITE))
