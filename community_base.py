@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-04-19 01:56:38"
+__version__ = "2025-04-19 12:53:38"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -89,6 +89,7 @@ import os # https://peps.python.org/pep-0008/#imports
 import sys
 import re
 import time
+import platform
 from datetime import datetime
 from datetime import timezone
 import ctypes
@@ -293,7 +294,8 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
     l_bug_report["IDA_version"] = str(ida_version())
     l_bug_report["decompiler_version"] = decompiler_version()
     l_bug_report["community_base_version"] = __version__
-    l_bug_report["python_version"] = str(_python_version()[0]) + "." + str(_python_version()[1]) # Tuple[major: int, minor: int] --> "3.12"
+    l_bug_report["python_version"] = sys.version
+    l_bug_report["os_version"] = f"{platform.uname().system} {platform.uname().version} {platform.uname().machine}"
     l_bug_report["datetime"] = _timestamped_line("").strip()
     for key, value in input_file._as_dict().items():
         l_bug_report["input_file_" + key] = value
@@ -431,6 +433,7 @@ def ida_plugin_dirs() -> List[str]:
 def ida_is_running_in_batch_mode() -> bool:
     ''' Are we running in batch mode? a.k.a. headless
     Credits goes to [arizvisa](https://github.com/arizvisa) : <https://github.com/Harding-Stardust/community_base/issues/1>
+    We can actually set this, see idc.batch() (Is this useful?)
     '''
     return _ida_kernwin.cvar.batch
 
@@ -470,7 +473,10 @@ def ida_config(arg_key: str, arg_value: str) -> bool:
     return True
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_save_database(arg_new_filename: str = "", arg_database_flags: int = 0xFFFFFFFF, arg_snapshot_root: Optional[_ida_loader.snapshot_t] = None, arg_snapshot_attribute: Optional[_ida_loader.snapshot_t] = None) -> bool:
+def ida_save_database(arg_new_filename: str = "",
+                      arg_database_flags: int = 0xFFFFFFFF,
+                      arg_snapshot_root: Optional[_ida_loader.snapshot_t] = None,
+                      arg_snapshot_attribute: Optional[_ida_loader.snapshot_t] = None) -> bool:
     ''' Save current database using a new file name.
 
     @param arg_new_filename: output database file name; not set means the current path
@@ -487,7 +493,10 @@ def ida_save_database(arg_new_filename: str = "", arg_database_flags: int = 0xFF
     return _ida_loader.save_database(outfile=l_new_filename, flags=arg_database_flags, root=arg_snapshot_root, attr=arg_snapshot_attribute)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_exit(arg_exit_code: int = 0, arg_save_database: bool = True, arg_pack_database: bool = True, arg_collect_garbage: bool = False) -> None:
+def ida_exit(arg_exit_code: int = 0,
+             arg_save_database: bool = True,
+             arg_pack_database: bool = True,
+             arg_collect_garbage: bool = False) -> None:
     ''' Exit IDA and optionally save the IDB
     A good use for this function is as the last call in a script run in batch mode.
     See links() for more info about batch mode
@@ -928,6 +937,13 @@ def _new_file_opened_notification_callback(arg_nw_code: int, arg_is_old_database
     global input_file
     input_file = _input_file_object()
     log_print(f"{__name__} is (re)loaded", arg_type="INFO")
+    l_addon = _ida_kernwin.addon_info_t()
+    l_addon.id = "Harding.community_base"
+    l_addon.name = "community_base"
+    l_addon.producer = __author__
+    l_addon.url = __url__
+    l_addon.version = __version__
+    log_print(_ida_kernwin.register_addon(l_addon))
 
 _ida_idaapi.notify_when(_ida_idaapi.NW_OPENIDB, _new_file_opened_notification_callback) # See also : NW_INITIDA, NW_REMOVE, NW_CLOSEIDB, NW_TERMIDA
 
@@ -1009,7 +1025,8 @@ _add_link_to_docstring(_ida_kernwin.read_selection) # TODO: Implement wrapper
 
 
 
-# API extension ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# API extension ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- API extension ----------------
+
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_licence_info(arg_delete_user_info_from_IDB: bool = False) -> Dict[str, str]:
@@ -4120,6 +4137,7 @@ def display_type_at(arg_ea: EvaluateType,
 
     return json.dumps(_display_type_at_as_dict(arg_ea=arg_ea, arg_type=arg_type, arg_member_name="", arg_max_num_recursive=arg_max_num_recursive, arg_debug=arg_debug), ensure_ascii=False,  indent=4, default=str)
 
+dt = display_type_at # Windbg <3
 
 # DEBUGGER ------------------------------------------------------------------------------------------------------------------
 
@@ -5486,7 +5504,7 @@ def file_generate(arg_outfile_type: Union[str, int],
     @param arg_end_ea end at this EA (Effective Address)
     @param arg_flags see ida_loader.GENFLG_*
 
-    @returns The file path I wrote the result to
+    @returns The file path I wrote the result to, empty str if something failed
     '''
     l_ofile_int_to_str = _int_to_str_dict_from_module("_ida_loader", "OFILE_.*")
     l_ofile_str_to_int = _dict_swap_key_and_value(l_ofile_int_to_str)
@@ -5516,10 +5534,13 @@ def file_generate(arg_outfile_type: Union[str, int],
     l_file_wrapper = _ida_fpro.qfile_t() # FILE * wrapper
     l_file_mode = "wb" if l_outfile_type == l_ofile_str_to_int["OFILE_EXE"] else "wt"
     if l_file_wrapper.open(l_outfile_path, l_file_mode):
-        try:
-            _ida_loader.gen_file(l_outfile_type, l_file_wrapper.get_fp(), l_start_ea, l_end_ea, arg_flags)
-        finally:
-            l_file_wrapper.close()
+        l_ren_file_res = _ida_loader.gen_file(l_outfile_type, l_file_wrapper.get_fp(), l_start_ea, l_end_ea, arg_flags)
+        if not l_ren_file_res:
+            log_print("ida_loader.gen_file() failed", arg_type="ERROR")
+        l_file_wrapper.close()
+    else:
+        log_print(f'Could not open "{l_outfile_path}"', arg_type="ERROR")
+        return ""
 
     # gen_file_flags = {}
     # gen_file_flags["GENFLG_MAPSEG"] = 0x0001 # map: generate map of segments
@@ -5968,27 +5989,6 @@ def _test_all(arg_debug: bool = False) -> bool:
 
 # EXPERIMENTAL ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _basic_string_print(arg_ea: EvaluateType, arg_str_len_threshold: int = 400, arg_debug: bool = False) -> Optional[str]:
-    ''' Try to parse a basic string and print it. OBS! Since basic_string is depending on the compiler, this function may need som slight modifications for your project. Tags: std_string, std::string, std_wstring, std::wstring
-    EXPERIMENTAL
-    '''
-    log_print(f"You gave arg_ea: {arg_ea}", arg_debug)
-    l_p_string = pointer(arg_ea)
-    if l_p_string is None:
-        log_print("pointer() failed", arg_type="ERROR")
-        return None
-    log_print(f"str is at 0x{l_p_string:x}", arg_debug)
-    l_str_len: int = _ida_bytes.get_qword(address(arg_ea) + pointer_size())
-    log_print(f"with len: 0x{l_str_len:x}", arg_debug)
-    if l_str_len > arg_str_len_threshold:
-        log_print(f"String len is VERY high (0x{l_str_len:x}), this is probably wrong, aborting", arg_type="WARNING")
-        return None
-
-    res = c_string(l_p_string, arg_len=l_str_len) if l_str_len else ""
-    log_print(f"Read string is: {res}", arg_debug)
-    return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _export_names_and_types(arg_save_to_file: str = "",
