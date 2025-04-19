@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-04-13 23:26:07"
+__version__ = "2025-04-19 01:56:38"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -140,7 +140,7 @@ from PyQt5.QtWidgets import QWidget # type: ignore[import-untyped] # TODO: Ida 9
 HOTKEY_DUMP_TO_DISK = 'w' # Select bytes and press w to dump it to disk in the same directory as the IDB. One can also call dump_to_disk(address, length) to dump from the console
 HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT = 'shift-c' # Select bytes and press Shift-C to copy the marked bytes as hex text. Same shortcut as in x64dbg.
 HOTKEY_COPY_CURRENT_ADDRESS = 'alt-ins' # Copy the current address as hex text into the clipboard. Same shortcut as x64dbg.
-HOTKEY_SMART_DELETE_BYTES = 'del' # Presing delete on code turns it into NOP (0x90) if it's alreadu NOP (or data) then write 0x00
+HOTKEY_SMART_DELETE_BYTES = 'del' # Presing delete on code turns it into NOP (0x90) if it's already NOP (or data) then write 0x00
 
 BufferType = Union[str, bytes, bytearray, List[str], List[bytes], List[bytearray]]
 BoolishType = Union[bool, int, str] # Can be evaluted by my function named _bool()
@@ -200,7 +200,7 @@ def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, D
     l_abbreviations = {
         'ASG': "Assign",
         'BPU': "Bytes Per Unit",
-        'CC' : "Calling Convention or Compiler",
+        'CC' : "Calling Convention or Compiler, depending on context of the CC",
         'CHCOL' : "Chooser Column",
         'EA' : "Effective Address, just an address in the process",
         'MBA': "Microcode",
@@ -211,9 +211,9 @@ def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, D
         'tid': 'Type ID',
         'TIF': "type info. E.g. int*, wchar_t* and so on",
         'TIL': "Type Information Library, IDAs internal name for it's database with types in it. It's like a huge .h file but in IDAs own format",
-        "udt" : "user-defined type : a structure or union - but not enums. See udt_type_data_t",
-        "udm" : "udt member : i.e., a structure or union member. See udm_t",
-        "edm": "enum member : i.e., an enumeration member - i.e., an enumerator. See edm_t"
+        "udt" : "user-defined type : a structure or union - but not enums. See ida_typeinf.udt_type_data_t",
+        "udm" : "udt member : i.e., a structure or union member. See ida_typeinf.udm_t",
+        "edm": "enum member : i.e., an enumeration member - i.e., an enumerator. See ida_typeinf.edm_t"
         }
 
     l_links = {}
@@ -311,6 +311,27 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
         _ida_kernwin.open_url(l_github_issues)
 
     return l_bug_report_file
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def help(arg_search: str) -> List[Tuple[str, str]]:
+    ''' Search for a given string and show what function it is in.
+        @param arg_search is the text to search for
+
+        @returns a list of tuples with the line of the match as the first member and the function name as the second value
+    '''
+    res = []
+    with open(__file__, "r", encoding="utf-8") as fp:
+        l_whole_file = fp.readlines()
+
+    l_last_function: str = "<<< unknown function >>>"
+    for l_line in l_whole_file:
+        if "def " in l_line:
+            l_last_function = l_line.strip()
+
+        if arg_search in l_line:
+            res.append((l_line.strip(), l_last_function))
+
+    return res
 
 # TODO: This can be used as "poor mans thread" to poll external data
 # TODO: This is not working as expected since it runs in it's own thread
@@ -423,7 +444,7 @@ def ida_arguments() -> List[str]:
     return PyQt5.Qt.qApp.instance().arguments() # TODO: Ida 9.2 will break this (Qt6)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_set_config(arg_key: str, arg_value: str) -> bool:
+def ida_config(arg_key: str, arg_value: str) -> bool:
     ''' in ida.cfg, there are many settings that one can set. Use this function to change them.
     OBS! There are many IDA settings saved in the registy, see ida_registy_read() on how to read them
 
@@ -434,8 +455,12 @@ def ida_set_config(arg_key: str, arg_value: str) -> bool:
     arg_key = arg_key.upper()
     arg_value = arg_value.upper()
 
+    if "STACK" in arg_key and ("POINTER" in arg_key or "OFFSET" in arg_key): # Options -> General -> Disassembly -> Disassembly line parts -> Stack pointer
+        _ = _ida_ida.inf_set_prefix_show_stack(_bool(arg_value))
+        return True
+
     if arg_key == "PACK_DATABASE" and arg_value not in ("0", "1", "2"):
-        log_print("PACK_DATABASE only accepts values 0, 1 or 2", arg_type="ERROR")
+        log_print("PACK_DATABASE only accepts values '0', '1' or '2'", arg_type="ERROR")
         return False
 
     if arg_key in ("COLLECT_GARBAGE", "ABANDON_DATABASE"):
@@ -473,17 +498,17 @@ def ida_exit(arg_exit_code: int = 0, arg_save_database: bool = True, arg_pack_da
     process_config_directive(): <https://python.docs.hex-rays.com/namespaceida__idp.html#:~:text=process_config_directive()>
     '''
     if not arg_save_database:
-        ida_set_config("ABANDON_DATABASE", "YES")
+        ida_config("ABANDON_DATABASE", "YES")
         _ida_pro.qexit(arg_exit_code)
         return # We will never reach this line
 
     if arg_collect_garbage:
-        ida_set_config("COLLECT_GARBAGE", "YES")
+        ida_config("COLLECT_GARBAGE", "YES")
 
     if arg_pack_database:
-        ida_set_config("PACK_DATABASE", "2") # set the default database packing option to "deflate" in old IDA and "zstd" in 9.1+;
+        ida_config("PACK_DATABASE", "2") # set the default database packing option to "deflate" in old IDA and "zstd" in 9.1+;
     else:
-        ida_set_config("PACK_DATABASE", "1")
+        ida_config("PACK_DATABASE", "1")
 
     _ida_pro.qexit(arg_exit_code)
     return # We will never reach this line
@@ -992,6 +1017,11 @@ def ida_licence_info(arg_delete_user_info_from_IDB: bool = False) -> Dict[str, s
 
     @return {"serial_number": serial_number: str, "name_info": name_info: str}
     '''
+    if arg_delete_user_info_from_IDB:
+        _ = _ida_licence_info_delete()
+
+    # TODO: Rewrite this with the real licence info parser
+
     res = {"serial_number": "Unknown", "name_info": "Unknown"}
     l_lines: List[str] = _ida_lines.generate_disassembly(input_file.min_original_ea, max_lines=100, as_stack=False, notags=True)[1]
     l_next_line_is_user_info: bool = False
@@ -1006,10 +1036,6 @@ def ida_licence_info(arg_delete_user_info_from_IDB: bool = False) -> Dict[str, s
             if l_license_info_match:
                 res["serial_number"] = l_license_info_match.group(1)
                 l_next_line_is_user_info = True
-
-    if arg_delete_user_info_from_IDB:
-        _ = _ida_licence_info_delete()
-
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -1217,19 +1243,24 @@ class _input_file_object():
 
         Please use the object created in community_base.input_file. E.g. print(community_base.input_file.idb_path)
     '''
-    bits = property(fget=lambda self: 64 if _ida_ida.inf_is_64bit() else 32 if _ida_ida.inf_is_32bit_exactly() else 16, doc='64/32/16: int')
+    _SHOW_USELESS_PROPERTIES = False
+    bits = property(fget=lambda self: _ida_ida.inf_get_app_bitness() or 0, doc='64/32/16: int')
     compiler = property(fget=lambda self: _compiler_str(), doc="What compiler was used to compile this code")
     crc32 = property(fget=lambda self: ''.join(hex_parse(_ida_nalt.retrieve_input_file_crc32().to_bytes(4, 'big'))), doc='CRC-32 as ascii string')
     endian = property(fget=lambda self: 'big' if _ida_ida.inf_is_be() else 'little' if self.filename else '<<< no file loaded >>>', doc='"big" or "little" (or "<<< no file loaded >>>" if no file is loaded)')
     entry_point = property(fget=lambda self: _ida_ida.inf_get_start_ip(), doc='Address of the first instruction that is executed')
     filename = property(fget=lambda self: _ida_nalt.get_input_file_path() or "", doc='Full path and filename to the file WHEN IT WAS LOADED INTO IDA. The file might been moved by the user and this path might not be valid.')
     format = property(fget=lambda self: _ida_loader.get_file_type_name() if self.filename else "<<< no file loaded >>>", doc='Basically PE or ELF. e.g. PE gives "Portable executable for 80386 (PE)"')
-    # idb_creation_time = property(fget=lambda self: time.strftime("%Y-%m-%d %H:%M:%S", datetime.timetuple(datetime.fromtimestamp(_ida_nalt.get_idb_ctime()))), doc='When the IDB was created') # useless?
-    # idb_opened_number_of_times = property(fget=lambda self: _ida_nalt.get_idb_nopens(), doc='Number of times the IDB have been opened') # useless?
+    if _SHOW_USELESS_PROPERTIES:
+        idb_creation_time = property(fget=lambda self: time.strftime("%Y-%m-%d %H:%M:%S", datetime.timetuple(datetime.fromtimestamp(_ida_nalt.get_idb_ctime()))), doc='When the IDB was created') # useless?
+        idb_number_of_changes = property(fget=lambda self: _ida_ida.inf_get_database_change_count(), doc='Number of changes done in the IDB') # useless?
+        idb_opened_number_of_times = property(fget=lambda self: _ida_nalt.get_idb_nopens(), doc='Number of times the IDB have been opened') # useless?
     idb_path = property(fget=lambda self: _ida_loader.get_path(_ida_loader.PATH_TYPE_IDB), doc='Full path to the IDB. Replacement for ida_utils.GetIdbDir()')
-    # idb_work_seconds = property(fget=lambda self: _ida_nalt.get_elapsed_secs(), doc='Number of seconds the IDB have been open') # useless?
+    if _SHOW_USELESS_PROPERTIES:
+        idb_work_seconds = property(fget=lambda self: _ida_nalt.get_elapsed_secs(), doc='Number of seconds the IDB have been open') # useless?
     idb_version = property(fget=lambda self: _ida_ida.inf_get_version(), doc='The version that the IDB format is in. If you created the IDB in an older version of IDA Pro, then this will differ from ida_version()')
-    # initial_ida_version = property(fget=lambda self: _ida_nalt.get_initial_ida_version(), doc="The version of IDA that created this IDB") # useless?
+    if _SHOW_USELESS_PROPERTIES:
+        initial_ida_version = property(fget=lambda self: _ida_nalt.get_initial_ida_version(), doc="The version of IDA that created this IDB") # useless?
     imagebase = property(fget=lambda self: _ida_nalt.get_imagebase(), doc='The address the input file will be/is loaded at')
     is_dll = property(fget=lambda self: _ida_ida.inf_is_dll(), doc='Is the file a DLL file?')
     loader = property(fget=lambda self: _loader_name().upper() if self.filename else "<<< No file loaded >>>", doc='Name of the IDA loader that is parsing the file when loading it into IDA')
@@ -1251,7 +1282,7 @@ class _input_file_object():
                 continue
             l_property_value = getattr(self, l_property)
 
-            if isinstance(l_property_value, int) and not l_property in ['bits', 'idb_version', 'is_dll', 'idb_work_seconds', 'idb_opened_number_of_times']: # These are printed as int and not hex
+            if isinstance(l_property_value, int) and not l_property in ['bits', 'idb_version', 'is_dll', 'idb_work_seconds', 'idb_opened_number_of_times', 'idb_number_of_changes']: # These are printed as int and not hex
                 l_property_value = f"0x{l_property_value:x}"
             else:
                 l_property_value = str(l_property_value)
@@ -1968,9 +1999,7 @@ class ActionHandlerSmartDeleteBytes(_ida_kernwin.action_handler_t):
         if not l_is_valid:
             log_print("Invalid selection", arg_type="ERROR")
             return 1
-
         _ = bytes_smart_delete(arg_ea=l_start_address, arg_len=l_end_address - l_start_address, arg_debug=l_debug)
-
         return 1
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -2035,7 +2064,7 @@ def _ea_to_hexrays_insn(arg_ea: EvaluateType,
     return None
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def decompiled_line(arg_ea: EvaluateType, arg_cached_cfunc: Optional[_ida_hexrays.cfuncptr_t] = None, arg_debug: bool = False) -> str:
+def decompiler_line(arg_ea: EvaluateType, arg_cached_cfunc: Optional[_ida_hexrays.cfuncptr_t] = None, arg_debug: bool = False) -> str:
     ''' Sometimes you want only 1 line from the decompilation. See example in my plugins show_global_xrefs_hx.py and xor_finder.py '''
 
     l_addr: int = address(arg_ea, arg_debug=arg_debug)
@@ -2399,7 +2428,7 @@ def _comment_set_disassembly(arg_ea: EvaluateType,
                 arg_repeatable: bool = False,
                 arg_debug: bool = False
                 ) -> bool:
-    ''' Internal function. Use comment(). This function sets the comment in the  disassembly view
+    ''' Internal function. Use comment(). This function sets the comment in the disassembly view
 
     @return True if everything is OK, False otherwise
     '''
@@ -3394,7 +3423,7 @@ def make_code(arg_ea: EvaluateType, arg_len: int = 1, arg_force: bool = False, a
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def make_data(arg_ea: EvaluateType, arg_item_type: str = "BYTE", arg_number_of_items: int = 1, arg_debug: bool = False) -> Optional[bool]:
-    ''' Make adress into data, can be used to create arrays also.
+    ''' Make adress into data, can be used to create arrays also. OBS! If you want create an array or other type, consider using set_type() instead.
 
     Replacement for ida_bytes.create_data()
     '''
@@ -3997,6 +4026,100 @@ def set_type(arg_original_type_name_or_ea: EvaluateType, arg_new_type: Union[str
     _ida_kernwin.request_refresh(_ida_kernwin.IWID_ALL, res)
     return res
 
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _display_type_at_as_dict(arg_ea: EvaluateType,
+                             arg_type: Union[EvaluateType,_ida_hexrays.lvar_t, _ida_typeinf.tinfo_t],
+                             arg_member_name: str = "",
+                             arg_max_num_recursive: int = 10,
+                             arg_debug: bool = False) -> Optional[Dict[int, Tuple]]:
+    ''' Like Windbgs command dt, this can show you an object pasted at a given address '''
+    if arg_max_num_recursive < 1:
+        log_print(f"Max recusive depth reached ({arg_max_num_recursive}), not going deeper.", arg_type="WARNING")
+        return {}
+
+    res: Dict[int, Tuple] = {}
+    l_type = get_type(arg_type, arg_debug=arg_debug)
+    if l_type is None:
+        log_print("failed to parse arg_type", arg_type="ERROR")
+        return None
+
+    l_addr = address(arg_ea, arg_debug=arg_debug)
+    if l_addr == _ida_idaapi.BADADDR:
+        log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
+        return None
+
+    if l_type.is_struct():
+        log_print("l_type is a struct, we are going to enumerate all members (udm)", arg_debug)
+
+        l_udt_details = _ida_typeinf.udt_type_data_t()
+        l_type.get_udt_details(l_udt_details)
+        for l_udm in l_udt_details:
+            if l_udm.is_gap():
+                log_print("l_udm is_gap(), skipping", arg_debug)
+                continue
+            log_print(f"l_udm: name: {l_udm.name}, tinfo: {l_udm.type}, offset in bytes: 0x{l_udm.offset//8:x}, size: 0x{l_udm.size//8}", arg_debug) # OBS! Offset is in bits
+
+            l_temp = _display_type_at_as_dict(l_addr + l_udm.offset//8, arg_type=l_udm.type, arg_member_name=f"{arg_member_name}<{l_type}>.{l_udm.name}", arg_max_num_recursive=arg_max_num_recursive-1, arg_debug=arg_debug)
+            if l_temp is None:
+                return res
+            for k, v in l_temp.items():
+                res[k] = v
+
+    elif l_type.is_array():
+        l_array_details = _ida_typeinf.array_type_data_t()
+        l_type.get_array_details(l_array_details)
+        log_print(f"The array has {l_array_details.nelems} elements", arg_debug)
+
+        if str(l_array_details.elem_type) in ("char", "const char"):
+            log_print("char[] should be printed as 1 string", arg_debug)
+            return {l_addr: ("", str(l_type), string(l_addr, arg_encoding="UTF-8", arg_len=l_array_details.nelems, arg_debug=arg_debug))}
+
+        if str(l_array_details.elem_type) in ("wchar_t", "const wchar_t"):
+            log_print("wchar_t[] should be printed as 1 string", arg_debug)
+            return {l_addr: ("", str(l_type), string(l_addr, arg_encoding="UTF-16LE", arg_len=l_array_details.nelems, arg_debug=arg_debug))}
+
+        for i in range(0, l_array_details.nelems):
+            l_member_name = arg_member_name
+            if l_member_name:
+                l_member_name += f"[{i}]"
+
+            l_temp = _display_type_at_as_dict(l_addr + i * l_array_details.elem_type.size, arg_type=l_array_details.elem_type, arg_member_name=l_member_name, arg_max_num_recursive=arg_max_num_recursive-1, arg_debug=arg_debug)
+            if l_temp is None:
+                return res
+            for k, v in l_temp.items():
+                res[k] = v
+    else:
+        log_print("l_type is not a struct nor an array, using typeobj to read the data", arg_debug)
+
+        if l_type == get_type("PWSTR", arg_debug=arg_debug):
+            log_print("l_type is PWSTR, using my special code to read the string", arg_debug)
+            l_points_to = pointer(l_addr, arg_debug=arg_debug)
+            if l_points_to is None:
+                log_print("pointer() failed", arg_type="ERROR")
+                return {l_addr: (arg_member_name, str(l_type), _ida_idaapi.BADADDR)}
+            l_string = string(l_points_to, arg_debug=arg_debug)
+            log_print(f'{string_encoding(l_points_to, arg_debug=arg_debug)} string: "{l_string}"', arg_debug)
+            return {l_addr: (arg_member_name, str(l_type), _hex_str_if_int(l_points_to)), l_points_to: (f"{arg_member_name}<data>", "str", l_string)}
+
+        # Normal simple types can be read here
+        l_typed_obj = _ida_idd.Appcall.typedobj(l_type)
+        l_ok, l_parsed_data = l_typed_obj.retrieve(l_addr)
+        if l_ok:
+            return {l_addr: (arg_member_name, str(l_type), _hex_str_if_int(l_parsed_data))}
+        else:
+            log_print(f"Failed to parse type: {l_type} at {_hex_str_if_int(l_addr)}", arg_type="ERROR")
+            return {}
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def display_type_at(arg_ea: EvaluateType,
+                    arg_type: Union[EvaluateType, _ida_hexrays.lvar_t, _ida_typeinf.tinfo_t],
+                    arg_max_num_recursive: int = 10,
+                    arg_debug: bool = False) -> Optional[str]:
+    ''' Display the data as nice to look at. If you want to parse it, use _display_type_at_as_dict() '''
+
+    return json.dumps(_display_type_at_as_dict(arg_ea=arg_ea, arg_type=arg_type, arg_member_name="", arg_max_num_recursive=arg_max_num_recursive, arg_debug=arg_debug), ensure_ascii=False,  indent=4, default=str)
+
 
 # DEBUGGER ------------------------------------------------------------------------------------------------------------------
 
@@ -4424,8 +4547,9 @@ def appcall(arg_function_name: EvaluateType,
     ''' To easy call functions (Appcall) from the python code, this function can help you make it callable.
     Hexrays example code: <https://hex-rays.com/blog/practical-appcall-examples/>
     <https://docs.hex-rays.com/user-guide/debugger/debugger-tutorials/appcall_primer>
+    AllThingsIDA: <https://www.youtube.com/watch?v=GZUHXkV0vdM>
 
-    @param arg_prototype can be either: c type string, _ida_typeinf.tinfo_t, address/name/label/register which can be resolved to an address and then the type is read from that location
+    @param arg_prototype can be either: c type string, ida_typeinf.tinfo_t, address/name/label/register which can be resolved to an address and then the type is read from that location
     @param arg_set_type_in_IDB: Set the type at the function start in the IDB also
 
     If you are debugging and have a function you want to call:
@@ -5347,6 +5471,70 @@ def function_set_return_type(arg_ea: EvaluateType, arg_new_ret_type: Union[str, 
     l_function_tinfo.create_func(l_function_details)
     return _bool(_ida_typeinf.apply_tinfo(l_cfunc.entry_ea, l_function_tinfo, _ida_typeinf.TINFO_DEFINITE))
 
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def file_generate(arg_outfile_type: Union[str, int],
+                           arg_out_file_path: str = "",
+                           arg_start_ea: EvaluateType = 0,
+                           arg_end_ea: EvaluateType = 0,
+                           arg_flags: int = 0,
+                           arg_debug: bool = False) -> str:
+    ''' Generate a new file from the input file. This function is very weird since there is an option to generate EXE file but when you pick it in the menu, IDA say that this is not supported?!
+
+    @param arg_outfile_type is either a string with the "ASM", "DIF", "EXE", "IDC", "LST" or "MAP". If it is an int, then it should be one of ida_loader.OFILE_*
+    @param arg_out_file_path Filename to save to, it not set then use input_file.idb_path + "extension generated from the arg_outfile_type"
+    @param arg_start_ea start from this EA (Effective Address)
+    @param arg_end_ea end at this EA (Effective Address)
+    @param arg_flags see ida_loader.GENFLG_*
+
+    @returns The file path I wrote the result to
+    '''
+    l_ofile_int_to_str = _int_to_str_dict_from_module("_ida_loader", "OFILE_.*")
+    l_ofile_str_to_int = _dict_swap_key_and_value(l_ofile_int_to_str)
+    if isinstance(arg_outfile_type, str):
+        if not arg_outfile_type.startswith("OFILE_"):
+            arg_outfile_type = "OFILE_" + arg_outfile_type.upper()
+
+        if arg_outfile_type not in l_ofile_str_to_int:
+            log_print(f"Invalid arg_outfile_type, valid: {l_ofile_str_to_int.keys()}")
+            return ""
+
+        l_outfile_type: int = l_ofile_str_to_int[arg_outfile_type]
+    else:
+        l_outfile_type = arg_outfile_type
+
+    if l_outfile_type not in l_ofile_int_to_str:
+        log_print(f"Invalid arg_outfile_type, valid: {l_ofile_str_to_int.keys()}")
+        return ""
+
+    l_expected_extension = l_ofile_int_to_str[l_outfile_type][6:].lower()
+
+    l_outfile_path = arg_out_file_path if arg_out_file_path else input_file.idb_path + "." + l_expected_extension
+    l_start_ea = address(arg_start_ea, arg_debug=arg_debug) if arg_start_ea else input_file.min_ea
+    l_end_ea = address(arg_end_ea, arg_debug=arg_debug) if arg_end_ea else input_file.max_ea
+
+    # Code taken from https://github.com/HexRaysSA/IDAPython/blob/d12e31eae9d678f647013527596a715dd378f989/examples/disassembler/produce_lst_file.py#L32
+    l_file_wrapper = _ida_fpro.qfile_t() # FILE * wrapper
+    l_file_mode = "wb" if l_outfile_type == l_ofile_str_to_int["OFILE_EXE"] else "wt"
+    if l_file_wrapper.open(l_outfile_path, l_file_mode):
+        try:
+            _ida_loader.gen_file(l_outfile_type, l_file_wrapper.get_fp(), l_start_ea, l_end_ea, arg_flags)
+        finally:
+            l_file_wrapper.close()
+
+    # gen_file_flags = {}
+    # gen_file_flags["GENFLG_MAPSEG"] = 0x0001 # map: generate map of segments
+    # gen_file_flags["GENFLG_MAPNAME"] = 0x0002 # map: include dummy names
+    # gen_file_flags["GENFLG_MAPDMNG"] = 0x0004 # map: demangle names
+    # gen_file_flags["GENFLG_MAPLOC"] = 0x0008 # map: include local names
+    # gen_file_flags["GENFLG_IDCTYPE"] = 0x0008 # idc: gen only information about types
+    # gen_file_flags["GENFLG_ASMTYPE"] = 0x0010 # asm&lst: gen information about types too
+    # gen_file_flags["GENFLG_GENHTML"] = 0x0020 # asm&lst: generate html (ui_genfile_callback will be used)
+    # gen_file_flags["GENFLG_ASMINC"] = 0x0040 # asm&lst: gen information only about types
+
+    # gen_file_flags = _dict_swap_key_and_value(_int_to_str_dict_from_module("_ida_loader", "GENFLG_.*"))
+
+    return l_outfile_path
+
 
 # New members/functions of IDA pythons objects -------------------------------------------------------------------------------------------------
 
@@ -5917,65 +6105,4 @@ def _comment_copy_from_disassembly_to_decompiler(arg_function: EvaluateType,  ar
 
     return True
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _gen_file_experimental(arg_outfile_type: Union[str, int],
-                           arg_out_file_path: str = "",
-                           arg_start_ea: EvaluateType = 0,
-                           arg_end_ea: EvaluateType = 0,
-                           arg_flags: int = 0,
-                           arg_debug: bool = False) -> str:
-    ''' Generate a new file from the input file. This function is very weird since there is an option to generate EXE file but when you pick it in the menu, IDA say that this is not supported?!
-    Use on your own risk! I have only used it to generate .dif files.
 
-    @param arg_outfile_type is either a string with the "ASM", "DIF", "EXE", "IDC", "LST" or "MAP". If it is an int, then it should be one of ida_loader.OFILE_*
-    @param arg_out_file_path Filename to save to, it not set then use input_file.idb_path + "extension generated from the arg_outfile_type"
-    @param arg_start_ea start from this EA (Effective Address)
-    @param arg_end_ea end at this EA (Effective Address)
-    @param arg_flags see ida_loader.GENFLG_*
-    '''
-    l_ofile_int_to_str = _int_to_str_dict_from_module("_ida_loader", "OFILE_.*")
-    l_ofile_str_to_int = _dict_swap_key_and_value(l_ofile_int_to_str)
-    if isinstance(arg_outfile_type, str):
-        if not arg_outfile_type.startswith("OFILE_"):
-            arg_outfile_type = "OFILE_" + arg_outfile_type.upper()
-
-        if arg_outfile_type not in l_ofile_str_to_int:
-            log_print(f"Invalid arg_outfile_type, valid: {l_ofile_str_to_int.keys()}")
-            return ""
-
-        l_outfile_type: int = l_ofile_str_to_int[arg_outfile_type]
-    else:
-        l_outfile_type = arg_outfile_type
-
-    if l_outfile_type not in l_ofile_int_to_str:
-        log_print(f"Invalid arg_outfile_type, valid: {l_ofile_str_to_int.keys()}")
-        return ""
-
-    l_expected_extension = l_ofile_int_to_str[l_outfile_type][6:].lower()
-
-    l_outfile_path = arg_out_file_path if arg_out_file_path else input_file.idb_path + "." + l_expected_extension
-    l_start_ea = address(arg_start_ea, arg_debug=arg_debug) if arg_start_ea else input_file.min_ea
-    l_end_ea = address(arg_end_ea, arg_debug=arg_debug) if arg_end_ea else input_file.max_ea
-
-    # Code taken from https://github.com/HexRaysSA/IDAPython/blob/d12e31eae9d678f647013527596a715dd378f989/examples/disassembler/produce_lst_file.py#L32
-    l_file_wrapper = _ida_fpro.qfile_t() # FILE * wrapper
-    l_file_mode = "wb" if l_outfile_type == l_ofile_str_to_int["OFILE_EXE"] else "wt"
-    if l_file_wrapper.open(l_outfile_path, l_file_mode):
-        try:
-            _ida_loader.gen_file(l_outfile_type, l_file_wrapper.get_fp(), l_start_ea, l_end_ea, arg_flags)
-        finally:
-            l_file_wrapper.close()
-
-    # gen_file_flags = {}
-    # gen_file_flags["GENFLG_MAPSEG"] = 0x0001 # map: generate map of segments
-    # gen_file_flags["GENFLG_MAPNAME"] = 0x0002 # map: include dummy names
-    # gen_file_flags["GENFLG_MAPDMNG"] = 0x0004 # map: demangle names
-    # gen_file_flags["GENFLG_MAPLOC"] = 0x0008 # map: include local names
-    # gen_file_flags["GENFLG_IDCTYPE"] = 0x0008 # idc: gen only information about types
-    # gen_file_flags["GENFLG_ASMTYPE"] = 0x0010 # asm&lst: gen information about types too
-    # gen_file_flags["GENFLG_GENHTML"] = 0x0020 # asm&lst: generate html (ui_genfile_callback will be used)
-    # gen_file_flags["GENFLG_ASMINC"] = 0x0040 # asm&lst: gen information only about types
-
-    # gen_file_flags = _dict_swap_key_and_value(_int_to_str_dict_from_module("_ida_loader", "GENFLG_.*"))
-
-    return l_outfile_path
