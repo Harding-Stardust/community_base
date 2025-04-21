@@ -34,6 +34,7 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 - - w --> marked bytes will be dumped to disk
 - - alt + Ins --> Copy current address into clipboard (same as [x64dbg](https://x64dbg.com/))
 - - shift + c --> Copy selected bytes into clipboard as hex text (same as [x64dbg](https://x64dbg.com/))
+- - delete --> smart delete. If the selected bytes are in code then make then NOPS (Intel only!) and if you press delete again (or if you are in data) then write 0x00
 - Much more that I can't think of right now as I need to publish this script before new years eve!
 
 # Installation
@@ -63,4 +64,3 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - I'm planning on doing some short clips on how the script is supposed to be used, this takes time and video editing is not my strong side
 - Need help with more testing
 - More of everything :-D
-'''
