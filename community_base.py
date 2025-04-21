@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-04-19 12:53:38"
+__version__ = "2025-04-21 23:10:01"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -2753,7 +2753,11 @@ bytes_write = set_bytes = patch_bytes = write_bytes
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def bytes_smart_delete(arg_ea: EvaluateType, arg_len: EvaluateType, arg_debug: bool = False) -> Optional[bool]:
-    ''' Smart delete of bytes. If the bytes are code then replace with NOP (0x90) and if you press delete again, then write 0x00 '''
+    ''' Smart delete of bytes. If the bytes are code then replace with NOP (0x90) and if you press delete again, then write 0x00
+    OBS! Only working smart on Intel. On other architectures, it just writes 0x00.
+
+    If one wants to make this function smarter, see <https://en.wikipedia.org/wiki/NOP_(code)>
+      '''
     l_start_addr = address(arg_ea, arg_debug=arg_debug)
     if l_start_addr == _ida_idaapi.BADADDR:
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
@@ -2770,9 +2774,9 @@ def bytes_smart_delete(arg_ea: EvaluateType, arg_len: EvaluateType, arg_debug: b
         log_print("read_bytes() failed", arg_type="ERROR")
         return None
 
-    l_is_already_nop = l_bytes[0] == 0x90 # Intel assmebly NOP == 0x90
+    l_is_already_nop = l_bytes[0] == 0x90 # Intel NOP == 0x90
 
-    if l_is_already_nop or not l_is_code:
+    if l_is_already_nop or not l_is_code or _ida_idp.ph_get_id() != _ida_idp.PLFM_386: # Only do the smart delete on Intel, thanks to [milankovo](https://github.com/milankovo) <https://github.com/Harding-Stardust/community_base/issues/4>
         res = write_bytes(arg_ea, arg_buf = "00 " * l_len, arg_debug=arg_debug)
     else:
         res = write_bytes(arg_ea, arg_buf = "90 " * l_len, arg_debug=arg_debug)
