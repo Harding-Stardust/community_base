@@ -30,8 +30,8 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 - Load shellcode into the running process. See ```load_file_into_memory()``` using [AppCall](https://www.youtube.com/watch?v=GZUHXkV0vdM)
 - Help with [AppCall](https://www.youtube.com/watch?v=GZUHXkV0vdM) to call functions that are inside the executable. (Think of decrypt functions) E.g. ```win_LoadLibraryA()```
 - Simple and fast way to get info about APIs, see ```google()```
-- 3 new hotkeys:
-- - w --> marked bytes will be dumped to disk
+- 4 new hotkeys:
+- - w --> Selected bytes will be dumped to disk
 - - alt + Ins --> Copy current address into clipboard (same as [x64dbg](https://x64dbg.com/))
 - - shift + c --> Copy selected bytes into clipboard as hex text (same as [x64dbg](https://x64dbg.com/))
 - - delete --> smart delete. If the selected bytes are in code then make then NOPS (Intel only!) and if you press delete again (or if you are in data) then write 0x00
