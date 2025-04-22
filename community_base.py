@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-04-21 23:10:01"
+__version__ = "2025-04-22 18:02:01"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -943,7 +943,7 @@ def _new_file_opened_notification_callback(arg_nw_code: int, arg_is_old_database
     l_addon.producer = __author__
     l_addon.url = __url__
     l_addon.version = __version__
-    log_print(_ida_kernwin.register_addon(l_addon))
+    _ida_kernwin.register_addon(l_addon)
 
 _ida_idaapi.notify_when(_ida_idaapi.NW_OPENIDB, _new_file_opened_notification_callback) # See also : NW_INITIDA, NW_REMOVE, NW_CLOSEIDB, NW_TERMIDA
 
@@ -2022,8 +2022,10 @@ class ActionHandlerSmartDeleteBytes(_ida_kernwin.action_handler_t):
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def update(self, ctx: _ida_kernwin.action_ctx_base_t):
         ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
-        del ctx # Not used but needed in prototype
-        return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
+        
+        if ctx.widget_type in (_ida_kernwin.BWN_PSEUDOCODE, _ida_kernwin.BWN_DISASM):
+            return _ida_kernwin.AST_ENABLE_FOR_WIDGET
+        return _ida_kernwin.AST_DISABLE_FOR_WIDGET
 
 if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_SMART_DELETE_BYTES, f"{__name__}: Smart delete bytes", ActionHandlerSmartDeleteBytes(), HOTKEY_SMART_DELETE_BYTES)):
     log_print(f"register_action('{_ACTION_NAME_SMART_DELETE_BYTES}') OK, shortcut: {HOTKEY_SMART_DELETE_BYTES}", arg_type="INFO")
