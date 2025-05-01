@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-04-22 18:02:01"
+__version__ = "2025-04-26 17:56:44"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -141,7 +141,7 @@ from PyQt5.QtWidgets import QWidget # type: ignore[import-untyped] # TODO: Ida 9
 HOTKEY_DUMP_TO_DISK = 'w' # Select bytes and press w to dump it to disk in the same directory as the IDB. One can also call dump_to_disk(address, length) to dump from the console
 HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT = 'shift-c' # Select bytes and press Shift-C to copy the marked bytes as hex text. Same shortcut as in x64dbg.
 HOTKEY_COPY_CURRENT_ADDRESS = 'alt-ins' # Copy the current address as hex text into the clipboard. Same shortcut as x64dbg.
-HOTKEY_SMART_DELETE_BYTES = 'del' # Presing delete on code turns it into NOP (0x90) if it's already NOP (or data) then write 0x00
+HOTKEY_SMART_DELETE_BYTES = 'del' # Pressing delete on code turns it into NOP (0x90) if it's already NOP (or data) then write 0x00
 
 BufferType = Union[str, bytes, bytearray, List[str], List[bytes], List[bytearray]]
 BoolishType = Union[bool, int, str] # Can be evaluted by my function named _bool()
@@ -301,8 +301,9 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
         l_bug_report["input_file_" + key] = value
     l_bug_report["bug_description"] = arg_bug_description
 
+    l_bug_report_as_str = json.dumps(l_bug_report, ensure_ascii=False, indent=4, default=str)
     with open(l_bug_report_file, "w", encoding="UTF-8", newline="\n") as f:
-        f.write(json.dumps(l_bug_report, ensure_ascii=False, indent=4, default=str))
+        f.write(l_bug_report_as_str)
 
     log_print(f"Wrote bug report in {l_bug_report_file}", arg_type="INFO")
     log_print("Please post this bug report to the creator of the module so they can fix it. Thank you!", arg_type="INFO")
@@ -310,7 +311,7 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
     l_github_issues: str = __url__ + "/issues/new"
     # First argument is the default button that will be pressed if the user press ENTER as soon as the box popups
     if _ida_kernwin.ask_yn(_ida_kernwin.ASKBTN_YES , f"Open a new issue on Github? ( {l_github_issues} )") == _ida_kernwin.ASKBTN_YES:
-        _ida_kernwin.open_url(l_github_issues)
+        _ida_kernwin.open_url(l_github_issues + f"?title=bug&body={l_bug_report_as_str}")
 
     return l_bug_report_file
 
@@ -2135,7 +2136,7 @@ def function_prototype(arg_function_name_or_ea: EvaluateType,
     if arg_allow_comments:
         l_comment: str = _comment_get(arg_cached_cfunc.entry_ea, arg_debug=arg_debug)
         if l_comment:
-            l_function_prototype += " // " + l_comment
+            l_function_prototype += " // " + l_comment.replace('\n', ', ')
 
     return l_function_prototype
 
@@ -3835,6 +3836,8 @@ def _fix_c_type(arg_c_type: str, arg_debug: bool = False) -> Optional[str]:
     if arg_c_type in ['byte', 'word', 'dword', 'qword']: # Some simple words that I use in lower case should be OK  # TODO: This is not true for things like MIPS
         return arg_c_type.upper() + ';'
 
+    arg_c_type += ";"
+    arg_c_type = arg_c_type.replace(";;", ";")
     log_print(f"1st parse test is of: '{arg_c_type}'", arg_debug)
     _til = None
     _t = _ida_typeinf.tinfo_t()
@@ -4114,7 +4117,7 @@ def _display_type_at_as_dict(arg_ea: EvaluateType,
     else:
         log_print("l_type is not a struct nor an array, using typeobj to read the data", arg_debug)
 
-        if l_type == get_type("PWSTR", arg_debug=arg_debug):
+        if str(l_type) in ("PWSTR", "wchar_t *"):
             log_print("l_type is PWSTR, using my special code to read the string", arg_debug)
             l_points_to = pointer(l_addr, arg_debug=arg_debug)
             if l_points_to is None:
@@ -4122,7 +4125,7 @@ def _display_type_at_as_dict(arg_ea: EvaluateType,
                 return {l_addr: (arg_member_name, str(l_type), _ida_idaapi.BADADDR)}
             l_string = string(l_points_to, arg_debug=arg_debug)
             log_print(f'{string_encoding(l_points_to, arg_debug=arg_debug)} string: "{l_string}"', arg_debug)
-            return {l_addr: (arg_member_name, str(l_type), _hex_str_if_int(l_points_to)), l_points_to: (f"{arg_member_name}<data>", "str", l_string)}
+            return {l_addr: (arg_member_name, str(l_type), _hex_str_if_int(l_points_to)), l_points_to: (f"{arg_member_name}<data>", "str" , l_string)}
 
         # Normal simple types can be read here
         l_typed_obj = _ida_idd.Appcall.typedobj(l_type)
@@ -5277,8 +5280,6 @@ def ui_highlighted_identifier(arg_viewer: Optional[TWidget] = None, arg_allow_se
     log_print("l_is_valid is not valid", arg_type="ERROR")
     return ""
 
-
-
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_main_window() -> TWidget:
     ''' Get the top window. If you set the window title on this, then the IDA Process window title will be set
@@ -5772,7 +5773,7 @@ def _op_t_to_register(arg_operand: _ida_ua.op_t, arg_debug: bool = False) -> Opt
         log_print(f"res: {repr(res)}", arg_debug)
         return res
 
-    log_print(f"arg_operand is {str(arg_operand)} which is something I cannot handle right now", arg_type="ERROR")
+    # log_print(f"arg_operand is {str(arg_operand)} which is something I cannot handle right now", arg_type="ERROR")
     return None
 
 setattr(_ida_ua.op_t, 'register', property(fget=_op_t_to_register))
@@ -6049,12 +6050,12 @@ def _export_names_and_types(arg_save_to_file: str = "",
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _ignore_cast(arg_expr: _ida_hexrays.cexpr_t) -> _ida_hexrays.cexpr_t:
     ''' Helper function for (<type>)variable_name in the decompiler '''
-    if arg_expr.opname == 'cast':
-        return arg_expr.first_operand
-    return arg_expr
+    return arg_expr.first_operand if arg_expr.opname == 'cast' else arg_expr
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _errors_find_type_errors(arg_ea: EvaluateType, arg_force_fresh_decompilation: bool = True, arg_debug: bool = False) -> Optional[bool]:
+def _errors_find_type_errors(arg_ea: EvaluateType,
+                            arg_force_fresh_decompilation: bool = True,
+                            arg_debug: bool = False) -> Optional[bool]:
     ''' Find type errors such as <int> - <ptr> and in the future: <ptr> + <ptr>
     EXPERIMENTAL
     '''
