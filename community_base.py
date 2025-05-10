@@ -69,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-04-26 17:56:44"
+__version__ = "2025-05-10 23:14:34"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -1026,7 +1026,7 @@ _add_link_to_docstring(_ida_kernwin.read_selection) # TODO: Implement wrapper
 
 
 
-# API extension ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- API extension ----------------
+# API extension ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- API extension
 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -1667,6 +1667,8 @@ def pseudocode(arg_ea: EvaluateType,
                arg_force_fresh_decompilation: bool = True,
                arg_debug: bool = False) -> str:
     ''' Get the pseudo code for a function. To work with the object (cfunc_t) use decompile() '''
+
+    # TODO: rename this to decompiler_pseudocode() ?
 
     l_cfunc = decompile(arg_ea, arg_force_fresh_decompilation=arg_force_fresh_decompilation, arg_debug=arg_debug)
     if l_cfunc is None:
@@ -2788,12 +2790,22 @@ def bytes_smart_delete(arg_ea: EvaluateType, arg_len: EvaluateType, arg_debug: b
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def write_string(arg_ea: EvaluateType, arg_string: str, arg_append_NULL_byte: bool = True, arg_debug: bool = False) -> bool:
-    ''' Write a null-terminated C string (UTF-8) to IDB'''
+    ''' Write a null-terminated C string (UTF-8) to IDB 
+    @param arg_ea The address to write the string to
+    @param arg_string The string to write
+    @param arg_append_NULL_byte If True, then append a NULL byte to the end of the string
+    @return True if the string was written successfully, False otherwise
+
+    Replacement for ida_bytes.patch_strlit()
+    '''
     return write_bytes(arg_ea=arg_ea, arg_buf=bytes(arg_string + ('\x00' if arg_append_NULL_byte else ''), encoding='utf-8'), arg_debug=arg_debug)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def import_h_file(arg_h_file: str, arg_flags: int = _ida_typeinf.PT_FILE, arg_debug: bool = False) -> bool:
     ''' Import a header file (.h file) with types into IDA. Same as using the menu File -> Load file -> Parse C header file. Default keybinding for the menu is Ctrl + F9
+    @param arg_h_file The path to the header file to import
+    @param arg_flags The flags to pass to ida_typeinf.idc_parse_types()
+    @return True if the header file was imported successfully, False otherwise
 
     Replacement for ida_typeinf.idc_parse_types() and ida_typeinf.parse_decls() '''
     if not os.path.exists(arg_h_file):
@@ -2918,6 +2930,8 @@ def string_encoding(arg_ea: EvaluateType, arg_detect: bool = False, arg_debug: b
 def _is_invalid_strtype(arg_strtype: int) -> bool:
     ''' It's not clear what is ida_nalt.get_str_type() should return that is a valid strtype.
     I used to think that 0xFFFFFFFF was the constant but I have gotten cases where 0xFFFFFF00 is also returned
+    @param arg_strtype The strtype to check
+    @return True if the strtype is invalid, False otherwise
     '''
     return (arg_strtype >> 8) == 0xFFFFFF
 
@@ -2925,6 +2939,8 @@ def _is_invalid_strtype(arg_strtype: int) -> bool:
 def _validate_encoding_name(arg_encoding: str) -> str:
     ''' Try to normalize some encoding names.
      Maybe check against <https://docs.python.org/3.12/library/codecs.html#standard-encodings> ?
+    @param arg_encoding The encoding name to validate
+    @return The normalized encoding name
     '''
     arg_encoding = arg_encoding.lower()
     arg_encoding = arg_encoding.replace("-", "")
@@ -2946,7 +2962,7 @@ def _validate_encoding_name(arg_encoding: str) -> str:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _encoding_to_strtype(arg_encoding: str, arg_debug: bool = False) -> int:
     ''' Internal function. Do not use directly.
-
+    @param arg_encoding The encoding name to convert to a strtype
     @return returns the str_type: int, returns -1 on error
     '''
     l_encoding: str = _validate_encoding_name(arg_encoding)
@@ -2963,6 +2979,8 @@ def _encoding_to_strtype(arg_encoding: str, arg_debug: bool = False) -> int:
 def _idaapi_encoding_from_strtype(arg_strtype: int) -> str:
     ''' Wrapper around ida_nalt.encoding_from_strtype() that honors the type hints
     It does NOT return None (NULLPTR) if we send in an invalid index as the docstring say
+    @param arg_strtype The strtype to convert to an encoding name
+    @return The encoding name
     '''
     # TODO: Check the arg_strtype for weird input
     return _ida_nalt.encoding_from_strtype(arg_strtype)
@@ -2982,6 +3000,9 @@ def string(arg_ea: EvaluateType,
     ALOPT_IGNHEADS: Don't stop if another data item is encountered. Only the byte values will be used to determine the string length. If not set, a defined data item or instruction will truncate the string.
     ALOPT_IGNPRINT: Don't stop at non-printable codepoints, but only at the terminating character (or not unicode-mapped character (e.g., 0x8f in CP1252))
     ALOPT_IGNCLT:   Don't stop at codepoints that are not part of the current 'culture'; accept all those that are graphical (this is typically used used by user-initiated actions creating string literals.)
+
+    @param arg_create_string If True, then create a string at the given address
+    @return The string read from the IDB
 
     Replacement for ida_bytes.get_strlit_contents() and idc.get_strlit_contents()
 
@@ -3076,14 +3097,29 @@ def string(arg_ea: EvaluateType,
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def c_string(arg_ea: EvaluateType, arg_len: int = 0, arg_flags: int = _ida_bytes.ALOPT_IGNHEADS | _ida_bytes.ALOPT_IGNPRINT | _ida_bytes.ALOPT_IGNCLT, arg_debug: bool = False) -> Optional[str]:
-    ''' Forcefully read the data as a NULL terminated C string (in UTF-8) For more info about the flags, see the docstring for string() '''
+    ''' Forcefully read the data as a NULL terminated C string (in UTF-8) For more info about the flags, see the docstring for string() 
+    @param arg_ea The address to read the string from
+    @param arg_len The length of the string to read, set to 0 to use the length of the string at the given address
+    @param arg_flags The flags to pass to string()
+    @return The string read from the IDB
+
+    Replacement for idc.get_cstr() and ida_bytes.get_cstr()
+    
+    '''
     return string(arg_ea=arg_ea, arg_encoding=_ida_nalt.STRTYPE_C, arg_len=arg_len, arg_flags=arg_flags, arg_debug=arg_debug)
 
 utf8_string = string_utf8 = c_string
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def wide_string(arg_ea: EvaluateType, arg_len: int = 0, arg_flags: int = _ida_bytes.ALOPT_IGNHEADS | _ida_bytes.ALOPT_IGNPRINT | _ida_bytes.ALOPT_IGNCLT, arg_debug: bool = False) -> Optional[str]:
-    ''' Forcefully read the data as a NULL terminated wide/unicode/UTF-16/UCS-2 string. For more info about the flags, see the docstring for string() '''
+    ''' Forcefully read the data as a NULL terminated wide/unicode/UTF-16/UCS-2 string. For more info about the flags, see the docstring for string() 
+    @param arg_ea The address to read the string from
+    @param arg_len The length of the string to read, set to 0 to use the length of the string at the given address
+    @param arg_flags The flags to pass to string()
+    @return The string read from the IDB
+
+    Replacement for idc.get_wstr() and ida_bytes.get_wstr()
+    '''
     return string(arg_ea=arg_ea, arg_encoding=_ida_nalt.STRTYPE_C_16, arg_len=arg_len, arg_flags=arg_flags, arg_debug=arg_debug)
 
 utf16_string = string_utf16 = wide_string
@@ -3133,6 +3169,11 @@ def pointer_type(arg_type_or_function_name: Union[str, _ida_typeinf.tinfo_t], ar
     ''' Send in a name or a type and get a pointer type back.
     The reverse function is ida_typeinf.tinfo_t().remove_ptr_or_array()()
     Usually one use str(res) to get it as a string
+
+    @param arg_type_or_function_name The name or type to get a pointer type for
+    @return A pointer type or None if it failed
+
+    Replacement for ida_typeinf.tinfo_t().create_ptr()
     '''
 
     l_type: Optional[_ida_typeinf.tinfo_t] = get_type(arg_type_or_function_name, arg_debug=arg_debug)
@@ -3147,6 +3188,9 @@ def pointer_type(arg_type_or_function_name: Union[str, _ida_typeinf.tinfo_t], ar
 def _fix_assembly(arg_assembly_string: str, arg_debug: bool = False) -> str:
     ''' Internal function. If you read assembly from IDA and try to reassemble it, it won't work.
     OBS! This is NOT a complete fix!
+
+    @param arg_assembly_string The assembly string to fix
+    @return The fixed assembly string
     '''
     res = arg_assembly_string
     res = res.replace(" loc_", " 0x")
@@ -3244,10 +3288,13 @@ def disassemble(arg_ea: EvaluateType,
                 arg_show_bytes: bool = True,
                 arg_debug: bool = False) -> Optional[str]:
     ''' Disassemble bytes at the given address into assembly string. If you want an object, use ```instruction()``` instead
-
-        @param arg_flags Default to ida_lines.GENDSM_FORCE_CODE. Read more: <https://python.docs.hex-rays.com/namespaceida__lines.html#:~:text=GENDSM_FORCE_CODE>
-
         Replacement for idc.generate_disasm_line() and ida_lines.generate_disasm_line() <https://python.docs.hex-rays.com/namespaceida__lines.html#:~:text=generate_disasm_line()>
+        
+        @param arg_ea The address to disassemble
+        @param arg_flags Default to ida_lines.GENDSM_FORCE_CODE. Read more: <https://python.docs.hex-rays.com/namespaceida__lines.html#:~:text=GENDSM_FORCE_CODE>
+        @param arg_show_size If True, then show the size of the instruction
+        @param arg_show_bytes If True, then show the bytes of the instruction
+        @return The disassembled assembly string or None if it failed
     '''
     l_addr = address(arg_ea, arg_debug=arg_debug)
     if l_addr == _ida_idaapi.BADADDR:
@@ -3274,8 +3321,9 @@ def disassemble(arg_ea: EvaluateType,
 def instruction(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[_ida_ua.insn_t]:
     '''
     Instruction object at given ea (Effective Address).
-
     Replacement for ida_ua.decode_insn()
+    @param arg_ea The address to get the instruction object for
+    @return The instruction object or None if it failed
     '''
     l_addr = address(arg_ea, arg_debug=arg_debug)
     if l_addr == _ida_idaapi.BADADDR:
@@ -3290,18 +3338,25 @@ def instruction(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[_ida_
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def instruction_before(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[_ida_ua.insn_t]:
-    ''' Returns the instruction before the given instruction '''
+    ''' Returns the instruction before the given instruction 
+    @param arg_ea The address to get the instruction before
+    @return The instruction object or None if it failed
+    '''
     return instruction(arg_ea=_ida_bytes.get_item_head(address(arg_ea, arg_debug=arg_debug) - 1), arg_debug=arg_debug)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def instruction_after(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[_ida_ua.insn_t]:
-    ''' Returns the instruction after the given instruction '''
+    ''' Returns the instruction after the given instruction 
+    @param arg_ea The address to get the instruction after
+    @return The instruction object or None if it failed
+    '''
     return instruction(arg_ea=_ida_bytes.get_item_end(address(arg_ea, arg_debug=arg_debug) + 1), arg_debug=arg_debug)
 
 def xrefs_to(arg_ea: EvaluateType, arg_debug: bool = False) -> Dict[int, _ida_xref.xrefblk_t]:
     ''' Replacement for idautils.XrefsTo()
 
     OBS! I add the member "type_name" to the objects returned in the dict
+    @param arg_ea The address to get the xrefs to
     @return Dict[address: int] --> _ida_xref.xrefblk_t
     '''
     res = {}
@@ -3319,7 +3374,7 @@ def pointer_size(arg_debug: bool = False) -> int:
 
     l_type: Optional[_ida_typeinf.tinfo_t] = _parse_decl('void*', arg_debug=arg_debug)
     if l_type is None:
-        log_print("_parse_decl('void*') returned None, fallback to input_file.bits // 8", arg_type="ERROR")
+        log_print("_parse_decl('void*') returned None, fallback to input_file.bits // 8", arg_type="WARNING")
         return input_file.bits // 8
     res = l_type.get_size()
     log_print(f"Pointer size is {res}", arg_debug)
@@ -3821,8 +3876,61 @@ def calls(arg_ea: EvaluateType, arg_use_assembly_calls_instead: bool = False, ar
     # TODO: Is this bad design to have different return types depending on arguments?
     return _decompiler_calls(arg_ea=arg_ea, arg_debug=arg_debug) if not arg_use_assembly_calls_instead else _assembler_calls(arg_ea=arg_ea, arg_debug=arg_debug)
 
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def file_write_patches_to_file(arg_validate_input_file: bool = True, arg_make_backup: bool = True, arg_debug: bool = False) -> bool:
+    ''' Patch the input file with the given patch file.
+    @param arg_validate_input_file If True, validate the input file before patching it (by comparing the SHA-256 hash)
+    @param arg_make_backup If True, make a backup of the input file (original file name + timestamp + '.bak') in the same directory as the input file
+    @return True if the patch was applied successfully, False otherwise
+    '''
+    if arg_validate_input_file:
+        import hashlib
+        with open(input_file.filename, 'rb') as l_file_validator:
+            l_file_contents: bytes = l_file_validator.read()
+        l_input_file_hash: str = hashlib.sha256(l_file_contents).hexdigest()
+        if l_input_file_hash != input_file.sha256:
+            log_print(f"Input file has changed, not going to patch it. Original file hash: {input_file.sha256} != SHA256: {l_input_file_hash}", arg_type="ERROR")
+            return False
 
-# DATA TYPES ------------------------------------------------------------------------------------------------------------------
+    if arg_make_backup:
+        l_backup_file_path: str = input_file.filename + '.' + time.strftime("%Y%m%d_%H%M%S", datetime.timetuple(datetime.now())) + '.bak'
+        log_print(f"Backing up to: {l_backup_file_path}", arg_type="INFO")
+        import shutil
+        shutil.copyfile(input_file.filename, l_backup_file_path, follow_symlinks=True)
+        
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def _visit_patched_bytes_callback(arg_ea: int, arg_file_pos: int, arg_org_val: int, arg_patch_val: int) -> int:
+        ''' Internal function. Please use input_file_write_patches_to_file() instead. 
+        @param arg_ea The address of the byte
+        @param arg_fpos The position of the byte in the file
+        @param arg_org_val The original value of the byte
+        @param arg_patch_val The patch value of the byte
+        @return 0 to continue the enumeration, anything else to stop the enumeration
+        '''
+        log_print(f"Patching byte at 0x{arg_ea:x} from 0x{arg_org_val:x} to 0x{arg_patch_val:x} (fpos: {arg_file_pos})", arg_debug)
+
+        if arg_file_pos == -1:
+            log_print("Invalid arg_file_pos, stopping the enumeration", arg_type="ERROR")
+            return 1 # Return 1 to stop the enumeration
+        
+        l_file_patcher.seek(arg_file_pos)
+        # OBS! I do NOT need to verify the original value, because the SHA-256 is either correct or the user passed arg_validate_input_file == False and then I don't care about the original value
+        l_file_patcher.write(arg_patch_val.to_bytes(1, 'little'))
+        return 0 # Return 0 to continue the enumeration
+    
+    with open(input_file.filename, 'rb+') as l_file_patcher:
+        l_visitor_res = _ida_bytes.visit_patched_bytes(input_file.min_ea, input_file.max_ea, _visit_patched_bytes_callback)
+    
+    if l_visitor_res != 0:
+        log_print(f"Patching failed, visitor returned: {l_visitor_res}", arg_type="ERROR")
+        return False
+    
+    log_print(f"Patching done, wrote to file: {input_file.filename}", arg_type="INFO")
+    return True
+        
+
+
+# DATA TYPES ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- DATA TYPES
 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -4148,7 +4256,8 @@ def display_type_at(arg_ea: EvaluateType,
 
 dt = display_type_at # Windbg <3
 
-# DEBUGGER ------------------------------------------------------------------------------------------------------------------
+
+# DEBUGGER ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- DEBUGGER
 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -5564,7 +5673,7 @@ def file_generate(arg_outfile_type: Union[str, int],
     return l_outfile_path
 
 
-# New members/functions of IDA pythons objects -------------------------------------------------------------------------------------------------
+# New members/functions of IDA pythons objects -------------------------------------------------------------------------------------------------------------------------------------------- New members/functions of IDA pythons objects
 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -5843,7 +5952,7 @@ setattr(_ida_range.range_t, '__repr__', __repr__type_address_str)
 setattr(_ida_idd.process_info_t, '__repr__', lambda self: f"process name: {self.name}, PID: 0x{self.pid:x} ({self.pid})")
 
 
-# TESTS ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# TESTS ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- TESTS
 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -5994,7 +6103,7 @@ def _test_all(arg_debug: bool = False) -> bool:
     return all(l_test_functions.values())
 
 
-# EXPERIMENTAL ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# EXPERIMENTAL --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- EXPERIMENTAL
 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
