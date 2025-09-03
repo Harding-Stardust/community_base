@@ -508,17 +508,17 @@ def ida_exit(arg_exit_code: int = 0,
     process_config_directive(): <https://python.docs.hex-rays.com/namespaceida__idp.html#:~:text=process_config_directive()>
     '''
     if not arg_save_database:
-        ida_config("ABANDON_DATABASE", "YES")
+        _ = ida_config("ABANDON_DATABASE", "YES")
         _ida_pro.qexit(arg_exit_code)
         return # We will never reach this line
 
     if arg_collect_garbage:
-        ida_config("COLLECT_GARBAGE", "YES")
+        _ = ida_config("COLLECT_GARBAGE", "YES")
 
     if arg_pack_database:
-        ida_config("PACK_DATABASE", "2") # set the default database packing option to "deflate" in old IDA and "zstd" in 9.1+;
+        _ = ida_config("PACK_DATABASE", "2") # set the default database packing option to "deflate" in old IDA and "zstd" in 9.1+;
     else:
-        ida_config("PACK_DATABASE", "1")
+        _ = ida_config("PACK_DATABASE", "1")
 
     _ida_pro.qexit(arg_exit_code)
     return # We will never reach this line
@@ -593,7 +593,6 @@ def reload_module(arg_module: Union[str, ModuleType, None] = None) -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _python_load_module(arg_filepath: str) -> bool:
     ''' Load a given Python file by full file path '''
-    # TODO: Merge this into reload_module() ?
     l_directory = os.path.dirname(arg_filepath)
     l_filename = os.path.basename(arg_filepath)
     l_saved_cwd = os.getcwd()
@@ -1025,7 +1024,6 @@ _add_link_to_docstring(_ida_kernwin.read_selection) # TODO: Implement wrapper
 # _add_link_to_docstring() # TODO: Implement wrapper
 
 
-
 # API extension ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- API extension
 
 
@@ -1331,7 +1329,7 @@ here = current_address
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _idaapi_str2ea(arg_expression: str, arg_screen_ea: int = _ida_idaapi.BADADDR) -> int:
     '''  wrapper around ida_kernwin.str2ea() (without the exception)
-    IDA < 8.3: _ida_kernwin.str2ea returns BADADDR, IDA >= 8.3: returns None
+    IDA < 8.3: ida_kernwin.str2ea() returns BADADDR, IDA >= 8.3: ida_kernwin.str2ea() returns None
 
     @return Returns ida_idaapi.BADADDR on failure
 
@@ -1907,6 +1905,12 @@ def bookmarks(arg_debug: bool = False) -> Optional[List[Tuple[int, str]]]:
         res.append((l_ea, _ida_idc.get_mark_comment(bookmark_slot)))
 
     return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _struct_comments(arg_debug: bool = False) -> str:
+    ''' When setting a comment on a struct member, you can use the ///< instead of the normal // in the c-style edit window '''
+    return "When setting a comment on a struct member, you can use the ///< instead of the normal // in the c-style edit window"
+    
 
 # ---- Hotkey: w --> Dump selected bytes to a file on disk ----------------------------------------------------------------------------------------
 _ACTION_NAME_DUMP_SELECTED_BYTES = f"{__name__}:dump_selected_bytes_to_disk"
@@ -3838,7 +3842,7 @@ def xref_add_code_ref(arg_from: EvaluateType, arg_to: EvaluateType, arg_flags: i
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _decompiler_calls(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[List[_ida_hexrays.cexpr_t]]:
+def decompiler_calls(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[List[_ida_hexrays.cexpr_t]]:
     ''' Internal function, use calls() instead.
     Returns a list of all _ida_hexrays.cexpr_t that is of type "call" '''
     res = []
@@ -3852,7 +3856,7 @@ def _decompiler_calls(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _assembler_calls(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[List[_ida_ua.insn_t]]:
+def assembler_calls(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[List[_ida_ua.insn_t]]:
     ''' Internal function, use calls() instead.
     Returns a list of all _ida_ua.insn_t that is of type "call" '''
     res = []
@@ -3866,15 +3870,15 @@ def _assembler_calls(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[
             res.append(l_ins)
     return res
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def calls(arg_ea: EvaluateType, arg_use_assembly_calls_instead: bool = False, arg_debug: bool = False) -> Optional[Union[List[_ida_hexrays.cexpr_t], List[_ida_ua.insn_t]]]:
-    ''' Return a list of all calls in the given function.
-    This uses the decompiler but you can set arg_use_assembly_calls_instead=True to use the disassembler instead.
+# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+# def calls(arg_ea: EvaluateType, arg_use_assembly_calls_instead: bool = False, arg_debug: bool = False) -> Optional[Union[List[_ida_hexrays.cexpr_t], List[_ida_ua.insn_t]]]:
+#     ''' Return a list of all calls in the given function.
+#     This uses the decompiler but you can set arg_use_assembly_calls_instead=True to use the disassembler instead.
 
-    Return: List[ida_hexrays.cexpr_t] is used as normal or List[_ida_ua.insn_t] if arg_use_assembly_calls_instead == True
-    '''
-    # TODO: Is this bad design to have different return types depending on arguments?
-    return _decompiler_calls(arg_ea=arg_ea, arg_debug=arg_debug) if not arg_use_assembly_calls_instead else _assembler_calls(arg_ea=arg_ea, arg_debug=arg_debug)
+#     Return: List[ida_hexrays.cexpr_t] is used as normal or List[_ida_ua.insn_t] if arg_use_assembly_calls_instead == True
+#     '''
+#     # TODO: Is this bad design to have different return types depending on arguments?
+#     return decompiler_calls(arg_ea=arg_ea, arg_debug=arg_debug) if not arg_use_assembly_calls_instead else assembler_calls(arg_ea=arg_ea, arg_debug=arg_debug)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def file_write_patches_to_file(arg_validate_input_file: bool = True, arg_make_backup: bool = True, arg_debug: bool = False) -> bool:
@@ -4249,7 +4253,7 @@ def _display_type_at_as_dict(arg_ea: EvaluateType,
 def display_type_at(arg_ea: EvaluateType,
                     arg_type: Union[EvaluateType, _ida_hexrays.lvar_t, _ida_typeinf.tinfo_t],
                     arg_max_num_recursive: int = 10,
-                    arg_debug: bool = False) -> Optional[str]:
+                    arg_debug: bool = False) -> str:
     ''' Display the data as nice to look at. If you want to parse it, use _display_type_at_as_dict() '''
 
     return json.dumps(_display_type_at_as_dict(arg_ea=arg_ea, arg_type=arg_type, arg_member_name="", arg_max_num_recursive=arg_max_num_recursive, arg_debug=arg_debug), ensure_ascii=False,  indent=4, default=str)
@@ -4346,7 +4350,7 @@ def debugger_breakpoint_add(arg_ea: EvaluateType,
                    arg_condition: str = '',
                    arg_debug: bool = False) -> Optional[_ida_dbg.bpt_t]:
     ''' Add (set) a breakpoint (Software or Hardware)
-        @param arg_type Set to ida_idd.BPT_WRITE or ida_idd.BPT_READ or ida_idd.BPT_WRITE to set hardware breakpoints
+        @param arg_breakpoint_type Set to ida_idd.BPT_WRITE or ida_idd.BPT_READ or ida_idd.BPT_WRITE to set hardware breakpoints
     '''
     l_addr: int = address(arg_ea, arg_debug=arg_debug)
     if l_addr == _ida_idaapi.BADADDR:
@@ -5760,7 +5764,7 @@ def _function_arguments(arg_ea: EvaluateType, arg_debug: bool = False) -> Option
     return l_funcdata
 
 setattr(_ida_funcs.func_t, 'arguments', property(fget=_function_arguments))
-setattr(_ida_funcs.func_t, 'calls', property(fget=_assembler_calls))
+setattr(_ida_funcs.func_t, 'calls', property(fget=assembler_calls))
 setattr(_ida_funcs.func_t, '__call__', lambda *args: appcall(args[0])(*args[1:])) # type: ignore[misc] # py_lstrcmpA = cb.function("lstrcmpA"); py_lstrcmpA("input_text", "input_text") # TODO: This is dangerous, maybe remove?
 setattr(_ida_funcs.func_t.__call__, '__doc__', f"Calls the function via AppCall. Read more: {links()['links']['appcall_guide']}")
 setattr(_ida_funcs.func_t, '__bytes__', lambda f: read_bytes(f.start_ea,  f.end_ea - f.start_ea - 1))
@@ -5912,7 +5916,7 @@ setattr(_ida_hexrays.cfuncptr_t, 'prototype', property(fget=function_prototype))
 setattr(_ida_hexrays.cfuncptr_t, 'return_type', property(fget=lambda self: self.type.get_rettype(), doc='The tinfo_t of the return value'))
 setattr(_ida_hexrays.cfuncptr_t, 'name', property(fget=name, fset=lambda self, new_name: name(self, arg_set_name=new_name, arg_force=True))) # type: ignore[union-attr, arg-type]
 setattr(_ida_hexrays.cfuncptr_t, 'local_variables', property(fget=lambda self: {var.name: var for var in self.lvars}))
-setattr(_ida_hexrays.cfuncptr_t, 'calls', property(fget=_decompiler_calls))
+setattr(_ida_hexrays.cfuncptr_t, 'calls', property(fget=decompiler_calls))
 setattr(_ida_hexrays.cfuncptr_t, 'is_lumina_name', property(fget=function_is_lumina_name))
 setattr(_ida_hexrays.citem_t, '__str__', lambda self: f"{_ida_lines.tag_remove(self.print1(None))}")
 setattr(_ida_hexrays.citem_t, '__repr__', __repr__type_address_str)
