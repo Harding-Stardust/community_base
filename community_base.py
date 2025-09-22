@@ -75,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-09-22 16:07:21"
+__version__ = "2025-09-22 16:25:21"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -1699,7 +1699,7 @@ def decompiler_comments(arg_functions: Optional[Union[List[EvaluateType], Evalua
 
     @return Dict[ea: int, comment: str]
     '''
-    if not isinstance(arg_functions, list):
+    if arg_functions and not isinstance(arg_functions, list):
         arg_functions = [arg_functions]
 
     l_functions = [address(l_func, arg_debug=arg_debug) for l_func in arg_functions] if arg_functions else functions(arg_allow_library_functions=arg_allow_library_functions, arg_debug=arg_debug)
