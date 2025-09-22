@@ -56,8 +56,13 @@ import community_base as cb
 Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directory-idausr>
 
 
-# Tested with
-```Windows 10 + IDA 9.1 + Python 3.12```, ```Windows 10 + IDA 9.0 + Python 3.12``` and ```Windows 10 + IDA 8.4 + Python 3.8```
+# it _should_ work on alla OSes but I have only tested on:
+
+| OS | IDA | Python |
+|--|--|--|
+| Windows 10 | 8.4 | 3.8
+| Windows 10 | 9.1 | 3.12
+| Windows 10 | 9.2 | 3.12
 
 # Future
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!

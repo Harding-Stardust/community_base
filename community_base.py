@@ -35,10 +35,11 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 - Load shellcode into the running process. See ```load_file_into_memory()``` using [AppCall](https://www.youtube.com/watch?v=GZUHXkV0vdM)
 - Help with [AppCall](https://www.youtube.com/watch?v=GZUHXkV0vdM) to call functions that are inside the executable. (Think of decrypt functions) E.g. ```win_LoadLibraryA()```
 - Simple and fast way to get info about APIs, see ```google()```
-- 3 new hotkeys:
-- - w --> marked bytes will be dumped to disk
+- 4 new hotkeys:
+- - w --> Selected bytes will be dumped to disk
 - - alt + Ins --> Copy current address into clipboard (same as [x64dbg](https://x64dbg.com/))
 - - shift + c --> Copy selected bytes into clipboard as hex text (same as [x64dbg](https://x64dbg.com/))
+- - delete --> smart delete. If the selected bytes are in code then make then NOPS (Intel only!) and if you press delete again (or if you are in data) then write 0x00
 - Much more that I can't think of right now as I need to publish this script before new years eve!
 
 # Installation
@@ -60,8 +61,13 @@ import community_base as cb
 Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directory-idausr>
 
 
-# Tested with
-```Windows 10 + IDA 9.1 + Python 3.12```, ```Windows 10 + IDA 9.0 + Python 3.12``` and ```Windows 10 + IDA 8.4 + Python 3.8```
+# it _should_ work on alla OSes but I have only tested on:
+
+| OS | IDA | Python |
+|--|--|--|
+| Windows 10 | 8.4 | 3.8
+| Windows 10 | 9.1 | 3.12
+| Windows 10 | 9.2 | 3.12
 
 # Future
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!
@@ -69,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-05-10 23:14:34"
+__version__ = "2025-09-22 16:07:21"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -100,7 +106,7 @@ import inspect as _inspect
 from pydantic import validate_call # pip install pydantic
 
 try:
-    import chardet
+    import chardet # pip install chardet
 except ImportError:
     print(f"{__file__}: Missing import chardet, this module is used to guess string encoding. It's nice to have, not need to have. pip install chardet")
 
@@ -134,9 +140,13 @@ import ida_ua as _ida_ua # type: ignore[import-untyped] # ua stands for UnAssemb
 import ida_xref as _ida_xref # type: ignore[import-untyped]
 import idautils as _idautils # type: ignore[import-untyped]
 import ida_diskio as _ida_diskio # type: ignore[import-untyped]
-import PyQt5 # type: ignore[import-untyped] # TODO: Ida 9.2 will break this (Qt6)
-from PyQt5.Qt import QApplication # type: ignore[import-untyped] # TODO: Ida 9.2 will break this (Qt6)
-from PyQt5.QtWidgets import QWidget # type: ignore[import-untyped] # TODO: Ida 9.2 will break this (Qt6)
+try:
+    # IDA 9.2+ uses PySide6 while earlier versions use PyQt5
+    from PySide6.QtWidgets import QApplication, QWidget # type: ignore[import-untyped, import-not-found] 
+except ImportError:
+    import PyQt5 # type: ignore[import-untyped] 
+    from PyQt5.Qt import QApplication # type: ignore[import-untyped]
+    from PyQt5.QtWidgets import QWidget # type: ignore[import-untyped]
 
 HOTKEY_DUMP_TO_DISK = 'w' # Select bytes and press w to dump it to disk in the same directory as the IDB. One can also call dump_to_disk(address, length) to dump from the console
 HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT = 'shift-c' # Select bytes and press Shift-C to copy the marked bytes as hex text. Same shortcut as in x64dbg.
@@ -445,7 +455,7 @@ def ida_arguments() -> List[str]:
 
     You can then use this function to parse your own arguments. Useful in batch mode
     '''
-    return PyQt5.Qt.qApp.instance().arguments() # TODO: Ida 9.2 will break this (Qt6)
+    return QApplication.arguments()
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_config(arg_key: str, arg_value: str) -> bool:
@@ -1036,10 +1046,8 @@ def ida_licence_info(arg_delete_user_info_from_IDB: bool = False) -> Dict[str, s
     if arg_delete_user_info_from_IDB:
         _ = _ida_licence_info_delete()
 
-    # TODO: Rewrite this with the real licence info parser
-
     res = {"serial_number": "Unknown", "name_info": "Unknown"}
-    l_lines: List[str] = _ida_lines.generate_disassembly(input_file.min_original_ea, max_lines=100, as_stack=False, notags=True)[1]
+    l_lines: List[str] =_idaapi_generate_disassembly(input_file.min_original_ea, arg_max_lines=100, arg_as_stack=False, arg_notag=True)[1]
     l_next_line_is_user_info: bool = False
     for l_line in l_lines:
         if l_next_line_is_user_info:
@@ -1485,13 +1493,20 @@ def address(arg_label_or_address: EvaluateType, arg_supress_error: bool = False,
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def relative_virtual_address(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
+def relative_virtual_address(arg_ea: EvaluateType, arg_from_DLL_base: bool = False, arg_debug: bool = False) -> Optional[int]:
     ''' Returns the offset from imagebase to the given address a.k.a RVA '''
     l_addr: int = address(arg_ea, arg_debug=arg_debug)
     if l_addr == _ida_idaapi.BADADDR:
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
         return None
-    # TODO: In a DLL, you want the possibility to get the RVA from the DLL start and not the EXE start
+    
+    if arg_from_DLL_base:
+        l_module = module(l_addr, arg_debug=arg_debug)
+        if l_module is None:
+            log_print(f"Could not find any module at {_hex_str_if_int(arg_ea)}", arg_type="ERROR")
+            return None
+        return l_addr - l_module.base
+
     return l_addr - input_file.imagebase
 
 rva = relative_virtual_address
@@ -1661,12 +1676,10 @@ def decompile_many(arg_outfile: str = "",
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def pseudocode(arg_ea: EvaluateType,
+def decompiler_pseudocode(arg_ea: EvaluateType,
                arg_force_fresh_decompilation: bool = True,
                arg_debug: bool = False) -> str:
     ''' Get the pseudo code for a function. To work with the object (cfunc_t) use decompile() '''
-
-    # TODO: rename this to decompiler_pseudocode() ?
 
     l_cfunc = decompile(arg_ea, arg_force_fresh_decompilation=arg_force_fresh_decompilation, arg_debug=arg_debug)
     if l_cfunc is None:
@@ -1674,25 +1687,34 @@ def pseudocode(arg_ea: EvaluateType,
         return f"<<< Could NOT decompile function at {_hex_str_if_int(arg_ea)} >>>"
     return str(l_cfunc.get_pseudocode())
 
+
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def decompiler_comments(arg_regexp: str = "",
+def decompiler_comments(arg_functions: Optional[Union[List[EvaluateType], EvaluateType]] = None,
+                        arg_regexp: str = "",
                         arg_allow_library_functions: bool = True,
-                        arg_debug: bool = False) -> Dict[int, str]:
+                        arg_debug: bool = False) -> Optional[Dict[int, str]]:
     ''' Returns all user set comments from decompiler view
     @param arg_regexp Filter to only include comments that match this regexp.
     If arg_regexp == "" then include all comments
 
     @return Dict[ea: int, comment: str]
     '''
-    res = {}
-    for func_start in functions(arg_allow_library_functions=arg_allow_library_functions, arg_debug=arg_debug):
-        l_comments = _ida_hexrays.restore_user_cmts(func_start)
+    if not isinstance(arg_functions, list):
+        arg_functions = [arg_functions]
+
+    l_functions = [address(l_func, arg_debug=arg_debug) for l_func in arg_functions] if arg_functions else functions(arg_allow_library_functions=arg_allow_library_functions, arg_debug=arg_debug)
+       
+    res: Dict[int, str] = {}
+    for l_function in l_functions:
+        l_comments = _ida_hexrays.restore_user_cmts(l_function)
         if l_comments is None:
             continue
 
         for l_tree_location, l_comment in l_comments.iteritems():
             if not arg_regexp or re.fullmatch(arg_regexp, str(l_comment)):
-                res[l_tree_location.ea] = str(l_comment) # Maybe interesting in the future: _int_to_str_dict_from_module("_ida_hexrays", "ITP_.*")[l_tree_location.itp]
+                l_old_comment = res.get(l_tree_location.ea, "")
+                l_old_comment += "; " if l_old_comment else ""
+                res[l_tree_location.ea] = l_old_comment + str(l_comment) # Maybe interesting in the future: _int_to_str_dict_from_module("_ida_hexrays", "ITP_.*")[l_tree_location.itp]
         _ida_hexrays.user_cmts_free(l_comments)
     return res
 
@@ -3160,8 +3182,10 @@ def _strings_profiled():
     profiler = cProfile.Profile()
     profiler.enable()
 
+    # Start of code to profile
     a = strings()
     log_print(str(a))
+    # End of code to profile
 
     profiler.disable()
     stats = pstats.Stats(profiler).sort_stats('cumtime')
@@ -3432,6 +3456,13 @@ def _idaapi_get_flags(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional
         return None
 
     return _ida_bytes.get_flags(l_addr)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _idaapi_generate_disassembly(arg_ea: int, arg_max_lines: int, arg_as_stack: bool, arg_notag: bool) -> tuple[int, List[str]]:
+    ''' Wrapper around ida_lines.generate_disassembly() 
+    IDA < 9.2 uses notags, IDA >= 9.2 uses notag as argument name
+    '''
+    return _ida_lines.generate_disassembly(ea=arg_ea, max_lines=arg_max_lines, as_stack=arg_as_stack, notag=arg_notag) if ida_version() >= 920 else _ida_lines.generate_disassembly(ea=arg_ea, max_lines=arg_max_lines, as_stack=arg_as_stack, notags=arg_notag)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def is_code(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
@@ -3843,8 +3874,7 @@ def xref_add_code_ref(arg_from: EvaluateType, arg_to: EvaluateType, arg_flags: i
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def decompiler_calls(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[List[_ida_hexrays.cexpr_t]]:
-    ''' Internal function, use calls() instead.
-    Returns a list of all _ida_hexrays.cexpr_t that is of type "call" '''
+    ''' Returns a list of all _ida_hexrays.cexpr_t that is of type "call" '''
     res = []
     l_cfunc = decompile(arg_ea, arg_debug=arg_debug)
     if l_cfunc is None:
@@ -3857,8 +3887,7 @@ def decompiler_calls(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def assembler_calls(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[List[_ida_ua.insn_t]]:
-    ''' Internal function, use calls() instead.
-    Returns a list of all _ida_ua.insn_t that is of type "call" '''
+    ''' Returns a list of all _ida_ua.insn_t that is of type "call" '''
     res = []
     l_func = function(arg_ea, arg_debug=arg_debug)
     if l_func is None:
@@ -3869,16 +3898,6 @@ def assembler_calls(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[L
             l_ins = instruction(l_address, arg_debug=arg_debug)
             res.append(l_ins)
     return res
-
-# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-# def calls(arg_ea: EvaluateType, arg_use_assembly_calls_instead: bool = False, arg_debug: bool = False) -> Optional[Union[List[_ida_hexrays.cexpr_t], List[_ida_ua.insn_t]]]:
-#     ''' Return a list of all calls in the given function.
-#     This uses the decompiler but you can set arg_use_assembly_calls_instead=True to use the disassembler instead.
-
-#     Return: List[ida_hexrays.cexpr_t] is used as normal or List[_ida_ua.insn_t] if arg_use_assembly_calls_instead == True
-#     '''
-#     # TODO: Is this bad design to have different return types depending on arguments?
-#     return decompiler_calls(arg_ea=arg_ea, arg_debug=arg_debug) if not arg_use_assembly_calls_instead else assembler_calls(arg_ea=arg_ea, arg_debug=arg_debug)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def file_write_patches_to_file(arg_validate_input_file: bool = True, arg_make_backup: bool = True, arg_debug: bool = False) -> bool:
@@ -5804,6 +5823,9 @@ setattr(_ida_typeinf.tinfo_t, '__len__', lambda self: self.get_size() if self.ge
 setattr(_ida_typeinf.tinfo_t, '__bool__', lambda self: self.is_well_defined())
 setattr(_ida_typeinf.tinfo_t, 'size', property(fget=len))
 setattr(_ida_typeinf.tinfo_t, 'return_type', property(fget=lambda self: self.get_rettype() if self.is_func() or self.is_funcptr() else None))
+
+# TODO: add details for ida_typeinf.udt_type_data_t
+
 setattr(_ida_kernwin.simpleline_t, '__str__', lambda self: _ida_lines.tag_remove(self.line))
 setattr(_ida_kernwin.simpleline_t, '__repr__', __repr__type_str)
 setattr(_ida_pro.strvec_t, '__str__', lambda self: "\n".join([str(simpleline) for simpleline in self]))
@@ -5909,7 +5931,7 @@ setattr(_ida_idp.reg_info_t, '__eq__', lambda self, other: self is other or self
 setattr(_ida_hexrays.carg_t, '__repr__', lambda self: f"{type(self)} which looks like:\n{self.type} {str(self)}")
 setattr(_ida_hexrays.carg_t, 'name', property(fget=str)) # TODO: Bad idea?
 setattr(_ida_hexrays.carglist_t, '__repr__', lambda self: f"{type(self)} which looks like:\n{' '.join([chr(0x0D)+repr(arg)+chr(0x0D) for arg in self])}")
-setattr(_ida_hexrays.cfuncptr_t, '__str__', lambda self: pseudocode(self, arg_force_fresh_decompilation=True))
+setattr(_ida_hexrays.cfuncptr_t, '__str__', lambda self: decompiler_pseudocode(self, arg_force_fresh_decompilation=True))
 setattr(_ida_hexrays.cfuncptr_t, '__repr__', lambda self: __repr__type_address_str(self)[0:200])
 setattr(_ida_hexrays.cfuncptr_t, 'address', property(fget=address))
 setattr(_ida_hexrays.cfuncptr_t, 'prototype', property(fget=function_prototype))
@@ -5970,9 +5992,9 @@ def _test_appcall_on_Windows(arg_debug: bool = False) -> bool:
     res &= (l_GetProcessHeap_res == win_GetProcessHeap_emulated(arg_debug=arg_debug)) # win_GetProcessHeap --> appcall,
 
     if res:
-        log_print('Appcall tests OK!', arg_type="INFO")
+        log_print('Appcall tests OK!', arg_debug, arg_type="INFO")
     else:
-        log_print('Appcall tests failed!', arg_type="ERROR")
+        log_print('Appcall tests failed!', arg_debug, arg_type="ERROR")
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -6095,16 +6117,77 @@ def _test_TWidget(arg_debug: bool = False) -> bool:
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_Qt_stuff(arg_debug: bool = False) -> bool:
+    ''' Tests: Qt stuff. This will make sure that PySide6 and PyQt5 works as expected '''
+    
+    l_ida_started_with = ida_arguments()
+    log_print(f"ida_started_with: {l_ida_started_with}", arg_debug)
+
+    import secrets
+    l_test_string = ''.join([secrets.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(10)])
+    log_print(f"l_test_string: {l_test_string}", arg_debug)
+    return clipboard_copy(l_test_string) and l_test_string == QApplication.clipboard().text()
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_decompiler(arg_debug: bool = False) -> bool:
+    ''' Tests: decompiler '''
+    l_pseudocode = decompiler_pseudocode(input_file.entry_point, arg_debug=arg_debug)
+    log_print(f"pseudocode of entrypoint: {l_pseudocode}", arg_debug)
+    return l_pseudocode is not None
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_licence(arg_debug: bool = False) -> bool:
+    ''' Tests: licence '''
+    l_licence = ida_licence_info(arg_delete_user_info_from_IDB=False)
+    log_print(f"licence: {l_licence}", arg_debug)
+    return l_licence is not None
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_decompiler_comments(arg_debug: bool = False) -> bool:
+    ''' Tests: decompiler comments '''
+    l_comments = decompiler_comments(arg_debug=arg_debug)
+    log_print(f"decompiler comments: {l_comments}", arg_debug)
+    return l_comments is not None
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_relative_virtual_address(arg_debug: bool = False) -> bool:
+    ''' Tests: relative_virtual_address. Requires a running process. '''
+    l_rva_of_ep = relative_virtual_address(input_file.entry_point, arg_from_DLL_base=False, arg_debug=arg_debug)
+    log_print(f"relative_virtual_address of entry point: {l_rva_of_ep}", arg_debug)
+    
+    l_API_to_test = "kernel32_GetProcAddress"
+    l_rva_of_GetProcAddress = relative_virtual_address(l_API_to_test, arg_from_DLL_base=True, arg_debug=arg_debug)
+    if l_rva_of_GetProcAddress is None:
+        log_print(f"Could not find any relative virtual address for {l_API_to_test}", arg_type="ERROR")
+        return False
+
+    l_module = module(l_API_to_test, arg_debug=arg_debug)
+    if l_module is None:
+        log_print(f"Could not find any module at {_hex_str_if_int(l_API_to_test)}", arg_type="ERROR")
+        return False
+    
+    return name(l_module.base + l_rva_of_GetProcAddress, arg_debug=arg_debug) == l_API_to_test
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_all(arg_debug: bool = False) -> bool:
     ''' Tests all tests we have. This is NOT complete and needs to be extended '''
     l_test_functions = {'_test_appcall_on_Windows': _test_appcall_on_Windows(arg_debug=arg_debug),
                         '_test_mem_alloc_write_read': _test_mem_alloc_write_read(arg_debug=arg_debug),
                         '_test_modules_on_Windows': _test_modules_on_Windows(arg_debug=arg_debug),
                         '_test_address': _test_eval_expression(arg_debug=arg_debug),
-                        '_test_TWidget': _test_TWidget(arg_debug=arg_debug)
+                        '_test_TWidget': _test_TWidget(arg_debug=arg_debug),
+                        '_test_Qt_stuff': _test_Qt_stuff(arg_debug=arg_debug),
+                        '_test_decompiler': _test_decompiler(arg_debug=arg_debug),
+                        '_test_licence': _test_licence(arg_debug=arg_debug),
+                        '_test_decompiler_comments': _test_decompiler_comments(arg_debug=arg_debug),
+                        '_test_relative_virtual_address': _test_relative_virtual_address(arg_debug=arg_debug)
                         }
-    log_print(str(l_test_functions), arg_type="INFO")
-    return all(l_test_functions.values())
+    for l_test_in_key, l_test_in_value in l_test_functions.items():
+        log_print(f"{l_test_in_key}: {l_test_in_value}", arg_type="INFO")
+    
+    res = all(l_test_functions.values())
+    log_print(f"All tests passed OK: {res}", arg_type="INFO")
+    return res
 
 
 # EXPERIMENTAL --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- EXPERIMENTAL
