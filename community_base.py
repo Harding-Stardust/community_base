@@ -61,13 +61,13 @@ import community_base as cb
 Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directory-idausr>
 
 
-# it _should_ work on alla OSes but I have only tested on:
+# it _should_ work on all OSes but I have only tested on:
 
-| OS | IDA | Python |
-|--|--|--|
-| Windows 10 | 8.4 | 3.8
-| Windows 10 | 9.1 | 3.12
-| Windows 10 | 9.2 | 3.12
+| OS | IDA | Python | Notes |
+|--|--|--|--|
+| ~~Windows 10~~ | ~~8.4~~ | ~~3.8~~ | ida_domain not available |
+| Windows 10 | 9.1 | 3.12 | ida_domain OK |
+| Windows 10 | 9.2 | 3.12 | ida_domain OK |
 
 # Future
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!
@@ -75,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-09-22 16:25:21"
+__version__ = "2025-09-25 23:14:11"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -104,12 +104,14 @@ from typing import Union, List, Dict, Tuple, Any, Optional, Callable
 from types import ModuleType
 import inspect as _inspect
 from pydantic import validate_call # pip install pydantic
+import pyperclip as _pyperclip # pip install pyperclip
 
 try:
     import chardet # pip install chardet
 except ImportError:
     print(f"{__file__}: Missing import chardet, this module is used to guess string encoding. It's nice to have, not need to have. pip install chardet")
 
+# import ida_domain as _ida_domain # type: ignore[import-untyped] # pip install ida_domain TODO: This will break IDA < 9.1
 import ida_allins as _ida_allins # type: ignore[import-untyped]
 import ida_auto as _ida_auto # type: ignore[import-untyped]
 import ida_bytes as _ida_bytes # type: ignore[import-untyped]
@@ -140,13 +142,20 @@ import ida_ua as _ida_ua # type: ignore[import-untyped] # ua stands for UnAssemb
 import ida_xref as _ida_xref # type: ignore[import-untyped]
 import idautils as _idautils # type: ignore[import-untyped]
 import ida_diskio as _ida_diskio # type: ignore[import-untyped]
+_G_QT_IS_OK: bool = True
 try:
     # IDA 9.2+ uses PySide6 while earlier versions use PyQt5
     from PySide6.QtWidgets import QApplication, QWidget # type: ignore[import-untyped, import-not-found] 
 except ImportError:
-    import PyQt5 # type: ignore[import-untyped] 
-    from PyQt5.Qt import QApplication # type: ignore[import-untyped]
-    from PyQt5.QtWidgets import QWidget # type: ignore[import-untyped]
+    try:
+        from PyQt5.Qt import QApplication # type: ignore[import-untyped]
+        from PyQt5.QtWidgets import QWidget # type: ignore[import-untyped]
+    except Exception:
+        _G_QT_IS_OK = False
+
+# _G_IDB = _ida_domain.Database()
+# if not _G_IDB.is_open():
+#     _G_IDB.open("TODO: path to IDB") # Force user to set os.environ["IDB_PATH"] ?
 
 HOTKEY_DUMP_TO_DISK = 'w' # Select bytes and press w to dump it to disk in the same directory as the IDB. One can also call dump_to_disk(address, length) to dump from the console
 HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT = 'shift-c' # Select bytes and press Shift-C to copy the marked bytes as hex text. Same shortcut as in x64dbg.
@@ -369,10 +378,10 @@ class __check_if_long_running_script_should_abort_not_working():
         # Unregister the timer when the counter reaches zero
         # return -1 --> do not call again, anything else
 
-        clipboard = QApplication.clipboard()
-        res = clipboard.text().strip() in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]
+        
+        res = _pyperclip.paste().strip() in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]
         if res:
-            log_print(f"String {clipboard.text().strip()} found in clipboard")
+            log_print(f"String {_pyperclip.paste().strip()} found in clipboard")
             log_print("Here should I do something smart to stop the long running script, any ideas?")
 
         return -1 if self.times == 0 else self.interval
@@ -399,10 +408,10 @@ def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
             l_timestamp: str = time.strftime("%Y-%m-%d %H:%M:%S", datetime.timetuple(datetime.now()))
             print(f"{l_timestamp} _long_running_script_should_abort(): Checking for abort.ida in clipboard...")
 
-        clipboard = QApplication.clipboard()
-        res = clipboard.text().strip() in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]
+        
+        res = _pyperclip.paste().strip() in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]
         if res:
-            raise TimeoutError(f"String {clipboard.text().strip()} found in clipboard")
+            raise TimeoutError(f"String {_pyperclip.paste().strip()} found in clipboard")
 
     return
 
@@ -446,7 +455,7 @@ def ida_is_running_in_batch_mode() -> bool:
     Credits goes to [arizvisa](https://github.com/arizvisa) : <https://github.com/Harding-Stardust/community_base/issues/1>
     We can actually set this, see idc.batch() (Is this useful?)
     '''
-    return _ida_kernwin.cvar.batch
+    return _ida_kernwin.cvar.batch # TODO: ida_kernwin.is_idaq() for batch check and also check ida_kernwin.is_ida_library() 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_arguments() -> List[str]:
@@ -455,7 +464,7 @@ def ida_arguments() -> List[str]:
 
     You can then use this function to parse your own arguments. Useful in batch mode
     '''
-    return QApplication.arguments()
+    return QApplication.arguments() # TODO: Change this to not depend on Qt
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_config(arg_key: str, arg_value: str) -> bool:
@@ -1935,131 +1944,132 @@ def _struct_comments(arg_debug: bool = False) -> str:
     
 
 # ---- Hotkey: w --> Dump selected bytes to a file on disk ----------------------------------------------------------------------------------------
-_ACTION_NAME_DUMP_SELECTED_BYTES = f"{__name__}:dump_selected_bytes_to_disk"
+if _G_QT_IS_OK:
+    _ACTION_NAME_DUMP_SELECTED_BYTES = f"{__name__}:dump_selected_bytes_to_disk"
 
-if _ACTION_NAME_DUMP_SELECTED_BYTES in _ida_kernwin.get_registered_actions():
-    if _ida_kernwin.unregister_action(_ACTION_NAME_DUMP_SELECTED_BYTES):
-        log_print(f"unregister_action(): '{_ACTION_NAME_DUMP_SELECTED_BYTES}' OK", arg_type="INFO")
-    else:
-        log_print(f"unregister_action(): '{_ACTION_NAME_DUMP_SELECTED_BYTES}' failed", arg_type="ERROR")
+    if _ACTION_NAME_DUMP_SELECTED_BYTES in _ida_kernwin.get_registered_actions():
+        if _ida_kernwin.unregister_action(_ACTION_NAME_DUMP_SELECTED_BYTES):
+            log_print(f"unregister_action(): '{_ACTION_NAME_DUMP_SELECTED_BYTES}' OK", arg_type="INFO")
+        else:
+            log_print(f"unregister_action(): '{_ACTION_NAME_DUMP_SELECTED_BYTES}' failed", arg_type="ERROR")
 
-class ActionHandlerDumpToDisk(_ida_kernwin.action_handler_t):
-    ''' Handler for dump to disk '''
-    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
-        ''' This code is run when the hotkey is pressed '''
-        del ctx # Not used but needed in prototype
-        l_debug: bool = False
-        log_print("ActionHandlerDumpToDisk activate", l_debug)
-        _ = dump_to_disk(arg_debug=l_debug) # Without arguments --> selected bytes
-        return 1
-
-    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def update(self, ctx: _ida_kernwin.action_ctx_base_t):
-        ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
-        del ctx # Not used but needed in prototype
-        return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
-
-if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_DUMP_SELECTED_BYTES, f"{__name__}: Dump selected bytes to disk", ActionHandlerDumpToDisk(), HOTKEY_DUMP_TO_DISK)):
-    log_print(f"register_action('{_ACTION_NAME_DUMP_SELECTED_BYTES}') OK, shortcut: {HOTKEY_DUMP_TO_DISK}", arg_type="INFO")
-else:
-    log_print(f"register_action('{_ACTION_NAME_DUMP_SELECTED_BYTES}') failed", arg_type="ERROR")
-
-# ---- Hotkey: Shift + C --> Copy selected bytes as hex text to clipboard ----------------------------------------------------------------------------------------
-_ACTION_NAME_COPY_HEX_TEXT = f"{__name__}:copy_hex_text"
-if _ACTION_NAME_COPY_HEX_TEXT in _ida_kernwin.get_registered_actions():
-    if _ida_kernwin.unregister_action(_ACTION_NAME_COPY_HEX_TEXT):
-        log_print(f"unregister_action(): '{_ACTION_NAME_COPY_HEX_TEXT}' OK", arg_type="INFO")
-    else:
-        log_print(f"unregister_action(): '{_ACTION_NAME_COPY_HEX_TEXT}' failed", arg_type="ERROR")
-
-class ActionHandlerCopyHexText(_ida_kernwin.action_handler_t):
-    ''' Handler for copy hex text '''
-    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
-        ''' This code is run when the hotkey is pressed '''
-        del ctx # Not used but needed in prototype
-        l_debug: bool = False
-        log_print("ActionHandlerCopyHexText activate", l_debug)
-        clipboard_copy_hex_text_to_clipboard() # Without arguments --> Copy selected bytes as hex text
-        return 1
-
-    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def update(self, ctx: _ida_kernwin.action_ctx_base_t):
-        ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
-        del ctx # Not used but needed in prototype
-        return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
-
-if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_COPY_HEX_TEXT, f"{__name__}: Copy selected bytes as hex text", ActionHandlerCopyHexText(), HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT)):
-    log_print(f"register_action('{_ACTION_NAME_COPY_HEX_TEXT}') OK, shortcut: {HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT}", arg_type="INFO")
-else:
-    log_print(f"register_action('{_ACTION_NAME_COPY_HEX_TEXT}') failed", arg_type="ERROR")
-
-# ---- Hotkey: Alt + Ins --> Copy current address ----------------------------------------------------------------------------------------
-_ACTION_NAME_COPY_CURRENT_ADDRESS = f"{__name__}:copy_current_address"
-if _ACTION_NAME_COPY_CURRENT_ADDRESS in _ida_kernwin.get_registered_actions():
-    if _ida_kernwin.unregister_action(_ACTION_NAME_COPY_CURRENT_ADDRESS):
-        log_print(f"unregister_action(): '{_ACTION_NAME_COPY_CURRENT_ADDRESS}' OK", arg_type="INFO")
-    else:
-        log_print(f"unregister_action(): '{_ACTION_NAME_COPY_CURRENT_ADDRESS}' failed", arg_type="ERROR")
-
-class ActionHandlerCopyCurrentAddress(_ida_kernwin.action_handler_t):
-    ''' Handler for copy current address '''
-    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
-        ''' This code is run when the hotkey is pressed '''
-        del ctx # Not used but needed in prototype
-        l_debug: bool = False
-        log_print("ActionHandlerCopyCurrentAddress activate", l_debug)
-        _ = clipboard_copy(f'0x{current_address():x}')
-        return 1
-
-    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def update(self, ctx: _ida_kernwin.action_ctx_base_t):
-        ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
-        del ctx # Not used but needed in prototype
-        return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
-
-if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_COPY_CURRENT_ADDRESS, f"{__name__}: Copy the current address as hex text", ActionHandlerCopyCurrentAddress(), HOTKEY_COPY_CURRENT_ADDRESS)):
-    log_print(f"register_action('{_ACTION_NAME_COPY_CURRENT_ADDRESS}') OK, shortcut: {HOTKEY_COPY_CURRENT_ADDRESS}", arg_type="INFO")
-else:
-    log_print(f"register_action('{_ACTION_NAME_COPY_CURRENT_ADDRESS}') failed", arg_type="ERROR")
-
-# ---- Hotkey: Delete --> Smart delete bytes ----------------------------------------------------------------------------------------
-_ACTION_NAME_SMART_DELETE_BYTES = f"{__name__}:smart_delete_bytes"
-if _ACTION_NAME_SMART_DELETE_BYTES in _ida_kernwin.get_registered_actions():
-    if _ida_kernwin.unregister_action(_ACTION_NAME_SMART_DELETE_BYTES):
-        log_print(f"unregister_action(): '{_ACTION_NAME_SMART_DELETE_BYTES}' OK", arg_type="INFO")
-    else:
-        log_print(f"unregister_action(): '{_ACTION_NAME_SMART_DELETE_BYTES}' failed", arg_type="ERROR")
-
-class ActionHandlerSmartDeleteBytes(_ida_kernwin.action_handler_t):
-    ''' Handler for smart delete bytes'''
-    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
-        ''' This code is run when the hotkey is pressed '''
-        del ctx # Not used but needed in prototype
-        l_debug: bool = False
-        log_print("ActionHandlerSmartDeleteBytes activate", l_debug)
-        l_is_valid, l_start_address, l_end_address = _idaapi_read_range_selection(arg_allow_one_line=True)
-        if not l_is_valid:
-            log_print("Invalid selection", arg_type="ERROR")
+    class ActionHandlerDumpToDisk(_ida_kernwin.action_handler_t):
+        ''' Handler for dump to disk '''
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
+            ''' This code is run when the hotkey is pressed '''
+            del ctx # Not used but needed in prototype
+            l_debug: bool = False
+            log_print("ActionHandlerDumpToDisk activate", l_debug)
+            _ = dump_to_disk(arg_debug=l_debug) # Without arguments --> selected bytes
             return 1
-        _ = bytes_smart_delete(arg_ea=l_start_address, arg_len=l_end_address - l_start_address, arg_debug=l_debug)
-        return 1
 
-    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def update(self, ctx: _ida_kernwin.action_ctx_base_t):
-        ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
-        
-        if ctx.widget_type in (_ida_kernwin.BWN_PSEUDOCODE, _ida_kernwin.BWN_DISASM):
-            return _ida_kernwin.AST_ENABLE_FOR_WIDGET
-        return _ida_kernwin.AST_DISABLE_FOR_WIDGET
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def update(self, ctx: _ida_kernwin.action_ctx_base_t):
+            ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
+            del ctx # Not used but needed in prototype
+            return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
 
-if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_SMART_DELETE_BYTES, f"{__name__}: Smart delete bytes", ActionHandlerSmartDeleteBytes(), HOTKEY_SMART_DELETE_BYTES)):
-    log_print(f"register_action('{_ACTION_NAME_SMART_DELETE_BYTES}') OK, shortcut: {HOTKEY_SMART_DELETE_BYTES}", arg_type="INFO")
-else:
-    log_print(f"register_action('{_ACTION_NAME_SMART_DELETE_BYTES}') failed", arg_type="ERROR")
+    if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_DUMP_SELECTED_BYTES, f"{__name__}: Dump selected bytes to disk", ActionHandlerDumpToDisk(), HOTKEY_DUMP_TO_DISK)):
+        log_print(f"register_action('{_ACTION_NAME_DUMP_SELECTED_BYTES}') OK, shortcut: {HOTKEY_DUMP_TO_DISK}", arg_type="INFO")
+    else:
+        log_print(f"register_action('{_ACTION_NAME_DUMP_SELECTED_BYTES}') failed", arg_type="ERROR")
+
+    # ---- Hotkey: Shift + C --> Copy selected bytes as hex text to clipboard ----------------------------------------------------------------------------------------
+    _ACTION_NAME_COPY_HEX_TEXT = f"{__name__}:copy_hex_text"
+    if _ACTION_NAME_COPY_HEX_TEXT in _ida_kernwin.get_registered_actions():
+        if _ida_kernwin.unregister_action(_ACTION_NAME_COPY_HEX_TEXT):
+            log_print(f"unregister_action(): '{_ACTION_NAME_COPY_HEX_TEXT}' OK", arg_type="INFO")
+        else:
+            log_print(f"unregister_action(): '{_ACTION_NAME_COPY_HEX_TEXT}' failed", arg_type="ERROR")
+
+    class ActionHandlerCopyHexText(_ida_kernwin.action_handler_t):
+        ''' Handler for copy hex text '''
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
+            ''' This code is run when the hotkey is pressed '''
+            del ctx # Not used but needed in prototype
+            l_debug: bool = False
+            log_print("ActionHandlerCopyHexText activate", l_debug)
+            clipboard_copy_hex_text_to_clipboard() # Without arguments --> Copy selected bytes as hex text
+            return 1
+
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def update(self, ctx: _ida_kernwin.action_ctx_base_t):
+            ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
+            del ctx # Not used but needed in prototype
+            return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
+
+    if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_COPY_HEX_TEXT, f"{__name__}: Copy selected bytes as hex text", ActionHandlerCopyHexText(), HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT)):
+        log_print(f"register_action('{_ACTION_NAME_COPY_HEX_TEXT}') OK, shortcut: {HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT}", arg_type="INFO")
+    else:
+        log_print(f"register_action('{_ACTION_NAME_COPY_HEX_TEXT}') failed", arg_type="ERROR")
+
+    # ---- Hotkey: Alt + Ins --> Copy current address ----------------------------------------------------------------------------------------
+    _ACTION_NAME_COPY_CURRENT_ADDRESS = f"{__name__}:copy_current_address"
+    if _ACTION_NAME_COPY_CURRENT_ADDRESS in _ida_kernwin.get_registered_actions():
+        if _ida_kernwin.unregister_action(_ACTION_NAME_COPY_CURRENT_ADDRESS):
+            log_print(f"unregister_action(): '{_ACTION_NAME_COPY_CURRENT_ADDRESS}' OK", arg_type="INFO")
+        else:
+            log_print(f"unregister_action(): '{_ACTION_NAME_COPY_CURRENT_ADDRESS}' failed", arg_type="ERROR")
+
+    class ActionHandlerCopyCurrentAddress(_ida_kernwin.action_handler_t):
+        ''' Handler for copy current address '''
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
+            ''' This code is run when the hotkey is pressed '''
+            del ctx # Not used but needed in prototype
+            l_debug: bool = False
+            log_print("ActionHandlerCopyCurrentAddress activate", l_debug)
+            _ = clipboard_copy(f'0x{current_address():x}')
+            return 1
+
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def update(self, ctx: _ida_kernwin.action_ctx_base_t):
+            ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
+            del ctx # Not used but needed in prototype
+            return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
+
+    if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_COPY_CURRENT_ADDRESS, f"{__name__}: Copy the current address as hex text", ActionHandlerCopyCurrentAddress(), HOTKEY_COPY_CURRENT_ADDRESS)):
+        log_print(f"register_action('{_ACTION_NAME_COPY_CURRENT_ADDRESS}') OK, shortcut: {HOTKEY_COPY_CURRENT_ADDRESS}", arg_type="INFO")
+    else:
+        log_print(f"register_action('{_ACTION_NAME_COPY_CURRENT_ADDRESS}') failed", arg_type="ERROR")
+
+    # ---- Hotkey: Delete --> Smart delete bytes ----------------------------------------------------------------------------------------
+    _ACTION_NAME_SMART_DELETE_BYTES = f"{__name__}:smart_delete_bytes"
+    if _ACTION_NAME_SMART_DELETE_BYTES in _ida_kernwin.get_registered_actions():
+        if _ida_kernwin.unregister_action(_ACTION_NAME_SMART_DELETE_BYTES):
+            log_print(f"unregister_action(): '{_ACTION_NAME_SMART_DELETE_BYTES}' OK", arg_type="INFO")
+        else:
+            log_print(f"unregister_action(): '{_ACTION_NAME_SMART_DELETE_BYTES}' failed", arg_type="ERROR")
+
+    class ActionHandlerSmartDeleteBytes(_ida_kernwin.action_handler_t):
+        ''' Handler for smart delete bytes'''
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
+            ''' This code is run when the hotkey is pressed '''
+            del ctx # Not used but needed in prototype
+            l_debug: bool = False
+            log_print("ActionHandlerSmartDeleteBytes activate", l_debug)
+            l_is_valid, l_start_address, l_end_address = _idaapi_read_range_selection(arg_allow_one_line=True)
+            if not l_is_valid:
+                log_print("Invalid selection", arg_type="ERROR")
+                return 1
+            _ = bytes_smart_delete(arg_ea=l_start_address, arg_len=l_end_address - l_start_address, arg_debug=l_debug)
+            return 1
+
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def update(self, ctx: _ida_kernwin.action_ctx_base_t):
+            ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
+            
+            if ctx.widget_type in (_ida_kernwin.BWN_PSEUDOCODE, _ida_kernwin.BWN_DISASM):
+                return _ida_kernwin.AST_ENABLE_FOR_WIDGET
+            return _ida_kernwin.AST_DISABLE_FOR_WIDGET
+
+    if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_SMART_DELETE_BYTES, f"{__name__}: Smart delete bytes", ActionHandlerSmartDeleteBytes(), HOTKEY_SMART_DELETE_BYTES)):
+        log_print(f"register_action('{_ACTION_NAME_SMART_DELETE_BYTES}') OK, shortcut: {HOTKEY_SMART_DELETE_BYTES}", arg_type="INFO")
+    else:
+        log_print(f"register_action('{_ACTION_NAME_SMART_DELETE_BYTES}') failed", arg_type="ERROR")
 
 # -------------------------------------------------------------------------------------------------------------------------------------------------------
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -3442,10 +3452,9 @@ def clipboard_copy(arg_text: EvaluateType, arg_debug: bool = False) -> bool:
     else:
         l_text = arg_text
     log_print(f"We got length 0x{len(l_text):x} --> l_text: '{l_text}'", arg_debug)
-
-    clipboard = QApplication.clipboard()
-    clipboard.setText(l_text)
-    return clipboard.ownsClipboard() and l_text == clipboard.text()
+    
+    _pyperclip.copy(l_text)
+    return True
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _idaapi_get_flags(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[int]:
@@ -5092,332 +5101,332 @@ def win_GetCurrentProcessId(arg_debug: bool = False) -> Optional[int]:
 
 
 # UI ---------------------------------------------------------------------------------------------------------------------
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _is_TWidget_TWidget_ptr_or_QtWidget(arg_widget: Any) -> str:
-    ''' Detects what kind of Widget you send in and returns that as a str '''
-    if isinstance(arg_widget, TWidget):
-        return "TWidget"
-    if str(type(arg_widget)) == "<class 'SwigPyObject'>":
-        return "IDA_TWidget_ptr"
-    if ".QtWidgets." in str(type(arg_widget)):
-        return "QtWidget"
-
-    log_print("arg_widget should be either window title (type: str) or the twidget* object (type: SwigPyObject) or a QtWidget (type: .QtWidgets.)", arg_type="ERROR")
-    return "<<< unknown Widget Type >>>"
-
-class TWidget():
-    ''' TWidget is really IDAs type but there doesn't seem to be any Python type for it so we create this wrapper to get real type hints '''
+if _G_QT_IS_OK:
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def __init__(self, arg_TWidget: Any) -> None:
-        ''' Create a wrapper object around what IDA calls TWidget*
+    def _is_TWidget_TWidget_ptr_or_QtWidget(arg_widget: Any) -> str:
+        ''' Detects what kind of Widget you send in and returns that as a str '''
+        if isinstance(arg_widget, TWidget):
+            return "TWidget"
+        if str(type(arg_widget)) == "<class 'SwigPyObject'>":
+            return "IDA_TWidget_ptr"
+        if ".QtWidgets." in str(type(arg_widget)):
+            return "QtWidget"
 
-        @param arg_TWidget can be either the window name (type str), the SwigPyObject that is returned from the IDA APIs, a QtWidget or a (community_base) TWidget
+        log_print("arg_widget should be either window title (type: str) or the twidget* object (type: SwigPyObject) or a QtWidget (type: .QtWidgets.)", arg_type="ERROR")
+        return "<<< unknown Widget Type >>>"
 
-        E.g. l_functions_TWidget = TWidget("Functions")
-        l_functions_TWidget = TWidget(ida_kernwin.find_widget("Functions"))
-        l_last_used_TWidget = TWidget(ida_kernwin.get_last_widget())
+    class TWidget():
+        ''' TWidget is really IDAs type but there doesn't seem to be any Python type for it so we create this wrapper to get real type hints '''
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def __init__(self, arg_TWidget: Any) -> None:
+            ''' Create a wrapper object around what IDA calls TWidget*
+
+            @param arg_TWidget can be either the window name (type str), the SwigPyObject that is returned from the IDA APIs, a QtWidget or a (community_base) TWidget
+
+            E.g. l_functions_TWidget = TWidget("Functions")
+            l_functions_TWidget = TWidget(ida_kernwin.find_widget("Functions"))
+            l_last_used_TWidget = TWidget(ida_kernwin.get_last_widget())
+            '''
+            if isinstance(arg_TWidget, str):
+                self.m_IDAs_TWidget_ptr = _ida_kernwin.find_widget(arg_TWidget)  # m_TWidget is Optional[PySwigObj]
+                if self.m_IDAs_TWidget_ptr is None:
+                    log_print(f"No widget named '{arg_TWidget}' found. OBS! The window titles are case sensitive", arg_type="ERROR")
+            elif _is_TWidget_TWidget_ptr_or_QtWidget(arg_TWidget) == "IDA_TWidget_ptr":
+                self.m_IDAs_TWidget_ptr = arg_TWidget
+            elif _is_TWidget_TWidget_ptr_or_QtWidget(arg_TWidget) == "QtWidget":
+                self.m_IDAs_TWidget_ptr = _ida_kernwin.PluginForm.QtWidgetToTWidget(arg_TWidget)
+            elif _is_TWidget_TWidget_ptr_or_QtWidget(arg_TWidget) == "TWidget":
+                self.m_IDAs_TWidget_ptr = arg_TWidget.m_IDAs_TWidget_ptr
+            else:
+                log_print("arg_TWidget should be either window title (type: str) or the twidget* object (type: SwigPyObject) or a QtWidget (type: .QtWidgets.*)", arg_type="ERROR")
+                self.m_IDAs_TWidget_ptr = None
+
+            if not self.m_IDAs_TWidget_ptr is None:
+                l_PyQTWidget = self.as_PyQtWidget()
+                if l_PyQTWidget is None:
+                    self.m_original_window_title = "<<< invalid TWidget >>>"
+                    return
+                self.m_original_window_title = l_PyQTWidget.windowTitle()
+
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def as_PyQtWidget(self) -> Optional[QWidget]:
+            ''' TWidget is IDAs own type, if you want to use Qt functions, then you need to convert to a PyQtWidget
+            Official example: <https://github.com/HexRaysSA/IDAPython/blob/d12e31eae9d678f647013527596a715dd378f989/examples/ui/pyqt/inject_command.py#L76>
+
+            Convert from QtWidget --> TWidget* use: TWidget(my_QtWidget).as_TWidget_ptr()
+            '''
+            if self.m_IDAs_TWidget_ptr is None:
+                log_print("m_TWidget is not a valid TWidget", arg_type="ERROR")
+                return None
+            return _ida_kernwin.PluginForm.TWidgetToPyQtWidget(self.m_IDAs_TWidget_ptr)
+
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def as_TWidget_ptr(self) -> Optional[Any]:
+            ''' For the IDA APIs that takes a TWidget* (e.g. ida_kernwin.attach_action_to_popup()) you can use this to get the correct type '''
+            if self.m_IDAs_TWidget_ptr is None:
+                log_print("m_TWidget is not a valid TWidget", arg_type="ERROR")
+                return None
+            return self.m_IDAs_TWidget_ptr
+
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def activate(self, arg_take_focus: bool = True) -> None:
+            ''' Activate this TWdidget. Same as focus() '''
+            _idaapi_activate_widget(self, arg_take_focus=arg_take_focus)
+
+        focus = activate
+
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def close(self, arg_close_normally: bool = True) -> None:
+            ''' Close this TWidget '''
+            _idaapi_close_widget(self, arg_close_normally)
+
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def display(self, arg_options: int = _ida_kernwin.WOPN_NOT_CLOSED_BY_ESC, arg_dest_ctrl: Optional[str] = None) -> None:
+            ''' Display this TWidget. This function is used to place the windows (TWidget) at different locations such as floating or in a tab next to some given tab and so on
+                ida_kernwin.display_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=display_widget()>
+
+                @param arg_options: int Flags from ida_kernwin.WOPN_* Read more: <https://cpp.docs.hex-rays.com/group___w_i_d_g_e_t___o_p_e_n.html>
+                @param arg_dest_ctrl: Optional[str] TODO: I don't know what what this is, something to do with another control that can be used with arg_options? Read more: <https://cpp.docs.hex-rays.com/group___w_i_d_g_e_t___o_p_e_n.html>
+
+                WARNING! Calling this on a window that has been closed crashes IDA. IDA Bug
+            '''
+            _idaapi_display_widget(self, arg_options=arg_options, arg_dest_ctrl=arg_dest_ctrl)
+
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def window_title(self, arg_new_window_title: Optional[str] = "") -> str:
+            ''' Get/set the window title
+            @param arg_new_window_title Optional[str] Set to None to get the original window title, otherwise set to this. If set to "" then just get the current window title
+            '''
+            if arg_new_window_title is None:
+                l_PyQtWidget = self.as_PyQtWidget()
+                if l_PyQtWidget is None:
+                    return "<<< Invalid TWidget >>>"
+                l_PyQtWidget.setWindowTitle(self.m_original_window_title)
+            elif arg_new_window_title:
+                l_PyQtWidget = self.as_PyQtWidget()
+                if l_PyQtWidget is None:
+                    return "<<< Invalid TWidget >>>"
+                l_PyQtWidget.setWindowTitle(arg_new_window_title)
+
+            return _idaapi_get_widget_title(self)
+
+        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+        def __repr__(self) -> str:
+            if self.m_IDAs_TWidget_ptr is None:
+                log_print("m_TWidget is not a valid TWidget", arg_type="ERROR")
+                return "<<< Invalid TWidget >>>"
+            return f"{type(self)} Window title: {_idaapi_get_widget_title(self)}"
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def _idaapi_find_widget(arg_window_title: str) -> TWidget:
+        ''' Replacement for ida_kernwin.find_widget()
+        ida_kernwin.find_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=find_widget()>
+        '''
+        return TWidget(arg_window_title)
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def _idaapi_get_widget_title(arg_TWidget: TWidget) -> str:
+        ''' Replacement for ida_kernwin.get_widget_title()
+        ida_kernwin.get_widget_title() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=get_widget_title()>
+        '''
+        if arg_TWidget.m_IDAs_TWidget_ptr is None:
+            log_print("arg_TWidget.m_TWidget is None", arg_type="ERROR")
+            return "<<< Invalid TWidget >>>"
+        return _ida_kernwin.get_widget_title(arg_TWidget.m_IDAs_TWidget_ptr)
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def _idaapi_activate_widget(arg_TWidget: Union[TWidget, str], arg_take_focus: bool = True) -> None:
+        ''' Replacement for ida_kernwin.activate_widget()
+        ida_kernwin.activate_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=activate_widget()>
         '''
         if isinstance(arg_TWidget, str):
-            self.m_IDAs_TWidget_ptr = _ida_kernwin.find_widget(arg_TWidget)  # m_TWidget is Optional[PySwigObj]
-            if self.m_IDAs_TWidget_ptr is None:
-                log_print(f"No widget named '{arg_TWidget}' found. OBS! The window titles are case sensitive", arg_type="ERROR")
-        elif _is_TWidget_TWidget_ptr_or_QtWidget(arg_TWidget) == "IDA_TWidget_ptr":
-            self.m_IDAs_TWidget_ptr = arg_TWidget
-        elif _is_TWidget_TWidget_ptr_or_QtWidget(arg_TWidget) == "QtWidget":
-            self.m_IDAs_TWidget_ptr = _ida_kernwin.PluginForm.QtWidgetToTWidget(arg_TWidget)
-        elif _is_TWidget_TWidget_ptr_or_QtWidget(arg_TWidget) == "TWidget":
-            self.m_IDAs_TWidget_ptr = arg_TWidget.m_IDAs_TWidget_ptr
-        else:
-            log_print("arg_TWidget should be either window title (type: str) or the twidget* object (type: SwigPyObject) or a QtWidget (type: .QtWidgets.*)", arg_type="ERROR")
-            self.m_IDAs_TWidget_ptr = None
+            arg_TWidget = TWidget(arg_TWidget)
 
-        if not self.m_IDAs_TWidget_ptr is None:
-            l_PyQTWidget = self.as_PyQtWidget()
-            if l_PyQTWidget is None:
-                self.m_original_window_title = "<<< invalid TWidget >>>"
-                return
-            self.m_original_window_title = l_PyQTWidget.windowTitle()
+        if arg_TWidget.m_IDAs_TWidget_ptr is None:
+            log_print("arg_TWidget.m_TWidget is None", arg_type="ERROR")
+            return
+        return _ida_kernwin.activate_widget(arg_TWidget.m_IDAs_TWidget_ptr, arg_take_focus)
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def as_PyQtWidget(self) -> Optional[QWidget]:
-        ''' TWidget is IDAs own type, if you want to use Qt functions, then you need to convert to a PyQtWidget
-        Official example: <https://github.com/HexRaysSA/IDAPython/blob/d12e31eae9d678f647013527596a715dd378f989/examples/ui/pyqt/inject_command.py#L76>
+    def _idaapi_display_widget(arg_TWidget: TWidget, arg_options: int = _ida_kernwin.WOPN_NOT_CLOSED_BY_ESC, arg_dest_ctrl: Optional[str] = None) -> None:
+        '''Replacement for ida_kernwin.display_widget()
+        ida_kernwin.display_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=display_widget()>
 
-        Convert from QtWidget --> TWidget* use: TWidget(my_QtWidget).as_TWidget_ptr()
+        @param arg_options Flags from ida_kernwin.WOPN_* Read more: <https://cpp.docs.hex-rays.com/group___w_i_d_g_e_t___o_p_e_n.html>
+
+        WARNING! Calling this on a window that has been closed crashes IDA. IDA Bug
         '''
-        if self.m_IDAs_TWidget_ptr is None:
-            log_print("m_TWidget is not a valid TWidget", arg_type="ERROR")
-            return None
-        return _ida_kernwin.PluginForm.TWidgetToPyQtWidget(self.m_IDAs_TWidget_ptr)
+        if arg_TWidget.m_IDAs_TWidget_ptr is None:
+            log_print("Cannot display TWidget, arg_widget.m_TWidget is None", arg_type="ERROR")
+            return
+        _ida_kernwin.display_widget(arg_TWidget.as_TWidget_ptr(), options=arg_options, dest_ctrl=arg_dest_ctrl)
+        return
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def as_TWidget_ptr(self) -> Optional[Any]:
-        ''' For the IDA APIs that takes a TWidget* (e.g. ida_kernwin.attach_action_to_popup()) you can use this to get the correct type '''
-        if self.m_IDAs_TWidget_ptr is None:
-            log_print("m_TWidget is not a valid TWidget", arg_type="ERROR")
-            return None
-        return self.m_IDAs_TWidget_ptr
+    def _idaapi_close_widget(arg_widget: TWidget, arg_options: bool = False) -> None:
+        ''' Replacement for ida_kernwin.close_widget()
 
-    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def activate(self, arg_take_focus: bool = True) -> None:
-        ''' Activate this TWdidget. Same as focus() '''
-        _idaapi_activate_widget(self, arg_take_focus=arg_take_focus)
+        ida_kernwin.close_widget official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=close_widget()>
 
-    focus = activate
-
-    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def close(self, arg_close_normally: bool = True) -> None:
-        ''' Close this TWidget '''
-        _idaapi_close_widget(self, arg_close_normally)
-
-    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def display(self, arg_options: int = _ida_kernwin.WOPN_NOT_CLOSED_BY_ESC, arg_dest_ctrl: Optional[str] = None) -> None:
-        ''' Display this TWidget. This function is used to place the windows (TWidget) at different locations such as floating or in a tab next to some given tab and so on
-            ida_kernwin.display_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=display_widget()>
-
-            @param arg_options: int Flags from ida_kernwin.WOPN_* Read more: <https://cpp.docs.hex-rays.com/group___w_i_d_g_e_t___o_p_e_n.html>
-            @param arg_dest_ctrl: Optional[str] TODO: I don't know what what this is, something to do with another control that can be used with arg_options? Read more: <https://cpp.docs.hex-rays.com/group___w_i_d_g_e_t___o_p_e_n.html>
-
-            WARNING! Calling this on a window that has been closed crashes IDA. IDA Bug
+        @param arg_options True --> form is closed normally as if the user pressed Enter. False --> form is closed abnormally as if the user pressed Esc.
+        Source: <https://python.docs.hex-rays.com/classida__kernwin_1_1_form.html#:~:text=Close()>
         '''
-        _idaapi_display_widget(self, arg_options=arg_options, arg_dest_ctrl=arg_dest_ctrl)
+        if arg_widget.m_IDAs_TWidget_ptr is None:
+            log_print("Cannot close TWidget, arg_widget.m_TWidget is None", arg_type="ERROR")
+            return
+        _ida_kernwin.close_widget(arg_widget.as_TWidget_ptr(), 1 if arg_options else 0)
+        arg_widget.m_IDAs_TWidget_ptr = None
+        return
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def window_title(self, arg_new_window_title: Optional[str] = "") -> str:
-        ''' Get/set the window title
-        @param arg_new_window_title Optional[str] Set to None to get the original window title, otherwise set to this. If set to "" then just get the current window title
+    def _idaapi_get_current_widget() -> TWidget:
+        ''' Replacement for ida_kernwin.get_current_widget() '''
+        return TWidget(_ida_kernwin.get_current_widget())
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def _idaapi_get_current_viewer() -> TWidget:
+        ''' Replacement for ida_kernwin.get_current_viewer()
+        OBS! Viewer is a widget that is how you see the file. This can be IDA-View, Pseudocode or Hex View '''
+        return TWidget(_ida_kernwin.get_current_viewer())
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def _idaapi_get_last_widget(arg_mask: int = -1) -> TWidget:
+        ''' Replacement for ida_kernwin.get_last_widget()
+        @param arg_mask an OR'ed set of ida_kernwin.IWID_* to limit the search to
         '''
-        if arg_new_window_title is None:
-            l_PyQtWidget = self.as_PyQtWidget()
-            if l_PyQtWidget is None:
-                return "<<< Invalid TWidget >>>"
-            l_PyQtWidget.setWindowTitle(self.m_original_window_title)
-        elif arg_new_window_title:
-            l_PyQtWidget = self.as_PyQtWidget()
-            if l_PyQtWidget is None:
-                return "<<< Invalid TWidget >>>"
-            l_PyQtWidget.setWindowTitle(arg_new_window_title)
-
-        return _idaapi_get_widget_title(self)
+        return TWidget(_ida_kernwin.get_last_widget(arg_mask))
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def __repr__(self) -> str:
-        if self.m_IDAs_TWidget_ptr is None:
-            log_print("m_TWidget is not a valid TWidget", arg_type="ERROR")
-            return "<<< Invalid TWidget >>>"
-        return f"{type(self)} Window title: {_idaapi_get_widget_title(self)}"
+    def _idaapi_read_range_selection(arg_TWidget: Optional[TWidget] = None, arg_allow_one_line: bool = True) -> Tuple[bool, int, int]:
+        ''' Reads the selected addresses that you selected with your mouse (or keyboard)
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _idaapi_find_widget(arg_window_title: str) -> TWidget:
-    ''' Replacement for ida_kernwin.find_widget()
-    ida_kernwin.find_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=find_widget()>
-    '''
-    return TWidget(arg_window_title)
+        @param arg_TWidget: TWidget None --> "the last used widget"
+        @param arg_allow_one_line: If you mark text on 1 line and run IDAs ida_kernwin.read_range_selection() then you will get an invalid selection, with this argument set then return current_address() instead
+        @return (is_valid_selection: bool, selection_start: int, selection_end: int)
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _idaapi_get_widget_title(arg_TWidget: TWidget) -> str:
-    ''' Replacement for ida_kernwin.get_widget_title()
-    ida_kernwin.get_widget_title() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=get_widget_title()>
-    '''
-    if arg_TWidget.m_IDAs_TWidget_ptr is None:
-        log_print("arg_TWidget.m_TWidget is None", arg_type="ERROR")
-        return "<<< Invalid TWidget >>>"
-    return _ida_kernwin.get_widget_title(arg_TWidget.m_IDAs_TWidget_ptr)
+        Replacement for ida_kernwin.read_range_selection()
+        '''
+        l_widget = arg_TWidget.as_TWidget_ptr() if arg_TWidget else None
+        l_valid_selection, l_start_address, l_end_address = _ida_kernwin.read_range_selection(l_widget)
+        if not l_valid_selection:
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _idaapi_activate_widget(arg_TWidget: Union[TWidget, str], arg_take_focus: bool = True) -> None:
-    ''' Replacement for ida_kernwin.activate_widget()
-    ida_kernwin.activate_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=activate_widget()>
-    '''
-    if isinstance(arg_TWidget, str):
-        arg_TWidget = TWidget(arg_TWidget)
+            if arg_allow_one_line:
+                return (True, current_address(), _ida_bytes.get_item_end(current_address()))
 
-    if arg_TWidget.m_IDAs_TWidget_ptr is None:
-        log_print("arg_TWidget.m_TWidget is None", arg_type="ERROR")
-        return
-    return _ida_kernwin.activate_widget(arg_TWidget.m_IDAs_TWidget_ptr, arg_take_focus)
+            log_print("You haven't selected any addresses", arg_type="ERROR")
+            return (False, 0, 0)
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _idaapi_display_widget(arg_TWidget: TWidget, arg_options: int = _ida_kernwin.WOPN_NOT_CLOSED_BY_ESC, arg_dest_ctrl: Optional[str] = None) -> None:
-    '''Replacement for ida_kernwin.display_widget()
-    ida_kernwin.display_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=display_widget()>
+        return (l_valid_selection, l_start_address, l_end_address)
 
-    @param arg_options Flags from ida_kernwin.WOPN_* Read more: <https://cpp.docs.hex-rays.com/group___w_i_d_g_e_t___o_p_e_n.html>
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def __widget_lines(arg_TWidget: TWidget, arg_from: _ida_kernwin.twinpos_t, arg_to: _ida_kernwin.twinpos_t, arg_debug: bool = False) -> List[str]:
+        """
+        get lines between places arg_from and arg_to in widget
 
-    WARNING! Calling this on a window that has been closed crashes IDA. IDA Bug
-    '''
-    if arg_TWidget.m_IDAs_TWidget_ptr is None:
-        log_print("Cannot display TWidget, arg_widget.m_TWidget is None", arg_type="ERROR")
-        return
-    _ida_kernwin.display_widget(arg_TWidget.as_TWidget_ptr(), options=arg_options, dest_ctrl=arg_dest_ctrl)
-    return
+        Code taken from examples: dump_selection.py but changed to fix the bug where the user select some bytes on on the same line
+        """
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _idaapi_close_widget(arg_widget: TWidget, arg_options: bool = False) -> None:
-    ''' Replacement for ida_kernwin.close_widget()
+        # TODO: This is working better than the old code but it still isn't correct. Interier comment will mess everything up
 
-    ida_kernwin.close_widget official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=close_widget()>
+        l_user_data = _ida_kernwin.get_viewer_user_data(arg_TWidget.as_TWidget_ptr())
+        l_line_array = _ida_kernwin.linearray_t(l_user_data)
+        l_line_array.set_place(arg_from.at)
+        res = []
+        while True:
+            cur_place = l_line_array.get_place()
+            first_line_ref = _ida_kernwin.l_compare2(cur_place, arg_from.at, l_user_data)
+            last_line_ref = _ida_kernwin.l_compare2(cur_place, arg_to.at, l_user_data)
 
-    @param arg_options True --> form is closed normally as if the user pressed Enter. False --> form is closed abnormally as if the user pressed Esc.
-    Source: <https://python.docs.hex-rays.com/classida__kernwin_1_1_form.html#:~:text=Close()>
-    '''
-    if arg_widget.m_IDAs_TWidget_ptr is None:
-        log_print("Cannot close TWidget, arg_widget.m_TWidget is None", arg_type="ERROR")
-        return
-    _ida_kernwin.close_widget(arg_widget.as_TWidget_ptr(), 1 if arg_options else 0)
-    arg_widget.m_IDAs_TWidget_ptr = None
-    return
+            log_print(f"\n\nfirst_line_ref: {first_line_ref}, last_line_ref: {last_line_ref}", arg_debug)
+            if (first_line_ref == 0 and last_line_ref == 1) or (first_line_ref == 0 and last_line_ref == 0): # Special case where only 1 line is selected
+                log_print(f"first_line_ref: {first_line_ref}, last_line_ref: {last_line_ref}, special case with only 1 line. Changing to get_custom_viewer_curline()", arg_debug)
+                l_t_line =_ida_lines.tag_remove(_ida_kernwin.get_custom_viewer_curline(arg_TWidget.as_TWidget_ptr(), mouse=False))
+                res.append(l_t_line[arg_from.x : arg_to.x])
+                return res
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _idaapi_get_current_widget() -> TWidget:
-    ''' Replacement for ida_kernwin.get_current_widget() '''
-    return TWidget(_ida_kernwin.get_current_widget())
+            if last_line_ref > 0: # beyond last line
+                log_print(f"first_line_ref: {first_line_ref}, last_line_ref: {last_line_ref}, breaking the loop", arg_debug)
+                break
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _idaapi_get_current_viewer() -> TWidget:
-    ''' Replacement for ida_kernwin.get_current_viewer()
-    OBS! Viewer is a widget that is how you see the file. This can be IDA-View, Pseudocode or Hex View '''
-    return TWidget(_ida_kernwin.get_current_viewer())
+            l_line = _ida_lines.tag_remove(l_line_array.down())
+            log_print(f"l_line: {l_line}", arg_debug)
+            if last_line_ref == 0: # at last line
+                log_print(f"first_line_ref: {first_line_ref}, last_line_ref: {last_line_ref}, l_line: {l_line}, last line?", arg_debug)
+                l_line = l_line[0:arg_to.x]
+            elif first_line_ref == 0: # at first line
+                log_print(f"first_line_ref: {first_line_ref}, last_line_ref: {last_line_ref}, l_line: {l_line}, first line?", arg_debug)
+                l_line = l_line[arg_from.x:]
+            res.append(l_line)
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _idaapi_get_last_widget(arg_mask: int = -1) -> TWidget:
-    ''' Replacement for ida_kernwin.get_last_widget()
-    @param arg_mask an OR'ed set of ida_kernwin.IWID_* to limit the search to
-    '''
-    return TWidget(_ida_kernwin.get_last_widget(arg_mask))
+        log_print(f"res after loop but before any mods: {res}", arg_debug)
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _idaapi_read_range_selection(arg_TWidget: Optional[TWidget] = None, arg_allow_one_line: bool = True) -> Tuple[bool, int, int]:
-    ''' Reads the selected addresses that you selected with your mouse (or keyboard)
-
-    @param arg_TWidget: TWidget None --> "the last used widget"
-    @param arg_allow_one_line: If you mark text on 1 line and run IDAs ida_kernwin.read_range_selection() then you will get an invalid selection, with this argument set then return current_address() instead
-    @return (is_valid_selection: bool, selection_start: int, selection_end: int)
-
-    Replacement for ida_kernwin.read_range_selection()
-    '''
-    l_widget = arg_TWidget.as_TWidget_ptr() if arg_TWidget else None
-    l_valid_selection, l_start_address, l_end_address = _ida_kernwin.read_range_selection(l_widget)
-    if not l_valid_selection:
-
-        if arg_allow_one_line:
-            return (True, current_address(), _ida_bytes.get_item_end(current_address()))
-
-        log_print("You haven't selected any addresses", arg_type="ERROR")
-        return (False, 0, 0)
-
-    return (l_valid_selection, l_start_address, l_end_address)
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def __widget_lines(arg_TWidget: TWidget, arg_from: _ida_kernwin.twinpos_t, arg_to: _ida_kernwin.twinpos_t, arg_debug: bool = False) -> List[str]:
-    """
-    get lines between places arg_from and arg_to in widget
-
-    Code taken from examples: dump_selection.py but changed to fix the bug where the user select some bytes on on the same line
-    """
-
-    # TODO: This is working better than the old code but it still isn't correct. Interier comment will mess everything up
-
-    l_user_data = _ida_kernwin.get_viewer_user_data(arg_TWidget.as_TWidget_ptr())
-    l_line_array = _ida_kernwin.linearray_t(l_user_data)
-    l_line_array.set_place(arg_from.at)
-    res = []
-    while True:
-        cur_place = l_line_array.get_place()
-        first_line_ref = _ida_kernwin.l_compare2(cur_place, arg_from.at, l_user_data)
-        last_line_ref = _ida_kernwin.l_compare2(cur_place, arg_to.at, l_user_data)
-
-        log_print(f"\n\nfirst_line_ref: {first_line_ref}, last_line_ref: {last_line_ref}", arg_debug)
-        if (first_line_ref == 0 and last_line_ref == 1) or (first_line_ref == 0 and last_line_ref == 0): # Special case where only 1 line is selected
-            log_print(f"first_line_ref: {first_line_ref}, last_line_ref: {last_line_ref}, special case with only 1 line. Changing to get_custom_viewer_curline()", arg_debug)
+        if len(res) == 1:
+            log_print(f"sometimes we get the loop even if we only have selected part of 1 line, this hack fix that special case. Changing to get_custom_viewer_curline()", arg_debug)
+            res = []
             l_t_line =_ida_lines.tag_remove(_ida_kernwin.get_custom_viewer_curline(arg_TWidget.as_TWidget_ptr(), mouse=False))
             res.append(l_t_line[arg_from.x : arg_to.x])
             return res
 
-        if last_line_ref > 0: # beyond last line
-            log_print(f"first_line_ref: {first_line_ref}, last_line_ref: {last_line_ref}, breaking the loop", arg_debug)
-            break
+        log_print(f"Since we cannot get any signal that we are at the last line in the loop, we have to adjust the last line afterwards", arg_debug)
 
-        l_line = _ida_lines.tag_remove(l_line_array.down())
-        log_print(f"l_line: {l_line}", arg_debug)
-        if last_line_ref == 0: # at last line
-            log_print(f"first_line_ref: {first_line_ref}, last_line_ref: {last_line_ref}, l_line: {l_line}, last line?", arg_debug)
-            l_line = l_line[0:arg_to.x]
-        elif first_line_ref == 0: # at first line
-            log_print(f"first_line_ref: {first_line_ref}, last_line_ref: {last_line_ref}, l_line: {l_line}, first line?", arg_debug)
-            l_line = l_line[arg_from.x:]
-        res.append(l_line)
 
-    log_print(f"res after loop but before any mods: {res}", arg_debug)
-
-    if len(res) == 1:
-        log_print(f"sometimes we get the loop even if we only have selected part of 1 line, this hack fix that special case. Changing to get_custom_viewer_curline()", arg_debug)
-        res = []
-        l_t_line =_ida_lines.tag_remove(_ida_kernwin.get_custom_viewer_curline(arg_TWidget.as_TWidget_ptr(), mouse=False))
-        res.append(l_t_line[arg_from.x : arg_to.x])
+        l_last_line = res[-1]
+        l_last_line = l_last_line[0:arg_to.x]
+        res[-1] = l_last_line
         return res
 
-    log_print(f"Since we cannot get any signal that we are at the last line in the loop, we have to adjust the last line afterwards", arg_debug)
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def ui_selected_text(arg_TWidget: Optional[TWidget] = None, arg_debug: bool = False) -> str:
+        ''' Returns the selected text, if no text is selected, then return empty string
 
+        @param arg_TWidget The widget to get the selected text from, if set to None, then get the selected text from the last used widget
 
-    l_last_line = res[-1]
-    l_last_line = l_last_line[0:arg_to.x]
-    res[-1] = l_last_line
-    return res
+        Code taken from examples: dump_selection.py
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ui_selected_text(arg_TWidget: Optional[TWidget] = None, arg_debug: bool = False) -> str:
-    ''' Returns the selected text, if no text is selected, then return empty string
+        OBS! This version is working better than dump_selection.py but it still is buggy...
+        '''
+        l_from = _ida_kernwin.twinpos_t()
+        l_to = _ida_kernwin.twinpos_t()
+        # l_view = TWidget(_ida_kernwin.get_current_viewer())
+        l_view = arg_TWidget if arg_TWidget else _idaapi_get_last_widget()
+        l_read_selection = _ida_kernwin.read_selection(l_view.as_TWidget_ptr(), l_from, l_to)
+        if not l_read_selection:
+            log_print(f"No text is selected in {l_view.window_title()}", arg_type="ERROR")
+            return ""
 
-    @param arg_TWidget The widget to get the selected text from, if set to None, then get the selected text from the last used widget
+        lines = __widget_lines(l_view, l_from, l_to, arg_debug=arg_debug)
+        return "\n".join(lines)
 
-    Code taken from examples: dump_selection.py
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def ui_highlighted_identifier(arg_viewer: Optional[TWidget] = None, arg_allow_selected_text: bool = True) -> Optional[str]:
+        ''' If you have clicked in a window on an identifier so that the window highlights the identifer, this can read that identifer. '''
+        if not _bool(ida_registy_read("AutoHighlight")[1]):
+            log_print("You have turned off highlighting in Options -> General -> Browser -> Auto highlight the current identifier which means this function will not work", arg_type="ERROR")
+            return None
 
-    OBS! This version is working better than dump_selection.py but it still is buggy...
-    '''
-    l_from = _ida_kernwin.twinpos_t()
-    l_to = _ida_kernwin.twinpos_t()
-    # l_view = TWidget(_ida_kernwin.get_current_viewer())
-    l_view = arg_TWidget if arg_TWidget else _idaapi_get_last_widget()
-    l_read_selection = _ida_kernwin.read_selection(l_view.as_TWidget_ptr(), l_from, l_to)
-    if not l_read_selection:
-        log_print(f"No text is selected in {l_view.window_title()}", arg_type="ERROR")
+        l_viewer = arg_viewer.as_TWidget_ptr() if arg_viewer else _idaapi_get_current_viewer().as_TWidget_ptr()
+        l_ret = _ida_kernwin.get_highlight(l_viewer) # TODO: Break out to own function with the check in it
+        if l_ret is None:
+            log_print("No highlighted identifer", arg_type="ERROR")
+            return None
+        l_highlighted = l_ret[0]
+        l_is_valid = l_ret[1]
+        if l_is_valid:
+            return l_highlighted
+
+        # If we get there, then the user might have selected text with the mouse and not just clicked an identifer in the UI
+        if arg_allow_selected_text:
+            return ui_selected_text(arg_viewer)
+
+        log_print("l_is_valid is not valid", arg_type="ERROR")
         return ""
 
-    lines = __widget_lines(l_view, l_from, l_to, arg_debug=arg_debug)
-    return "\n".join(lines)
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ui_highlighted_identifier(arg_viewer: Optional[TWidget] = None, arg_allow_selected_text: bool = True) -> Optional[str]:
-    ''' If you have clicked in a window on an identifier so that the window highlights the identifer, this can read that identifer. '''
-    if not _bool(ida_registy_read("AutoHighlight")[1]):
-        log_print("You have turned off highlighting in Options -> General -> Browser -> Auto highlight the current identifier which means this function will not work", arg_type="ERROR")
-        return None
-
-    l_viewer = arg_viewer.as_TWidget_ptr() if arg_viewer else _idaapi_get_current_viewer().as_TWidget_ptr()
-    l_ret = _ida_kernwin.get_highlight(l_viewer) # TODO: Break out to own function with the check in it
-    if l_ret is None:
-        log_print("No highlighted identifer", arg_type="ERROR")
-        return None
-    l_highlighted = l_ret[0]
-    l_is_valid = l_ret[1]
-    if l_is_valid:
-        return l_highlighted
-
-    # If we get there, then the user might have selected text with the mouse and not just clicked an identifer in the UI
-    if arg_allow_selected_text:
-        return ui_selected_text(arg_viewer)
-
-    log_print("l_is_valid is not valid", arg_type="ERROR")
-    return ""
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_main_window() -> TWidget:
-    ''' Get the top window. If you set the window title on this, then the IDA Process window title will be set
-    The idea is that you can set the window title to give some info to the user
-    '''
-    return TWidget(PyQt5.QtWidgets.QApplication.activeWindow()) # TODO: Ida 9.2 will break this (Qt6)
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def ida_main_window() -> TWidget:
+        ''' Get the top window. If you set the window title on this, then the IDA Process window title will be set
+        The idea is that you can set the window title to give some info to the user
+        '''
+        return TWidget(QApplication.activeWindow())
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def jumpto(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
@@ -6126,7 +6135,7 @@ def _test_Qt_stuff(arg_debug: bool = False) -> bool:
     import secrets
     l_test_string = ''.join([secrets.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(10)])
     log_print(f"l_test_string: {l_test_string}", arg_debug)
-    return clipboard_copy(l_test_string) and l_test_string == QApplication.clipboard().text()
+    return clipboard_copy(l_test_string) and l_test_string == _pyperclip.paste()
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_decompiler(arg_debug: bool = False) -> bool:
