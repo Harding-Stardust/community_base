@@ -63,11 +63,11 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 
 # it _should_ work on all OSes but I have only tested on:
 
-| OS | IDA | Python | Notes |
-|--|--|--|--|
-| ~~Windows 10~~ | ~~8.4~~ | ~~3.8~~ | ida_domain not available |
-| Windows 10 | 9.1 | 3.12 | ida_domain OK |
-| Windows 10 | 9.2 | 3.12 | ida_domain OK |
+| OS | IDA | Python | 
+|--|--|--|
+| Windows 10 | 8.4 | 3.8  |
+| Windows 10 | 9.1 | 3.12 |
+| Windows 10 | 9.2 | 3.12 |
 
 # Future
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!
@@ -75,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-09-25 23:14:11"
+__version__ = "2025-09-26 18:09:51"
 __author__ = "Harding (https://github.com/Harding-Stardust)"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -105,13 +105,11 @@ from types import ModuleType
 import inspect as _inspect
 from pydantic import validate_call # pip install pydantic
 import pyperclip as _pyperclip # pip install pyperclip
-
 try:
     import chardet # pip install chardet
 except ImportError:
-    print(f"{__file__}: Missing import chardet, this module is used to guess string encoding. It's nice to have, not need to have. pip install chardet")
+    print(f"{__file__}: Missing module chardet, this module is used to guess string encoding. It's nice to have, not need to have. pip install chardet")
 
-# import ida_domain as _ida_domain # type: ignore[import-untyped] # pip install ida_domain TODO: This will break IDA < 9.1
 import ida_allins as _ida_allins # type: ignore[import-untyped]
 import ida_auto as _ida_auto # type: ignore[import-untyped]
 import ida_bytes as _ida_bytes # type: ignore[import-untyped]
@@ -142,7 +140,7 @@ import ida_ua as _ida_ua # type: ignore[import-untyped] # ua stands for UnAssemb
 import ida_xref as _ida_xref # type: ignore[import-untyped]
 import idautils as _idautils # type: ignore[import-untyped]
 import ida_diskio as _ida_diskio # type: ignore[import-untyped]
-_G_QT_IS_OK: bool = True
+__QT_IS_AVAILABLE: bool = True
 try:
     # IDA 9.2+ uses PySide6 while earlier versions use PyQt5
     from PySide6.QtWidgets import QApplication, QWidget # type: ignore[import-untyped, import-not-found] 
@@ -150,17 +148,14 @@ except ImportError:
     try:
         from PyQt5.Qt import QApplication # type: ignore[import-untyped]
         from PyQt5.QtWidgets import QWidget # type: ignore[import-untyped]
-    except Exception:
-        _G_QT_IS_OK = False
+    except NotImplementedError:
+        __QT_IS_AVAILABLE = False
 
-# _G_IDB = _ida_domain.Database()
-# if not _G_IDB.is_open():
-#     _G_IDB.open("TODO: path to IDB") # Force user to set os.environ["IDB_PATH"] ?
-
-HOTKEY_DUMP_TO_DISK = 'w' # Select bytes and press w to dump it to disk in the same directory as the IDB. One can also call dump_to_disk(address, length) to dump from the console
-HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT = 'shift-c' # Select bytes and press Shift-C to copy the marked bytes as hex text. Same shortcut as in x64dbg.
-HOTKEY_COPY_CURRENT_ADDRESS = 'alt-ins' # Copy the current address as hex text into the clipboard. Same shortcut as x64dbg.
-HOTKEY_SMART_DELETE_BYTES = 'del' # Pressing delete on code turns it into NOP (0x90) if it's already NOP (or data) then write 0x00
+if __QT_IS_AVAILABLE:
+    HOTKEY_DUMP_TO_DISK = 'w' # Select bytes and press w to dump it to disk in the same directory as the IDB. One can also call dump_to_disk(address, length) to dump from the console
+    HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT = 'shift-c' # Select bytes and press Shift-C to copy the marked bytes as hex text. Same shortcut as in x64dbg.
+    HOTKEY_COPY_CURRENT_ADDRESS = 'alt-ins' # Copy the current address as hex text into the clipboard. Same shortcut as x64dbg.
+    HOTKEY_SMART_DELETE_BYTES = 'del' # Pressing delete on code turns it into NOP (0x90) if it's already NOP (or data) then write 0x00
 
 BufferType = Union[str, bytes, bytearray, List[str], List[bytes], List[bytearray]]
 BoolishType = Union[bool, int, str] # Can be evaluted by my function named _bool()
@@ -169,6 +164,74 @@ EvaluateType = Union[str, int, _ida_idp.reg_info_t, _ida_ua.insn_t, _ida_hexrays
 __GLOBAL_LOG_EVERYTHING = False # If this is set to True, then all calls to log_print() will be printed, this can cause massive logs but good for hard to find bugs
 
 # HELPERS ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _timestamped_line(arg_str: str) -> str:
+    ''' Add a timestamp at the beginning of the line
+     e.g. 2024-12-31 13:59:59 This is the string I send in as argument
+    '''
+    return time.strftime("%Y-%m-%d %H:%M:%S", datetime.timetuple(datetime.now())) + " " + arg_str
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _file_and_line_number(arg_num_function_away: int = 2) -> Optional[_inspect.Traceback]:
+    ''' Internal function. Used in log_print()
+    Returns the file the script is called from and what line in that script file
+
+    ! WARNING ! This function is VERY expensive!
+    '''
+    try:
+        callerframerecord = _inspect.stack()[arg_num_function_away]     # 0 represents this line
+        frame = callerframerecord[0]                                    # 1 represents line at caller and so on
+        return _inspect.getframeinfo(frame)                              # info.filename, info.function, info.lineno
+    except Exception as exc:
+        print(_timestamped_line(f"Caught exception: {exc}"))
+        return None
+
+_g_timestamp_of_last_checked = time.time()
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
+    ''' Scripts that take long time to run can be aborted by copying any of the following strings into the clipboard: "abort.ida", "ida.abort", "ida.stop", "stop.ida"
+        This is checked every 30 seconds and raises a TimeoutError() exception
+
+        WARNING! If you have multiple instances of IDA running with this script then the string check will be done in all instances and abort all long running scripts!
+    '''
+    # TODO: Add the possibility to add a PID in the string to just abort the correct script? Add if ever needed
+    # TODO: Ask (with a popup) the user if this is the correct IDA to abort?
+    global _g_timestamp_of_last_checked
+    l_now = time.time()
+    if (l_now - _g_timestamp_of_last_checked) > 30:
+        _g_timestamp_of_last_checked = l_now
+        if arg_debug:
+            # l_timestamp: str = time.strftime("%Y-%m-%d %H:%M:%S", datetime.timetuple(datetime.now()))
+            # print(f"{l_timestamp} _long_running_script_should_abort(): Checking for abort.ida in clipboard...")
+            print(_timestamped_line("_long_running_script_should_abort(): Checking for abort.ida in clipboard..."))
+
+        
+        res = _pyperclip.paste().strip() in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]
+        if res:
+            raise TimeoutError(f"String {_pyperclip.paste().strip()} found in clipboard")
+
+    return
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def log_print(arg_string: str, arg_actually_print: bool = True, arg_type: str = "DEBUG", arg_num_function_away: int = 6) -> None:
+    ''' Used for code trace while developing the project '''
+    _check_if_long_running_script_should_abort(arg_actually_print)
+    if arg_actually_print or __GLOBAL_LOG_EVERYTHING:
+        info = _file_and_line_number(arg_num_function_away)
+        if info is None:
+            print(_timestamped_line("_file_and_line_number failed"))
+            return
+        function_name: str = info.function if info else "<no function name>"
+        if function_name == "<module>":
+            function_name = os.path.basename(info.filename)
+        else:
+            function_name = f"{os.path.splitext(os.path.basename(info.filename))[0]}.{function_name}"
+        log_line = _timestamped_line(f"[{arg_type}] {function_name}:{info.lineno} --> {arg_string}")
+
+        # Log to disk can be implemented here if needed
+        print(log_line, flush=True)
+    return
+
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _bool(arg_user_input: BoolishType) -> bool:
     ''' Try to convert a user input to a boolean True or False in a smart way.
@@ -295,6 +358,16 @@ def open_url(arg_text_blob_with_urls_in_it_or_function: Union[str, Callable]) ->
     # Check the docstring
     open_url(getattr(arg_text_blob_with_urls_in_it_or_function, "__doc__", ""))
 
+# TODO: Implement
+# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+# def ask_yn(arg_question: str) -> bool:
+#     ''' Asked the use a yes or no question. Works with Qt and with headless '''
+#     if _ida_kernwin.is_idaq():
+#         _ida_kernwin.ask_yn
+#     else:
+#         from IPython import get_ipython
+#         get_ipython().ask_yes_no("yes or no")
+
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleType, None] = None) -> str:
     ''' If you find a bug in IDA or community_base (or any other plugin) you can easy save info about the bug by using this function.
@@ -329,7 +402,7 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
 
     l_github_issues: str = __url__ + "/issues/new"
     # First argument is the default button that will be pressed if the user press ENTER as soon as the box popups
-    if _ida_kernwin.ask_yn(_ida_kernwin.ASKBTN_YES , f"Open a new issue on Github? ( {l_github_issues} )") == _ida_kernwin.ASKBTN_YES:
+    if _ida_kernwin.ask_yn(_ida_kernwin.ASKBTN_YES , f"Open a new issue on Github? ( {l_github_issues} )") == _ida_kernwin.ASKBTN_YES: # TODO: Maybe use from IPython import get_ipython; get_ipython().ask_yes_no("yes or no")
         _ida_kernwin.open_url(l_github_issues + f"?title=bug&body={l_bug_report_as_str}")
 
     return l_bug_report_file
@@ -390,31 +463,6 @@ class __check_if_long_running_script_should_abort_not_working():
         ''' Clean up '''
         log_print(f"Timer object disposed {self}")
 
-_g_timestamp_of_last_checked = time.time()
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
-    ''' Scripts that take long time to run can be aborted by copying any of the following strings into the clipboard: "abort.ida", "ida.abort", "ida.stop", "stop.ida"
-        This is checked every 30 seconds and raises a TimeoutError() exception
-
-        WARNING! If you have multiple instances of IDA running with this script then the string check will be done in all instances and abort all long running scripts!
-    '''
-    # TODO: Add the possibility to add a PID in the string to just abort the correct script? Add if ever needed
-    # TODO: Ask (with a popup) the user if this is the correct IDA to abort?
-    global _g_timestamp_of_last_checked
-    l_now = time.time()
-    if (l_now - _g_timestamp_of_last_checked) > 30:
-        _g_timestamp_of_last_checked = l_now
-        if arg_debug:
-            l_timestamp: str = time.strftime("%Y-%m-%d %H:%M:%S", datetime.timetuple(datetime.now()))
-            print(f"{l_timestamp} _long_running_script_should_abort(): Checking for abort.ida in clipboard...")
-
-        
-        res = _pyperclip.paste().strip() in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]
-        if res:
-            raise TimeoutError(f"String {_pyperclip.paste().strip()} found in clipboard")
-
-    return
-
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _dict_sort(arg_dict: dict, arg_sort_by_value: bool = False, arg_descending: bool = False) -> dict:
     ''' Internal function. Returns a new sorted dictionary, can sort by value and can sort ascending or descending '''
@@ -450,12 +498,25 @@ def ida_plugin_dirs() -> List[str]:
     return _ida_diskio.get_ida_subdirs("plugins")
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def ida_is_in_gui_mode() -> bool:
+    ''' True if IDA is started with the GUI.
+    There are 3 cases:
+    ida.exe (normal mode) --> True
+    ida.exe -A -Smy_script.py (before the GUI is painted) --> True
+    ida_domain (lib-mode) --> False
+    '''
+    return _ida_kernwin.is_idaq()
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_is_running_in_batch_mode() -> bool:
     ''' Are we running in batch mode? a.k.a. headless
     Credits goes to [arizvisa](https://github.com/arizvisa) : <https://github.com/Harding-Stardust/community_base/issues/1>
-    We can actually set this, see idc.batch() (Is this useful?)
+    There are 3 cases:
+    ida.exe (normal mode) --> False
+    ida.exe -A -Smy_script.py (before the GUI is painted) --> True
+    ida_domain (lib-mode) --> True
     '''
-    return _ida_kernwin.cvar.batch # TODO: ida_kernwin.is_idaq() for batch check and also check ida_kernwin.is_ida_library() 
+    return _ida_kernwin.cvar.batch
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_arguments() -> List[str]:
@@ -463,6 +524,7 @@ def ida_arguments() -> List[str]:
     E.g. ida.exe C:\\temp\\example.exe --extra_option_that_ida_dont_understand=3
 
     You can then use this function to parse your own arguments. Useful in batch mode
+    OBS! Cannot be used in ida_domain mode
     '''
     return QApplication.arguments() # TODO: Change this to not depend on Qt
 
@@ -619,48 +681,6 @@ def _python_load_module(arg_filepath: str) -> bool:
     res = reload_module(os.path.splitext(l_filename)[0])
     os.chdir(l_saved_cwd)
     return res
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _timestamped_line(arg_str: str) -> str:
-    ''' Add a timestamp at the beginning of the line
-     e.g. 2024-12-31 13:59:59 This is the string I send in as argument
-    '''
-    return time.strftime("%Y-%m-%d %H:%M:%S", datetime.timetuple(datetime.now())) + " " + arg_str
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _file_and_line_number(arg_num_function_away: int = 2) -> Optional[_inspect.Traceback]:
-    ''' Internal function. Used in log_print()
-    Returns the file the script is called from and what line in that script file
-
-    ! WARNING ! This function is VERY expensive!
-    '''
-    try:
-        callerframerecord = _inspect.stack()[arg_num_function_away]     # 0 represents this line
-        frame = callerframerecord[0]                                    # 1 represents line at caller and so on
-        return _inspect.getframeinfo(frame)                              # info.filename, info.function, info.lineno
-    except Exception as exc:
-        print(_timestamped_line(f"Caught exception: {exc}"))
-        return None
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def log_print(arg_string: str, arg_actually_print: bool = True, arg_type: str = "DEBUG", arg_num_function_away: int = 6) -> None:
-    ''' Used for code trace while developing the project '''
-    _check_if_long_running_script_should_abort(arg_actually_print)
-    if arg_actually_print or __GLOBAL_LOG_EVERYTHING:
-        info = _file_and_line_number(arg_num_function_away)
-        if info is None:
-            print(_timestamped_line("_file_and_line_number failed"))
-            return
-        function_name: str = info.function if info else "<no function name>"
-        if function_name == "<module>":
-            function_name = os.path.basename(info.filename)
-        else:
-            function_name = f"{os.path.splitext(os.path.basename(info.filename))[0]}.{function_name}"
-        log_line = _timestamped_line(f"[{arg_type}] {function_name}:{info.lineno} --> {arg_string}")
-
-        # Log to disk can be implemented here if needed
-        print(log_line, flush=True)
-    return
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_is_64bit() -> bool:
@@ -1944,7 +1964,7 @@ def _struct_comments(arg_debug: bool = False) -> str:
     
 
 # ---- Hotkey: w --> Dump selected bytes to a file on disk ----------------------------------------------------------------------------------------
-if _G_QT_IS_OK:
+if __QT_IS_AVAILABLE:
     _ACTION_NAME_DUMP_SELECTED_BYTES = f"{__name__}:dump_selected_bytes_to_disk"
 
     if _ACTION_NAME_DUMP_SELECTED_BYTES in _ida_kernwin.get_registered_actions():
@@ -5101,7 +5121,7 @@ def win_GetCurrentProcessId(arg_debug: bool = False) -> Optional[int]:
 
 
 # UI ---------------------------------------------------------------------------------------------------------------------
-if _G_QT_IS_OK:
+if __QT_IS_AVAILABLE:
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def _is_TWidget_TWidget_ptr_or_QtWidget(arg_widget: Any) -> str:
         ''' Detects what kind of Widget you send in and returns that as a str '''
