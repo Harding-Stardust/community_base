@@ -37,7 +37,7 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 - Simple and fast way to get info about APIs, see ```google()```
 - 4 new hotkeys:
 - - w --> Selected bytes will be dumped to disk
-- - alt + Ins --> Copy current address into clipboard (same as [x64dbg](https://x64dbg.com/))
+- - alt + ins --> Copy current address into clipboard (same as [x64dbg](https://x64dbg.com/))
 - - shift + c --> Copy selected bytes into clipboard as hex text (same as [x64dbg](https://x64dbg.com/))
 - - delete --> smart delete. If the selected bytes are in code then make then NOPS (Intel only!) and if you press delete again (or if you are in data) then write 0x00
 - Much more that I can't think of right now as I need to publish this script before new years eve!
@@ -75,8 +75,8 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-09-26 18:09:51"
-__author__ = "Harding (https://github.com/Harding-Stardust)"
+__version__ = "2025-10-04 00:19:13"
+__author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
 __credits__ = ["https://www.youtube.com/@allthingsida",
@@ -86,12 +86,12 @@ __credits__ = ["https://www.youtube.com/@allthingsida",
                "https://github.com/synacktiv/bip/",
                "https://github.com/tmr232/Sark"]
 __license__ = "GPL 3.0"
-__maintainer__ = "Harding (https://github.com/Harding-Stardust)"
+__maintainer__ = "Harding"
 __email__ = "not.at.the.moment@example.com"
 __status__ = "Development"
 __url__ = "https://github.com/Harding-Stardust/community_base"
 
-import os # https://peps.python.org/pep-0008/#imports
+import os
 import sys
 import re
 import time
@@ -104,9 +104,9 @@ from typing import Union, List, Dict, Tuple, Any, Optional, Callable
 from types import ModuleType
 import inspect as _inspect
 from pydantic import validate_call # pip install pydantic
-import pyperclip as _pyperclip # pip install pyperclip
+import pyperclip as _pyperclip # type: ignore[import-untyped] # pip install pyperclip
 try:
-    import chardet # pip install chardet
+    import chardet as _chardet # pip install chardet
 except ImportError:
     print(f"{__file__}: Missing module chardet, this module is used to guess string encoding. It's nice to have, not need to have. pip install chardet")
 
@@ -314,7 +314,7 @@ def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, D
     l_links["appcall_practical_examples"] =         "https://hex-rays.com/blog/practical-appcall-examples/"
     l_links["community_forums"] =                   "https://community.hex-rays.com/"
     l_links["HexRays_github_examples"] =            "https://github.com/HexRaysSA/IDAPython/tree/9.0sp1/examples"
-    # l_links[""] = ""
+    l_links["ida_domain"] =                         "https://ida-domain.docs.hex-rays.com/"
 
     l_batch_mode = {}
     l_batch_mode["command_line"] = "<full_path_to>ida.exe -A -S<script_I_want_to_run.py> -L<full_path_to>ida.log <full_path_to_input_file>"
@@ -333,16 +333,16 @@ def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, D
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _official_python_doc_url(arg_function: Callable) -> str:
     ''' Creates an URL to the Python docs '''
-    l_module: str = arg_function.__module__.replace("ida_", "ida__")
+    l_module: str = arg_function.__module__
     l_function: str =  arg_function.__name__
-    return f"https://python.docs.hex-rays.com/namespace{l_module}.html#:~:text={l_function}()"
+    return f"https://python.docs.hex-rays.com/{l_module}/index.html#{l_module}.{l_function}"
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def open_url(arg_text_blob_with_urls_in_it_or_function: Union[str, Callable]) -> None:
     ''' Opens the default web browser with all URLs in the given text blob.
         Works well on the docstrings I have enriched with URLs e.g. open_url(ida_kernwin.process_ui_action)
 
-        ida_kernwin.open_url docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=open_url()>
+        ida_kernwin.open_url docs: <https://python.docs.hex-rays.com/ida_kernwin/index.html#ida_kernwin.open_url>
         Replacement for ida_kernwin.open_url()
     '''
 
@@ -358,7 +358,7 @@ def open_url(arg_text_blob_with_urls_in_it_or_function: Union[str, Callable]) ->
     # Check the docstring
     open_url(getattr(arg_text_blob_with_urls_in_it_or_function, "__doc__", ""))
 
-# TODO: Implement
+# TODO: Implement?
 # @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 # def ask_yn(arg_question: str) -> bool:
 #     ''' Asked the use a yes or no question. Works with Qt and with headless '''
@@ -501,7 +501,7 @@ def ida_plugin_dirs() -> List[str]:
 def ida_is_in_gui_mode() -> bool:
     ''' True if IDA is started with the GUI.
     There are 3 cases:
-    ida.exe (normal mode) --> True
+    ida.exe (normal mode with GUI) --> True
     ida.exe -A -Smy_script.py (before the GUI is painted) --> True
     ida_domain (lib-mode) --> False
     '''
@@ -512,7 +512,7 @@ def ida_is_running_in_batch_mode() -> bool:
     ''' Are we running in batch mode? a.k.a. headless
     Credits goes to [arizvisa](https://github.com/arizvisa) : <https://github.com/Harding-Stardust/community_base/issues/1>
     There are 3 cases:
-    ida.exe (normal mode) --> False
+    ida.exe (normal mode with GUI) --> False
     ida.exe -A -Smy_script.py (before the GUI is painted) --> True
     ida_domain (lib-mode) --> True
     '''
@@ -577,8 +577,8 @@ def ida_save_database(arg_new_filename: str = "",
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_exit(arg_exit_code: int = 0,
              arg_save_database: bool = True,
-             arg_pack_database: bool = True,
-             arg_collect_garbage: bool = False) -> None:
+             arg_compress_database: bool = True,
+             arg_collect_garbage: bool = True) -> None:
     ''' Exit IDA and optionally save the IDB
     A good use for this function is as the last call in a script run in batch mode.
     See links() for more info about batch mode
@@ -596,7 +596,7 @@ def ida_exit(arg_exit_code: int = 0,
     if arg_collect_garbage:
         _ = ida_config("COLLECT_GARBAGE", "YES")
 
-    if arg_pack_database:
+    if arg_compress_database:
         _ = ida_config("PACK_DATABASE", "2") # set the default database packing option to "deflate" in old IDA and "zstd" in 9.1+;
     else:
         _ = ida_config("PACK_DATABASE", "1")
@@ -689,7 +689,7 @@ def ida_is_64bit() -> bool:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _ida_DLL() -> Any: # TODO: This used to be Union[ctypes.CDLL, ctypes.WinDLL] but WinDLL is not supported on Linux, what to do?
-    ''' Load correct version of ida.dll. Work on IDA 8.4 and 9.0. Example of how to use ctypes.
+    ''' Load correct version of ida.dll. Works on IDA 8.4, 9.0, 9.1 and 9.2. Example of how to use ctypes.
 
     Hex-Rays blog about it (OBS! Outdated!): <https://hex-rays.com/blog/calling-ida-apis-from-idapython-with-ctypes>
     '''
@@ -705,7 +705,7 @@ def _ida_DLL() -> Any: # TODO: This used to be Union[ctypes.CDLL, ctypes.WinDLL]
     elif sys.platform == 'darwin':
         res = ctypes.cdll[f'libida{l_bits}.dylib'] # Not tested, cdll is CDECL
     else:
-        log_print(f"You are using an OS I do not know: {sys.platform}", arg_type="ERROR")
+        log_print(f"You are using an OS I do not know how to handle: {sys.platform}", arg_type="ERROR")
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -989,6 +989,7 @@ _ida_idaapi.notify_when(_ida_idaapi.NW_OPENIDB, _new_file_opened_notification_ca
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _add_link_to_docstring(arg_function: Callable, arg_link: str = "") -> None:
     ''' If there is no link the official documentation for the given function, add a link to to the official documentation '''
+    
     l_docstring: Optional[str] = getattr(arg_function, "__doc__")
     if l_docstring is None:
         l_docstring = ""
@@ -997,7 +998,7 @@ def _add_link_to_docstring(arg_function: Callable, arg_link: str = "") -> None:
         # log_print(f"Function already has a link, ignoring", arg_type="WARNING")
         return
 
-    l_link = arg_link if arg_link else _official_python_doc_url(arg_function)
+    l_link = arg_link or _official_python_doc_url(arg_function)
 
     setattr(arg_function, "__doc__", l_docstring + "\nRead more: " + l_link)
     return
@@ -1165,7 +1166,7 @@ def pe_header_os_version() -> Tuple[int, int]:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pe_header_compiled_time() -> str:
-    ''' Reads the compiled from the PE header. Warning! In win10+ , this is a hash so we can get [reproducable builds](https://devblogs.microsoft.com/oldnewthing/20180103-00/?p=97705) '''
+    ''' Reads the compiled from the PE header. Warning! In win10+, this is a hash so we can get [reproducable builds](https://devblogs.microsoft.com/oldnewthing/20180103-00/?p=97705) '''
     l_os_version = pe_header_os_version()
     if l_os_version >= (10, 0):
         log_print(f"This is file from windows {l_os_version[0]}.{l_os_version[1]} which has reproducable builds so the timestamp is not valid", arg_type="ERROR")
@@ -1214,6 +1215,7 @@ def pdb_load(arg_local_pdb_file: str = "",
     Microsoft symbol server info: <https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/microsoft-public-symbols>
 
     @param arg_local_pdb_file If you have a local PDB file, then set this. If this is not set then download from Microsofts Symbol server
+    @param arg_image_base If you have a specific image base, then set this. If this is not set then use the image base from the file
     @param arg_force_reload If you already have PDB data, force a new reload and parse
     @param arg_local_symbol_cache Save the PDB here on the disk, it not set, then use the same directory as where the IDB is
     @param arg_debug Print debug data during the function call
@@ -1359,6 +1361,8 @@ def current_address() -> int:
     ''' Returns the address where cursor is. (OBS! Cursor in IDA is NOT the mouse cursor but where the blinking line is)
     Replacement for ida_kernwin.get_screen_ea()
     '''
+    
+    # TODO: check for ida_domain?
     return _ida_kernwin.get_screen_ea()
 
 here = current_address
@@ -1964,7 +1968,7 @@ def _struct_comments(arg_debug: bool = False) -> str:
     
 
 # ---- Hotkey: w --> Dump selected bytes to a file on disk ----------------------------------------------------------------------------------------
-if __QT_IS_AVAILABLE:
+if ida_is_in_gui_mode():
     _ACTION_NAME_DUMP_SELECTED_BYTES = f"{__name__}:dump_selected_bytes_to_disk"
 
     if _ACTION_NAME_DUMP_SELECTED_BYTES in _ida_kernwin.get_registered_actions():
@@ -2945,7 +2949,7 @@ def export_h_file(arg_h_file: str = "", arg_add_comment_at_top: bool = True, arg
 def string_encoding(arg_ea: EvaluateType, arg_detect: bool = False, arg_debug: bool = False) -> Optional[str]:
     '''
     Gets the encoding of a string, can also be used to check if IDA thinks there is a string on that address
-    If it's not and you want to make a string at that place, you can use string(<address>, arg_type="<encoding>", arg_create_string=True)
+    If it's not a string at the given address and you want to make a string at that place, you can use string(<address>, arg_type="<encoding>", arg_create_string=True)
 
     @param arg_ea The address to check for string encoding
     @param arg_detect True --> attempts to detect the encoding even if IDA doesn't recognize it as a string, requires the third party package chardet (pip install chardet)
@@ -2973,9 +2977,9 @@ def string_encoding(arg_ea: EvaluateType, arg_detect: bool = False, arg_debug: b
                 break
             l_bytes += l_byte
 
-        log_print(f"chardet.detect({str(l_bytes)}) len: {len(l_bytes)}", arg_debug)
-        l_detected = chardet.detect(l_bytes)
-        log_print(f"chardet gave the following: {str(l_detected)}", arg_type="ERROR")
+        log_print(f"_chardet.detect({str(l_bytes)}) len: {len(l_bytes)}", arg_debug)
+        l_detected = _chardet.detect(l_bytes)
+        log_print(f"_chardet gave the following: {str(l_detected)}", arg_type="ERROR")
         res = l_detected["encoding"] if l_detected["encoding"] is not None else ""
     else:
         log_print(f"IDA does _NOT_ think there is a string at {_hex_str_if_int(arg_ea)} but you can try to detect what encoding is used by calling string_encoding(<address>, arg_detect=True)", arg_type="ERROR")
@@ -2999,7 +3003,8 @@ def _validate_encoding_name(arg_encoding: str) -> str:
     @return The normalized encoding name
     '''
     arg_encoding = arg_encoding.lower()
-    arg_encoding = arg_encoding.replace("-", "")
+    if not arg_encoding.startswith("iso"):
+        arg_encoding = arg_encoding.replace("-", "")
 
     if arg_encoding in ["latin1"]:
         res = "Latin1"
