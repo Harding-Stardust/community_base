@@ -63,7 +63,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 
 # it _should_ work on all OSes but I have only tested on:
 
-| OS | IDA | Python | 
+| OS | IDA | Python |
 |--|--|--|
 | Windows 10 | 8.4 | 3.8  |
 | Windows 10 | 9.1 | 3.12 |
@@ -75,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-10-04 00:19:13"
+__version__ = "2025-10-06 01:10:21"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -98,6 +98,7 @@ import time
 import platform
 from datetime import datetime
 from datetime import timezone
+import logging as _logging
 import ctypes
 import json # TODO: Change to json5?
 from typing import Union, List, Dict, Tuple, Any, Optional, Callable
@@ -143,11 +144,10 @@ import ida_diskio as _ida_diskio # type: ignore[import-untyped]
 __QT_IS_AVAILABLE: bool = True
 try:
     # IDA 9.2+ uses PySide6 while earlier versions use PyQt5
-    from PySide6.QtWidgets import QApplication, QWidget # type: ignore[import-untyped, import-not-found] 
+    from PySide6.QtWidgets import QApplication, QWidget, QMainWindow # type: ignore[import-untyped, import-not-found]
 except ImportError:
     try:
-        from PyQt5.Qt import QApplication # type: ignore[import-untyped]
-        from PyQt5.QtWidgets import QWidget # type: ignore[import-untyped]
+        from PyQt5.QtWidgets import QApplication, QWidget, QMainWindow # type: ignore[import-untyped, import-not-found]
     except NotImplementedError:
         __QT_IS_AVAILABLE = False
 
@@ -163,7 +163,39 @@ BoolishType = Union[bool, int, str] # Can be evaluted by my function named _bool
 EvaluateType = Union[str, int, _ida_idp.reg_info_t, _ida_ua.insn_t, _ida_hexrays.cinsn_t, _ida_hexrays.cfuncptr_t, _ida_funcs.func_t, _ida_idaapi.PyIdc_cvt_int64__, _ida_segment.segment_t, _ida_ua.op_t, _ida_typeinf.funcarg_t, _idautils.Strings.StringItem, _ida_dbg.bpt_t, _ida_idd.modinfo_t, _ida_hexrays.carg_t, _ida_hexrays.cexpr_t, _ida_range.range_t]
 __GLOBAL_LOG_EVERYTHING = False # If this is set to True, then all calls to log_print() will be printed, this can cause massive logs but good for hard to find bugs
 
+_g_logger = _logging.getLogger(__name__)
+_g_logger.setLevel(_logging.DEBUG)
+
+def __delayed_creation_of_logger_object():
+    ''' There seems to be a problem that I create the logging before IpyIDA has hooked
+    the output so I have to wait some time before I create the logging '''
+    global _g_logger
+    if _g_logger.handlers:
+        _g_logger.removeHandler(_g_logger.handlers[0]) # When you importlib.reload() a module, we need to clear out the old logger
+    _g_console_handler = _logging.StreamHandler()
+    _g_console_handler.setLevel(_logging.DEBUG)
+    _g_console_handler.setFormatter(_logging.Formatter('%(asctime)s [%(levelname)s] %(module)s.%(funcName)s:%(lineno)d - %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+    _g_logger.addHandler(_g_console_handler)
+    return -1 # Don't run again
+
+_ida_kernwin.register_timer(2_000, __delayed_creation_of_logger_object)
+
 # HELPERS ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def Qt_QApplication() -> Optional[Any]:
+    ''' Fix for IDA 9.1 vs 9.2 (PyQt5 vs PySide6) '''
+    return QApplication if __QT_IS_AVAILABLE else None
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def Qt_QWidget() -> Optional[Any]:
+    ''' Fix for IDA 9.1 vs 9.2 (PyQt5 vs PySide6) '''
+    return QWidget if __QT_IS_AVAILABLE else None
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def Qt_QMainWindow() -> Optional[Any]:
+    ''' Fix for IDA 9.1 vs 9.2 (PyQt5 vs PySide6) '''
+    return QMainWindow if __QT_IS_AVAILABLE else None
+
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _timestamped_line(arg_str: str) -> str:
     ''' Add a timestamp at the beginning of the line
@@ -171,65 +203,78 @@ def _timestamped_line(arg_str: str) -> str:
     '''
     return time.strftime("%Y-%m-%d %H:%M:%S", datetime.timetuple(datetime.now())) + " " + arg_str
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _file_and_line_number(arg_num_function_away: int = 2) -> Optional[_inspect.Traceback]:
-    ''' Internal function. Used in log_print()
-    Returns the file the script is called from and what line in that script file
-
-    ! WARNING ! This function is VERY expensive!
+class _class_check_if_long_running_script_should_abort():
+    ''' Periodically check if any of the strings "abort.ida", "ida.abort", "ida.stop", "stop.ida" are in the clipboard.
+    This will "signal" to the main thread that it should stop by using an environment variable named "IDA_ABORT"
+    This is also an example on how to use timers. Read more: <https://github.com/HexRaysSA/IDAPython/blob/9.0sp1/examples/ui/register_timer.py>
     '''
-    try:
-        callerframerecord = _inspect.stack()[arg_num_function_away]     # 0 represents this line
-        frame = callerframerecord[0]                                    # 1 represents line at caller and so on
-        return _inspect.getframeinfo(frame)                              # info.filename, info.function, info.lineno
-    except Exception as exc:
-        print(_timestamped_line(f"Caught exception: {exc}"))
-        return None
+    def __init__(self):
+        l_time_between_calls_in_milliseconds = 2_000
+        self.m_interval = l_time_between_calls_in_milliseconds
+        self.m_timer = _ida_kernwin.register_timer(self.m_interval, self)
+        if self.m_timer is None:
+            raise RuntimeError("Failed to register timer")
+
+    def __call__(self):
+        ''' This is the function that is invoked at each call '''
+
+        l_clipboard_content = _pyperclip.paste().strip()
+        if l_clipboard_content in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]:
+            _pyperclip.copy("")
+            os.environ["IDA_ABORT"] = "True"
+            log_print(f"String {l_clipboard_content} found in clipboard")
+        # else:
+        #     log_print("Checking!")
+
+        return self.m_interval
+
+    def __del__(self):
+        ''' Clean up '''
+        _ida_kernwin.unregister_timer(self.m_timer)
+        log_print(f"Timer object disposed {self}", arg_type="DEBUG")
+
+_g_class_check_if_long_running_script_should_abort = _class_check_if_long_running_script_should_abort() # Create and start the timer
 
 _g_timestamp_of_last_checked = time.time()
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
     ''' Scripts that take long time to run can be aborted by copying any of the following strings into the clipboard: "abort.ida", "ida.abort", "ida.stop", "stop.ida"
-        This is checked every 30 seconds and raises a TimeoutError() exception
+        This is checked every 5 seconds and raises a TimeoutError() exception
 
         WARNING! If you have multiple instances of IDA running with this script then the string check will be done in all instances and abort all long running scripts!
     '''
-    # TODO: Add the possibility to add a PID in the string to just abort the correct script? Add if ever needed
-    # TODO: Ask (with a popup) the user if this is the correct IDA to abort?
     global _g_timestamp_of_last_checked
     l_now = time.time()
-    if (l_now - _g_timestamp_of_last_checked) > 30:
+    if (l_now - _g_timestamp_of_last_checked) > 5:
         _g_timestamp_of_last_checked = l_now
         if arg_debug:
             # l_timestamp: str = time.strftime("%Y-%m-%d %H:%M:%S", datetime.timetuple(datetime.now()))
             # print(f"{l_timestamp} _long_running_script_should_abort(): Checking for abort.ida in clipboard...")
-            print(_timestamped_line("_long_running_script_should_abort(): Checking for abort.ida in clipboard..."))
+            _g_logger.info("Checking for abort.ida in clipboard...")
 
-        
-        res = _pyperclip.paste().strip() in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]
-        if res:
-            raise TimeoutError(f"String {_pyperclip.paste().strip()} found in clipboard")
+        if os.environ.get("IDA_ABORT", "False") == "True":
+            os.environ["IDA_ABORT"] = "False"
+            raise TimeoutError(f"Abort string found in clipboard")
 
     return
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def log_print(arg_string: str, arg_actually_print: bool = True, arg_type: str = "DEBUG", arg_num_function_away: int = 6) -> None:
+def log_print(arg_string: str, arg_actually_print: bool = True, arg_type: str = "DEBUG") -> None:
     ''' Used for code trace while developing the project '''
     _check_if_long_running_script_should_abort(arg_actually_print)
     if arg_actually_print or __GLOBAL_LOG_EVERYTHING:
-        info = _file_and_line_number(arg_num_function_away)
-        if info is None:
-            print(_timestamped_line("_file_and_line_number failed"))
-            return
-        function_name: str = info.function if info else "<no function name>"
-        if function_name == "<module>":
-            function_name = os.path.basename(info.filename)
+        if arg_type == "DEBUG":
+            _g_logger.debug(f"{arg_string}", stacklevel=4)
+        elif arg_type == "INFO":
+            _g_logger.info(f"{arg_string}", stacklevel=4)
+        elif arg_type == "WARNING":
+            _g_logger.warning(f"{arg_string}", stacklevel=4)
+        elif arg_type == "ERROR":
+            _g_logger.error(f"{arg_string}", stacklevel=4)
+        elif arg_type == "CRITICAL":
+            _g_logger.critical(f"{arg_string}", stacklevel=4)
         else:
-            function_name = f"{os.path.splitext(os.path.basename(info.filename))[0]}.{function_name}"
-        log_line = _timestamped_line(f"[{arg_type}] {function_name}:{info.lineno} --> {arg_string}")
-
-        # Log to disk can be implemented here if needed
-        print(log_line, flush=True)
+            _g_logger.debug(f"{arg_string}", stacklevel=4)
     return
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -428,41 +473,6 @@ def help(arg_search: str) -> List[Tuple[str, str]]:
 
     return res
 
-# TODO: This can be used as "poor mans thread" to poll external data
-# TODO: This is not working as expected since it runs in it's own thread
-class __check_if_long_running_script_should_abort_not_working():
-    ''' Periodically check if any of the strings "abort.ida", "ida.abort", "ida.stop", "stop.ida" are in the clipboard. If anyone is, then throw an exception to abort the long running task.
-    This is also an example on how to use timers. Read more: <https://github.com/HexRaysSA/IDAPython/blob/9.0sp1/examples/ui/register_timer.py>
-
-    OBS! This function is not working as expected and is only left here as an example on how to use ida_kernwin.register_timer()
-    '''
-    def __init__(self):
-        l_time_between_calls_in_milliseconds = 1000
-        self.interval = l_time_between_calls_in_milliseconds
-        self.obj = _ida_kernwin.register_timer(self.interval, self)
-        if self.obj is None:
-            raise RuntimeError("Failed to register timer")
-        self.times = 30
-
-    def __call__(self):
-        ''' This is the function that is invoked at each call '''
-        # print("Timer invoked. %d time(s) left" % self.times)
-        self.times -= 1
-        # Unregister the timer when the counter reaches zero
-        # return -1 --> do not call again, anything else
-
-        
-        res = _pyperclip.paste().strip() in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]
-        if res:
-            log_print(f"String {_pyperclip.paste().strip()} found in clipboard")
-            log_print("Here should I do something smart to stop the long running script, any ideas?")
-
-        return -1 if self.times == 0 else self.interval
-
-    def __del__(self):
-        ''' Clean up '''
-        log_print(f"Timer object disposed {self}")
-
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _dict_sort(arg_dict: dict, arg_sort_by_value: bool = False, arg_descending: bool = False) -> dict:
     ''' Internal function. Returns a new sorted dictionary, can sort by value and can sort ascending or descending '''
@@ -518,15 +528,17 @@ def ida_is_running_in_batch_mode() -> bool:
     '''
     return _ida_kernwin.cvar.batch
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_arguments() -> List[str]:
-    ''' The arguments to the IDA Process when it was launched. Can be used to start ida with custom arguments.
-    E.g. ida.exe C:\\temp\\example.exe --extra_option_that_ida_dont_understand=3
+if ida_is_in_gui_mode():
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def ida_arguments() -> List[str]:
+        ''' The arguments to the IDA Process when it was launched. Can be used to start ida with custom arguments.
+        E.g. ida.exe C:\\temp\\example.exe --extra_option_that_ida_dont_understand=3
 
-    You can then use this function to parse your own arguments. Useful in batch mode
-    OBS! Cannot be used in ida_domain mode
-    '''
-    return QApplication.arguments() # TODO: Change this to not depend on Qt
+        You can then use this function to parse your own arguments. Useful in batch mode
+        OBS! Cannot be used in ida_domain mode
+        '''
+        # TODO: Delete this function?
+        return QApplication.arguments()
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_config(arg_key: str, arg_value: str) -> bool:
@@ -662,12 +674,14 @@ def reload_module(arg_module: Union[str, ModuleType, None] = None) -> bool:
     Replacement for ida_idaapi.require()
     '''
     l_module_name: str = _python_module_to_str(arg_module)
-    log_print(f"Reloading '{l_module_name}' ( {getattr(sys.modules.get(l_module_name, ''), '__file__', '<<< no file found >>>')} ) using ida_idaapi.require('{l_module_name}')", arg_type="INFO")
+    if l_module_name == __name__:
+        _ida_kernwin.unregister_timer(_g_class_check_if_long_running_script_should_abort.m_timer)
+    _g_logger.info(f"Reloading '{l_module_name}' ( {getattr(sys.modules.get(l_module_name, ''), '__file__', '<<< no file found >>>')} ) using ida_idaapi.require('{l_module_name}')")
     try:
         _ida_idaapi.require(l_module_name)
         res = True
     except ModuleNotFoundError as exc:
-        log_print(f"Could NOT reload {l_module_name}, exception: {exc}", arg_type="ERROR")
+        _g_logger.error(f"Could NOT reload {l_module_name}, exception: {exc}")
         res = False
     return res
 
@@ -684,7 +698,7 @@ def _python_load_module(arg_filepath: str) -> bool:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_is_64bit() -> bool:
-    ''' Is the IDA process you are running in a 64 bit process? '''
+    ''' Is the IDA process you are running in a 64 bit process? TODO: Deprecate this? '''
     return _ida_idaapi.__EA64__
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -989,12 +1003,12 @@ _ida_idaapi.notify_when(_ida_idaapi.NW_OPENIDB, _new_file_opened_notification_ca
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _add_link_to_docstring(arg_function: Callable, arg_link: str = "") -> None:
     ''' If there is no link the official documentation for the given function, add a link to to the official documentation '''
-    
+
     l_docstring: Optional[str] = getattr(arg_function, "__doc__")
     if l_docstring is None:
         l_docstring = ""
 
-    if "hex-rays.com" in l_docstring:
+    if "python.docs.hex-rays.com" in l_docstring:
         # log_print(f"Function already has a link, ignoring", arg_type="WARNING")
         return
 
@@ -1003,65 +1017,43 @@ def _add_link_to_docstring(arg_function: Callable, arg_link: str = "") -> None:
     setattr(arg_function, "__doc__", l_docstring + "\nRead more: " + l_link)
     return
 
-# TODO: Add more links
-# Add links to the official documentation for some functions, more will be added
-_add_link_to_docstring(_ida_bytes.bin_search)
-_add_link_to_docstring(_ida_bytes.get_bytes)
-_add_link_to_docstring(_ida_bytes.get_strlit_contents)
-_add_link_to_docstring(_ida_bytes.get_strlit_contents)
-_add_link_to_docstring(_ida_bytes.parse_binpat_str)
-_add_link_to_docstring(_ida_bytes.patch_bytes)
-_add_link_to_docstring(_ida_dbg.get_process_options)
-_add_link_to_docstring(_ida_dbg.get_processes)
-_add_link_to_docstring(_ida_dbg.get_reg_val)
-_add_link_to_docstring(_ida_dbg.refresh_debugger_memory)
-_add_link_to_docstring(_ida_dbg.start_process)
-_add_link_to_docstring(_ida_dbg.update_bpt)
-_add_link_to_docstring(_ida_dbg.wait_for_next_event)
-_add_link_to_docstring(_ida_diskio.get_ida_subdirs)
-_add_link_to_docstring(_ida_funcs.get_func)
-_add_link_to_docstring(_ida_funcs.get_func_name)
-_add_link_to_docstring(_ida_hexrays.decompile)
-_add_link_to_docstring(_ida_hexrays.get_widget_vdui)
-_add_link_to_docstring(_ida_idaapi.notify_when)
-_add_link_to_docstring(_ida_idp.get_reg_name)
-_add_link_to_docstring(_ida_idp.process_config_directive)
-_add_link_to_docstring(_ida_kernwin.activate_widget)
-_add_link_to_docstring(_ida_kernwin.display_widget)
-_add_link_to_docstring(_ida_kernwin.execute_ui_requests)
-_add_link_to_docstring(_ida_kernwin.get_screen_ea)
-_add_link_to_docstring(_ida_kernwin.get_widget_title)
-_add_link_to_docstring(_ida_kernwin.get_widget_type)
-_add_link_to_docstring(_ida_kernwin.msg)
-_add_link_to_docstring(_ida_kernwin.process_ui_action)
-_add_link_to_docstring(_ida_kernwin.read_range_selection)
-_add_link_to_docstring(_ida_kernwin.str2ea)
-_add_link_to_docstring(_ida_loader.get_plugin_options)
-_add_link_to_docstring(_ida_loader.load_and_run_plugin)
-_add_link_to_docstring(_ida_loader.save_database)
-_add_link_to_docstring(_ida_nalt.get_ida_notepad_text)
-_add_link_to_docstring(_ida_name.get_name)
-_add_link_to_docstring(_ida_name.set_name)
-_add_link_to_docstring(_ida_netnode.netnode)
-_add_link_to_docstring(_ida_pro.qexit)
-_add_link_to_docstring(_ida_registry.reg_data_type)
-_add_link_to_docstring(_ida_registry.reg_read_binary)
-_add_link_to_docstring(_ida_registry.reg_read_int)
-_add_link_to_docstring(_ida_registry.reg_read_string)
-_add_link_to_docstring(_ida_segment.get_segm_by_name)
-_add_link_to_docstring(_ida_typeinf.get_idati)
-_add_link_to_docstring(_ida_typeinf.parse_decl)
-_add_link_to_docstring(_ida_ua.create_insn)
-_add_link_to_docstring(_ida_ua.decode_insn)
-_add_link_to_docstring(_ida_ua.print_insn_mnem)
-_add_link_to_docstring(_ida_loader.get_fileregion_ea) # TODO: Implement wrapper
-_add_link_to_docstring(_ida_loader.get_fileregion_offset) # TODO: Implement wrapper
-_add_link_to_docstring(_ida_loader.gen_file) # TODO: Implement wrapper
-_add_link_to_docstring(_ida_loader.base2file) # TODO: Implement wrapper
-_add_link_to_docstring(_ida_kernwin.get_viewer_user_data) # TODO: Implement wrapper
-_add_link_to_docstring(_ida_kernwin.twinpos_t) # TODO: Implement wrapper
-_add_link_to_docstring(_ida_kernwin.read_selection) # TODO: Implement wrapper
-# _add_link_to_docstring() # TODO: Implement wrapper
+for l_name, l_function in _inspect.getmembers(_ida_bytes, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_dbg, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_diskio, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_funcs, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_hexrays, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_idaapi, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_idd, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_idp, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_kernwin, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_loader, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_nalt, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_name, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_netnode, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_pro, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_registry, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_segment, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_typeinf, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_ua, _inspect.isfunction):
+    _add_link_to_docstring(l_function)
+
 
 
 # API extension ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- API extension
@@ -1231,7 +1223,7 @@ def pdb_load(arg_local_pdb_file: str = "",
     l_create_if_not_exists: bool = True # Not interesting, can be ignored
     l_pdb_node = _ida_netnode.netnode("$ pdb", l_size, l_create_if_not_exists)
     if arg_force_reload:
-        log_print(f"arg_force_reload set so I will delete the PDB node", arg_debug)
+        log_print("arg_force_reload set so I will delete the PDB node", arg_debug)
         l_pdb_node.altdel(PDB_DLLBASE_NODE_IDX)
         l_pdb_node.supdel(PDB_DLLNAME_NODE_IDX)
 
@@ -1361,7 +1353,7 @@ def current_address() -> int:
     ''' Returns the address where cursor is. (OBS! Cursor in IDA is NOT the mouse cursor but where the blinking line is)
     Replacement for ida_kernwin.get_screen_ea()
     '''
-    
+
     # TODO: check for ida_domain?
     return _ida_kernwin.get_screen_ea()
 
@@ -1532,7 +1524,7 @@ def relative_virtual_address(arg_ea: EvaluateType, arg_from_DLL_base: bool = Fal
     if l_addr == _ida_idaapi.BADADDR:
         log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
         return None
-    
+
     if arg_from_DLL_base:
         l_module = module(l_addr, arg_debug=arg_debug)
         if l_module is None:
@@ -1736,7 +1728,7 @@ def decompiler_comments(arg_functions: Optional[Union[List[EvaluateType], Evalua
         arg_functions = [arg_functions]
 
     l_functions = [address(l_func, arg_debug=arg_debug) for l_func in arg_functions] if arg_functions else functions(arg_allow_library_functions=arg_allow_library_functions, arg_debug=arg_debug)
-       
+
     res: Dict[int, str] = {}
     for l_function in l_functions:
         l_comments = _ida_hexrays.restore_user_cmts(l_function)
@@ -1965,7 +1957,7 @@ def bookmarks(arg_debug: bool = False) -> Optional[List[Tuple[int, str]]]:
 def _struct_comments(arg_debug: bool = False) -> str:
     ''' When setting a comment on a struct member, you can use the ///< instead of the normal // in the c-style edit window '''
     return "When setting a comment on a struct member, you can use the ///< instead of the normal // in the c-style edit window"
-    
+
 
 # ---- Hotkey: w --> Dump selected bytes to a file on disk ----------------------------------------------------------------------------------------
 if ida_is_in_gui_mode():
@@ -2085,7 +2077,7 @@ if ida_is_in_gui_mode():
         @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
         def update(self, ctx: _ida_kernwin.action_ctx_base_t):
             ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
-            
+
             if ctx.widget_type in (_ida_kernwin.BWN_PSEUDOCODE, _ida_kernwin.BWN_DISASM):
                 return _ida_kernwin.AST_ENABLE_FOR_WIDGET
             return _ida_kernwin.AST_DISABLE_FOR_WIDGET
@@ -2850,7 +2842,7 @@ def bytes_smart_delete(arg_ea: EvaluateType, arg_len: EvaluateType, arg_debug: b
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def write_string(arg_ea: EvaluateType, arg_string: str, arg_append_NULL_byte: bool = True, arg_debug: bool = False) -> bool:
-    ''' Write a null-terminated C string (UTF-8) to IDB 
+    ''' Write a null-terminated C string (UTF-8) to IDB
     @param arg_ea The address to write the string to
     @param arg_string The string to write
     @param arg_append_NULL_byte If True, then append a NULL byte to the end of the string
@@ -3158,14 +3150,14 @@ def string(arg_ea: EvaluateType,
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def c_string(arg_ea: EvaluateType, arg_len: int = 0, arg_flags: int = _ida_bytes.ALOPT_IGNHEADS | _ida_bytes.ALOPT_IGNPRINT | _ida_bytes.ALOPT_IGNCLT, arg_debug: bool = False) -> Optional[str]:
-    ''' Forcefully read the data as a NULL terminated C string (in UTF-8) For more info about the flags, see the docstring for string() 
+    ''' Forcefully read the data as a NULL terminated C string (in UTF-8) For more info about the flags, see the docstring for string()
     @param arg_ea The address to read the string from
     @param arg_len The length of the string to read, set to 0 to use the length of the string at the given address
     @param arg_flags The flags to pass to string()
     @return The string read from the IDB
 
     Replacement for idc.get_cstr() and ida_bytes.get_cstr()
-    
+
     '''
     return string(arg_ea=arg_ea, arg_encoding=_ida_nalt.STRTYPE_C, arg_len=arg_len, arg_flags=arg_flags, arg_debug=arg_debug)
 
@@ -3173,7 +3165,7 @@ utf8_string = string_utf8 = c_string
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def wide_string(arg_ea: EvaluateType, arg_len: int = 0, arg_flags: int = _ida_bytes.ALOPT_IGNHEADS | _ida_bytes.ALOPT_IGNPRINT | _ida_bytes.ALOPT_IGNCLT, arg_debug: bool = False) -> Optional[str]:
-    ''' Forcefully read the data as a NULL terminated wide/unicode/UTF-16/UCS-2 string. For more info about the flags, see the docstring for string() 
+    ''' Forcefully read the data as a NULL terminated wide/unicode/UTF-16/UCS-2 string. For more info about the flags, see the docstring for string()
     @param arg_ea The address to read the string from
     @param arg_len The length of the string to read, set to 0 to use the length of the string at the given address
     @param arg_flags The flags to pass to string()
@@ -3218,7 +3210,7 @@ def _strings_profiled():
     profiler.enable()
 
     # Start of code to profile
-    a = strings()
+    a = strings(arg_debug=True)
     log_print(str(a))
     # End of code to profile
 
@@ -3352,7 +3344,7 @@ def disassemble(arg_ea: EvaluateType,
                 arg_debug: bool = False) -> Optional[str]:
     ''' Disassemble bytes at the given address into assembly string. If you want an object, use ```instruction()``` instead
         Replacement for idc.generate_disasm_line() and ida_lines.generate_disasm_line() <https://python.docs.hex-rays.com/namespaceida__lines.html#:~:text=generate_disasm_line()>
-        
+
         @param arg_ea The address to disassemble
         @param arg_flags Default to ida_lines.GENDSM_FORCE_CODE. Read more: <https://python.docs.hex-rays.com/namespaceida__lines.html#:~:text=GENDSM_FORCE_CODE>
         @param arg_show_size If True, then show the size of the instruction
@@ -3401,7 +3393,7 @@ def instruction(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[_ida_
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def instruction_before(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[_ida_ua.insn_t]:
-    ''' Returns the instruction before the given instruction 
+    ''' Returns the instruction before the given instruction
     @param arg_ea The address to get the instruction before
     @return The instruction object or None if it failed
     '''
@@ -3409,7 +3401,7 @@ def instruction_before(arg_ea: EvaluateType, arg_debug: bool = False) -> Optiona
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def instruction_after(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional[_ida_ua.insn_t]:
-    ''' Returns the instruction after the given instruction 
+    ''' Returns the instruction after the given instruction
     @param arg_ea The address to get the instruction after
     @return The instruction object or None if it failed
     '''
@@ -3477,7 +3469,7 @@ def clipboard_copy(arg_text: EvaluateType, arg_debug: bool = False) -> bool:
     else:
         l_text = arg_text
     log_print(f"We got length 0x{len(l_text):x} --> l_text: '{l_text}'", arg_debug)
-    
+
     _pyperclip.copy(l_text)
     return True
 
@@ -3493,7 +3485,7 @@ def _idaapi_get_flags(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _idaapi_generate_disassembly(arg_ea: int, arg_max_lines: int, arg_as_stack: bool, arg_notag: bool) -> tuple[int, List[str]]:
-    ''' Wrapper around ida_lines.generate_disassembly() 
+    ''' Wrapper around ida_lines.generate_disassembly()
     IDA < 9.2 uses notags, IDA >= 9.2 uses notag as argument name
     '''
     return _ida_lines.generate_disassembly(ea=arg_ea, max_lines=arg_max_lines, as_stack=arg_as_stack, notag=arg_notag) if ida_version() >= 920 else _ida_lines.generate_disassembly(ea=arg_ea, max_lines=arg_max_lines, as_stack=arg_as_stack, notags=arg_notag)
@@ -3954,10 +3946,10 @@ def file_write_patches_to_file(arg_validate_input_file: bool = True, arg_make_ba
         log_print(f"Backing up to: {l_backup_file_path}", arg_type="INFO")
         import shutil
         shutil.copyfile(input_file.filename, l_backup_file_path, follow_symlinks=True)
-        
+
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def _visit_patched_bytes_callback(arg_ea: int, arg_file_pos: int, arg_org_val: int, arg_patch_val: int) -> int:
-        ''' Internal function. Please use input_file_write_patches_to_file() instead. 
+        ''' Internal function. Please use input_file_write_patches_to_file() instead.
         @param arg_ea The address of the byte
         @param arg_fpos The position of the byte in the file
         @param arg_org_val The original value of the byte
@@ -3969,22 +3961,22 @@ def file_write_patches_to_file(arg_validate_input_file: bool = True, arg_make_ba
         if arg_file_pos == -1:
             log_print("Invalid arg_file_pos, stopping the enumeration", arg_type="ERROR")
             return 1 # Return 1 to stop the enumeration
-        
+
         l_file_patcher.seek(arg_file_pos)
         # OBS! I do NOT need to verify the original value, because the SHA-256 is either correct or the user passed arg_validate_input_file == False and then I don't care about the original value
         l_file_patcher.write(arg_patch_val.to_bytes(1, 'little'))
         return 0 # Return 0 to continue the enumeration
-    
+
     with open(input_file.filename, 'rb+') as l_file_patcher:
         l_visitor_res = _ida_bytes.visit_patched_bytes(input_file.min_ea, input_file.max_ea, _visit_patched_bytes_callback)
-    
+
     if l_visitor_res != 0:
         log_print(f"Patching failed, visitor returned: {l_visitor_res}", arg_type="ERROR")
         return False
-    
+
     log_print(f"Patching done, wrote to file: {input_file.filename}", arg_type="INFO")
     return True
-        
+
 
 
 # DATA TYPES ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- DATA TYPES
@@ -4064,8 +4056,11 @@ def _parse_decl(arg_c_type: str, arg_debug: bool = False) -> Optional[_ida_typei
     Can convert a C string such as "int* a" to a ida_typeinf.tinfo_t (type information).
     To convert from tinfo_t --> str, use str(my_type).
 
+    OBS! There is a ida_srclang that can handle more advanced C types
+
     Replacement for ida_typeinf.parse_decl()
     '''
+
     # TODO: in linux the word 'dword' works but returns wrong type (size 0)
     log_print(f"arg_c_type before _fix_c_type(): '{arg_c_type}'", arg_debug)
     l_c_type: Optional[str] = _fix_c_type(arg_c_type, arg_debug=arg_debug)
@@ -5386,13 +5381,13 @@ if __QT_IS_AVAILABLE:
         log_print(f"res after loop but before any mods: {res}", arg_debug)
 
         if len(res) == 1:
-            log_print(f"sometimes we get the loop even if we only have selected part of 1 line, this hack fix that special case. Changing to get_custom_viewer_curline()", arg_debug)
+            log_print("sometimes we get the loop even if we only have selected part of 1 line, this hack fix that special case. Changing to get_custom_viewer_curline()", arg_debug)
             res = []
             l_t_line =_ida_lines.tag_remove(_ida_kernwin.get_custom_viewer_curline(arg_TWidget.as_TWidget_ptr(), mouse=False))
             res.append(l_t_line[arg_from.x : arg_to.x])
             return res
 
-        log_print(f"Since we cannot get any signal that we are at the last line in the loop, we have to adjust the last line afterwards", arg_debug)
+        log_print("Since we cannot get any signal that we are at the last line in the loop, we have to adjust the last line afterwards", arg_debug)
 
 
         l_last_line = res[-1]
@@ -5447,11 +5442,14 @@ if __QT_IS_AVAILABLE:
         return ""
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def ida_main_window() -> TWidget:
+    def ida_main_window() -> Optional[TWidget]:
         ''' Get the top window. If you set the window title on this, then the IDA Process window title will be set
         The idea is that you can set the window title to give some info to the user
         '''
-        return TWidget(QApplication.activeWindow())
+        for l_widget in QApplication.topLevelWidgets():
+            if isinstance(l_widget, QMainWindow):
+                return TWidget(l_widget)
+        return None
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def jumpto(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
@@ -5495,7 +5493,7 @@ def ida_output_text(arg_last_num_lines: int = -1, arg_clear_it_after: bool = Fal
     if arg_clear_it_after:
         l_output_TWidget = TWidget("Output")
         l_output_TWidget.focus()
-        _ida_kernwin.process_ui_action("OutputClearContents")
+        _ida_kernwin.process_ui_action("OutputClearContents") # TODO: Does not work when working from a external Jupyter console
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -6153,7 +6151,7 @@ def _test_TWidget(arg_debug: bool = False) -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_Qt_stuff(arg_debug: bool = False) -> bool:
     ''' Tests: Qt stuff. This will make sure that PySide6 and PyQt5 works as expected '''
-    
+
     l_ida_started_with = ida_arguments()
     log_print(f"ida_started_with: {l_ida_started_with}", arg_debug)
 
@@ -6188,7 +6186,7 @@ def _test_relative_virtual_address(arg_debug: bool = False) -> bool:
     ''' Tests: relative_virtual_address. Requires a running process. '''
     l_rva_of_ep = relative_virtual_address(input_file.entry_point, arg_from_DLL_base=False, arg_debug=arg_debug)
     log_print(f"relative_virtual_address of entry point: {l_rva_of_ep}", arg_debug)
-    
+
     l_API_to_test = "kernel32_GetProcAddress"
     l_rva_of_GetProcAddress = relative_virtual_address(l_API_to_test, arg_from_DLL_base=True, arg_debug=arg_debug)
     if l_rva_of_GetProcAddress is None:
@@ -6199,7 +6197,7 @@ def _test_relative_virtual_address(arg_debug: bool = False) -> bool:
     if l_module is None:
         log_print(f"Could not find any module at {_hex_str_if_int(l_API_to_test)}", arg_type="ERROR")
         return False
-    
+
     return name(l_module.base + l_rva_of_GetProcAddress, arg_debug=arg_debug) == l_API_to_test
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -6218,7 +6216,7 @@ def _test_all(arg_debug: bool = False) -> bool:
                         }
     for l_test_in_key, l_test_in_value in l_test_functions.items():
         log_print(f"{l_test_in_key}: {l_test_in_value}", arg_type="INFO")
-    
+
     res = all(l_test_functions.values())
     log_print(f"All tests passed OK: {res}", arg_type="INFO")
     return res
