@@ -28,7 +28,7 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 ```python
 [wrapper for wrapper in dir(community_base) if wrapper.startswith("_idaapi_")]
 ```
-- Cancel scripts that take too long. You can copy the the string "abort.ida" into the clipboard and within 30 seconds, the script will stop. Check out ```_check_if_long_running_script_should_abort()``` for implementation
+- Cancel scripts that take too long. You can copy the the string "abort.ida" into the clipboard and within 10 seconds, the script will stop. Check out ```_check_if_long_running_script_should_abort()``` for implementation
 - Easy bug reporting. See the function ```bug_report()```
 - Get some good links to helpful resources. See the function ```links()```
 - when developing, it's nice to have a fast and easy way to reload the script and all it's dependencies, see the function ```reload_module()```
@@ -75,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-10-06 23:20:01"
+__version__ = "2025-10-07 23:06:45"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -164,25 +164,27 @@ BoolishType = Union[bool, int, str] # Can be evaluted by my function named _bool
 EvaluateType = Union[str, int, _ida_idp.reg_info_t, _ida_ua.insn_t, _ida_hexrays.cinsn_t, _ida_hexrays.cfuncptr_t, _ida_funcs.func_t, _ida_idaapi.PyIdc_cvt_int64__, _ida_segment.segment_t, _ida_ua.op_t, _ida_typeinf.funcarg_t, _idautils.Strings.StringItem, _ida_dbg.bpt_t, _ida_idd.modinfo_t, _ida_hexrays.carg_t, _ida_hexrays.cexpr_t, _ida_range.range_t]
 __GLOBAL_LOG_EVERYTHING = False # If this is set to True, then all calls to log_print() will be printed, this can cause massive logs but good for hard to find bugs
 
+# These custom logging handlers are needed to not conflict with IpyIDA
+class _IDAOutputHandler(_logging.Handler):
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def __init__(self, level: int = _logging.NOTSET):
+        super().__init__(level)
+    
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def emit(self, record: _logging.LogRecord):
+        try:
+            print(self.format(record))
+        except Exception:
+            self.handleError(record)
+
 _g_logger = _logging.getLogger(__name__)
 _g_logger.setLevel(_logging.DEBUG)
-
-def __delayed_creation_of_logger_object():
-    ''' There seems to be a problem that I create the logging before IpyIDA has hooked
-    the output so I have to wait some time before I create the logging '''
-    global _g_logger
-    if _g_logger.handlers:
-        _g_logger.removeHandler(_g_logger.handlers[0]) # When you importlib.reload() a module, we need to clear out the old logger
-    _g_console_handler = _logging.StreamHandler()
-    _g_console_handler.setLevel(_logging.DEBUG)
-    _g_console_handler.setFormatter(_logging.Formatter('%(asctime)s [%(levelname)s] %(module)s.%(funcName)s:%(lineno)d - %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
-    _g_logger.addHandler(_g_console_handler)
-    return -1 # Don't run again
-
-if __QT_IS_AVAILABLE:
-    _ida_kernwin.register_timer(2_000, __delayed_creation_of_logger_object)
-else:
-    __delayed_creation_of_logger_object()
+while _g_logger.handlers:
+    _g_logger.removeHandler(_g_logger.handlers[0]) # When you importlib.reload() a module, we need to clear out the old loggers
+_g_custom_IDA_handler = _IDAOutputHandler()
+_g_custom_IDA_handler.setFormatter(_logging.Formatter('%(asctime)s [%(levelname)s] %(module)s.%(funcName)s:%(lineno)d - %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+_g_logger.addHandler(_g_custom_IDA_handler)
+_g_logger.propagate = False
 
 # HELPERS ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -485,6 +487,7 @@ def ida_is_in_gui_mode() -> bool:
     ida.exe -A -Smy_script.py (before the GUI is painted) --> True
     ida_domain (lib-mode) --> False
     '''
+    # TODO: Hex-Rays tell us to use os.environ.get("IDA_IS_INTERACTIVE")=="1"? see https://community.hex-rays.com/t/how-to-check-if-idapythonrc-py-is-running-in-ida-pro-or-idalib/297
     return _ida_kernwin.is_idaq()
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -550,7 +553,7 @@ def ida_save_database(arg_new_filename: str = "",
     @returns success
     '''
     # TODO: Check how this plays with ida_domain
-    l_new_filename = arg_new_filename if arg_new_filename else None
+    l_new_filename = arg_new_filename or None
     l_my_extension = _os.path.splitext(input_file.idb_path)[1]
     if l_new_filename and not l_new_filename.endswith(l_my_extension):
         l_new_filename += l_my_extension

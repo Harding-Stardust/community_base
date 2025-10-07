@@ -23,7 +23,7 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 ```python
 [wrapper for wrapper in dir(community_base) if wrapper.startswith("_idaapi_")]
 ```
-- Cancel scripts that take too long. You can copy the the string "abort.ida" into the clipboard and within 30 seconds, the script will stop. Check out ```_check_if_long_running_script_should_abort()``` for implementation
+- Cancel scripts that take too long. You can copy the the string "abort.ida" into the clipboard and within 10 seconds, the script will stop. Check out ```_check_if_long_running_script_should_abort()``` for implementation
 - Easy bug reporting. See the function ```bug_report()```
 - Get some good links to helpful resources. See the function ```links()```
 - when developing, it's nice to have a fast and easy way to reload the script and all it's dependencies, see the function ```reload_module()```
@@ -32,7 +32,7 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 - Simple and fast way to get info about APIs, see ```google()```
 - 4 new hotkeys:
 - - w --> Selected bytes will be dumped to disk
-- - alt + Ins --> Copy current address into clipboard (same as [x64dbg](https://x64dbg.com/))
+- - alt + ins --> Copy current address into clipboard (same as [x64dbg](https://x64dbg.com/))
 - - shift + c --> Copy selected bytes into clipboard as hex text (same as [x64dbg](https://x64dbg.com/))
 - - delete --> smart delete. If the selected bytes are in code then make then NOPS (Intel only!) and if you press delete again (or if you are in data) then write 0x00
 - Much more that I can't think of right now as I need to publish this script before new years eve!
@@ -58,7 +58,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 
 # it _should_ work on all OSes but I have only tested on:
 
-| OS | IDA | Python | 
+| OS | IDA | Python |
 |--|--|--|
 | Windows 10 | 8.4 | 3.8  |
 | Windows 10 | 9.1 | 3.12 |
