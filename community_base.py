@@ -75,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-10-07 23:06:45"
+__version__ = "2025-10-09 18:15:45"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -332,6 +332,7 @@ def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, D
     l_links["community_forums"] =                   "https://community.hex-rays.com/"
     l_links["HexRays_github_examples"] =            "https://github.com/HexRaysSA/IDAPython/tree/9.0sp1/examples"
     l_links["ida_domain"] =                         "https://ida-domain.docs.hex-rays.com/"
+    l_links["plugins"] =                            "https://plugins.hex-rays.com/"
 
     l_batch_mode = {}
     l_batch_mode["command_line"] = "<full_path_to>ida.exe -A -S<script_I_want_to_run.py> -L<full_path_to>ida.log <full_path_to_input_file>"
@@ -2961,12 +2962,13 @@ def _is_invalid_strtype(arg_strtype: int) -> bool:
     @param arg_strtype The strtype to check
     @return True if the strtype is invalid, False otherwise
     '''
+    arg_strtype = arg_strtype & 0xFFFFFFFF
     return (arg_strtype >> 8) == 0xFFFFFF
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _validate_encoding_name(arg_encoding: str) -> str:
     ''' Try to normalize some encoding names.
-     Maybe check against <https://docs.python.org/3.12/library/codecs.html#standard-encodings> ?
+    Maybe check against <https://docs.python.org/3.12/library/codecs.html#standard-encodings> ?
     @param arg_encoding The encoding name to validate
     @return The normalized encoding name
     '''
@@ -3011,8 +3013,16 @@ def _idaapi_encoding_from_strtype(arg_strtype: int) -> str:
     @param arg_strtype The strtype to convert to an encoding name
     @return The encoding name
     '''
-    # TODO: Check the arg_strtype for weird input
-    return _ida_nalt.encoding_from_strtype(arg_strtype)
+    l_default_encoding = "UTF-8"
+    if _is_invalid_strtype(arg_strtype):
+        log_print(f"Check 1: Invalid encoding. Got 0x{arg_strtype:x}. Returning the default encoding: {l_default_encoding}")
+        return l_default_encoding
+    
+    res = _ida_nalt.encoding_from_strtype(arg_strtype)
+    if res is None:
+        log_print(f"Check 2: Invalid encoding. Got 0x{arg_strtype:x} which ida_nalt.encoding_from_strtype() returned None for. Returning the default encoding: {l_default_encoding} ")
+        return l_default_encoding
+    return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def string(arg_ea: EvaluateType,
@@ -3163,7 +3173,7 @@ def strings(arg_only_first: int = 100000, arg_debug: bool = False) -> List[Tuple
 
     res = []
     for string_item in _idautils.Strings():
-        l_string_content: Optional[str] = string(string_item, arg_encoding=string_item.strtype, arg_debug=arg_debug)
+        l_string_content: Optional[str] = string(string_item, arg_encoding=_idaapi_encoding_from_strtype(string_item.strtype), arg_debug=arg_debug)
         if l_string_content is None:
             l_string_content = f"<<< Could not read string at 0x{string_item.ea:x} >>>"
         res.append((string_item.ea, string_item.length, _idaapi_encoding_from_strtype(string_item.strtype), l_string_content, string_item.strtype))
@@ -6206,7 +6216,6 @@ def _test_all(arg_debug: bool = False) -> bool:
 
 # EXPERIMENTAL --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- EXPERIMENTAL
 
-
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _export_names_and_types(arg_save_to_file: str = "",
                             arg_allow_library_functions: bool = True,
@@ -6322,4 +6331,11 @@ def _comment_copy_from_disassembly_to_decompiler(arg_function: EvaluateType,  ar
 
     return True
 
+
+
+# Plugin mode  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- Plugin mode
+
+# TODO: Here will soon be the plugin code for the added hotkeys.
+# This way you can put community_base.py in the plugin directory if you want the added shortcuts
+# and if you just want to use it to write other plugins, you can put it in %PYTHONPATH%
 

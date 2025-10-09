@@ -13,6 +13,6 @@
 		"logoPath": "community_base_logo.png",
 		"idaVersions": ">=9.0",
 		"description": "Community_base turns IDA Python into a DWIM (Do What I Mean) style and I try to follow \"Principle of least astonishment\" You can think of this script as padding between the user created scripts and the IDA Python API. If you develop scripts with this script as base, then if (when) Hexrays change something in their API, instead of fixing EVERY script out there the community can fix this script and all the user created scripts (that depends on this script) will work again. I try to have a low cognitive load. \"What matters is the amount of confusion developers feel when going through the code.\" Quote from https://minds.md/zakirullin/cognitive",
-		"version": "1.0.5"
+		"version": "1.0.6"
 	}
 }
