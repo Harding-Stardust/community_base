@@ -58,11 +58,11 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 
 # it _should_ work on all OSes but I have only tested on:
 
-| OS | IDA | Python |
-|--|--|--|
-| Windows 10 | 8.4 | 3.8  |
-| Windows 10 | 9.1 | 3.12 |
-| Windows 10 | 9.2 | 3.12 |
+| OS | IDA | Python | Comment
+|--|--|--|--|
+| ~~Windows 10~~ | ~~8.4~~ | ~~3.8~~  | ~~Long time since I tested this...~~
+| ~~Windows 10~~ | ~~9.1~~ | ~~3.12~~ | ~~OK~~
+| Windows 10 | 9.2 | 3.12 | OK
 
 # Future
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!

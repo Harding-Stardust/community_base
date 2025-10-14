@@ -63,11 +63,11 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 
 # it _should_ work on all OSes but I have only tested on:
 
-| OS | IDA | Python |
-|--|--|--|
-| Windows 10 | 8.4 | 3.8  |
-| Windows 10 | 9.1 | 3.12 |
-| Windows 10 | 9.2 | 3.12 |
+| OS | IDA | Python | Comment
+|--|--|--|--|
+| ~~Windows 10~~ | ~~8.4~~ | ~~3.8~~  | ~~Long time since I tested this...~~
+| ~~Windows 10~~ | ~~9.1~~ | ~~3.12~~ | ~~OK~~
+| Windows 10 | 9.2 | 3.12 | OK
 
 # Future
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!
@@ -75,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-10-09 18:15:45"
+__version__ = "2025-10-14 23:45:09"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -212,7 +212,7 @@ def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
     ''' Scripts that take long time to run can be aborted by copying any of the following strings into the clipboard: "abort.ida", "ida.abort", "ida.stop", "stop.ida"
         This is checked every 10 seconds and raises a TimeoutError() exception
 
-        WARNING! If you have multiple instances of IDA running with this script then the string check will be done in all instances and abort all long running scripts!
+        WARNING! If you have multiple instances of IDA running with this script then the string check will be done in all instances and abort the first script to check the clipboard!
     '''
     global _g_timestamp_of_last_checked
     l_now = _time.time()
@@ -225,8 +225,10 @@ def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
 
         l_clipboard_content = _pyperclip.paste().strip()
         if l_clipboard_content in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]:
-            _pyperclip.copy("")
-            raise TimeoutError(f"Abort string found in clipboard")
+            _pyperclip.copy("") # Clear the clipboard
+            l_log_message = f"Found the string '{l_clipboard_content}' in the clipboard that will abort the script"
+            log_print(l_log_message, arg_type="INFO")
+            raise TimeoutError(l_log_message)
 
     return
 
@@ -236,17 +238,17 @@ def log_print(arg_string: str, arg_actually_print: bool = True, arg_type: str = 
     _check_if_long_running_script_should_abort(arg_actually_print)
     if arg_actually_print or __GLOBAL_LOG_EVERYTHING:
         if arg_type == "DEBUG":
-            _g_logger.debug(f"{arg_string}", stacklevel=4)
+            _g_logger.debug(arg_string, stacklevel=4)
         elif arg_type == "INFO":
-            _g_logger.info(f"{arg_string}", stacklevel=4)
+            _g_logger.info(arg_string, stacklevel=4)
         elif arg_type == "WARNING":
-            _g_logger.warning(f"{arg_string}", stacklevel=4)
+            _g_logger.warning(arg_string, stacklevel=4)
         elif arg_type == "ERROR":
-            _g_logger.error(f"{arg_string}", stacklevel=4)
+            _g_logger.error(arg_string, stacklevel=4)
         elif arg_type == "CRITICAL":
-            _g_logger.critical(f"{arg_string}", stacklevel=4)
+            _g_logger.critical(arg_string, stacklevel=4)
         else:
-            _g_logger.debug(f"{arg_string}", stacklevel=4)
+            _g_logger.debug(arg_string, stacklevel=4)
     return
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -350,7 +352,7 @@ def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, D
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _official_python_doc_url(arg_function: Callable) -> str:
-    ''' Creates an URL to the Python docs '''
+    ''' Create an URL to the IDA Python docs '''
     l_module: str = arg_function.__module__
     l_function: str =  arg_function.__name__
     return f"https://python.docs.hex-rays.com/{l_module}/index.html#{l_module}.{l_function}"
@@ -463,7 +465,7 @@ def _dict_sort(arg_dict: dict, arg_sort_by_value: bool = False, arg_descending: 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_version() -> int:
-    ''' Returns the version of IDA currently running. 7.7 --> 770, 8.4 --> 840, 9.0 --> 900 '''
+    ''' Returns the version of IDA currently running. 7.7 --> 770, 8.4 --> 840, 9.0 --> 900, 9.2 --> 920 '''
     return _ida_pro.IDA_SDK_VERSION
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -502,17 +504,20 @@ def ida_is_running_in_batch_mode() -> bool:
     '''
     return _ida_kernwin.cvar.batch
 
-if __QT_IS_AVAILABLE:
-    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def ida_arguments() -> List[str]:
-        ''' The arguments to the IDA Process when it was launched. Can be used to start ida with custom arguments.
-        E.g. ida.exe C:\\temp\\example.exe --extra_option_that_ida_dont_understand=3
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def ida_arguments() -> List[str]:
+    ''' The arguments to the IDA Process when it was launched. Can be used to start ida with custom arguments.
+    E.g. ida.exe C:\\temp\\example.exe --extra_option_that_ida_dont_understand=3
 
-        You can then use this function to parse your own arguments. Useful in batch mode
-        OBS! Cannot be used in ida_domain mode
-        '''
-        # TODO: Delete this function?
+    You can then use this function to parse your own arguments. Useful in batch mode
+    OBS! Cannot be used in ida_domain mode
+    '''
+    # TODO: Delete this function?
+    # TODO: check idc.ARGV?
+    if __QT_IS_AVAILABLE:
         return QApplication.arguments()
+    log_print("QT is not available, atm we cannot get the program arguments", arg_type="ERROR")
+    return ["<<< invalid arguments >>>"]
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_config(arg_key: str, arg_value: str) -> bool:
@@ -554,6 +559,7 @@ def ida_save_database(arg_new_filename: str = "",
     @returns success
     '''
     # TODO: Check how this plays with ida_domain
+    # TODO: How does this work with the flags? Like compressiong and so on? Should the user be able to set that in this function?
     l_new_filename = arg_new_filename or None
     l_my_extension = _os.path.splitext(input_file.idb_path)[1]
     if l_new_filename and not l_new_filename.endswith(l_my_extension):
@@ -924,8 +930,7 @@ def _idaapi_retrieve_input_file_md5() -> bytes:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _idaapi_retrieve_input_file_sha256() -> bytes:
     ''' Wrapper around ida_nalt.retrieve_input_file_sha256() but we honor the type hints '''
-    l_temp: Optional[bytes] = _ida_nalt.retrieve_input_file_sha256()
-    return l_temp or bytes()
+    return _ida_nalt.retrieve_input_file_sha256() or bytes()
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _pretty_print_size(arg_input_size: int) -> Optional[str]:
@@ -991,46 +996,42 @@ def _add_link_to_docstring(arg_function: Callable, arg_link: str = "") -> None:
 
     l_link = arg_link or _official_python_doc_url(arg_function)
 
-    setattr(arg_function, "__doc__", l_docstring + "\nRead more: " + l_link)
+    l_new_doc_string = l_docstring + "\nRead more: " + l_link
+    l_new_doc_string = l_new_doc_string.strip()
+    setattr(arg_function, "__doc__", l_new_doc_string)
     return
 
-for l_name, l_function in _inspect.getmembers(_ida_bytes, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_dbg, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_diskio, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_funcs, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_hexrays, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_idaapi, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_idd, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_idp, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_kernwin, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_loader, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_nalt, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_name, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_netnode, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_pro, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_registry, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_segment, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_typeinf, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-for l_name, l_function in _inspect.getmembers(_ida_ua, _inspect.isfunction):
-    _add_link_to_docstring(l_function)
-
+for l_name, l_function in _inspect.getmembers(_ida_allins, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_auto, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_bytes, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_dbg, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_expr, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_funcs, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_fpro, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_hexrays, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_idaapi, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_ida, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_idc, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_idd, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_idp, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_kernwin, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_lines, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_loader, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_name, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_nalt, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_netnode, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_pro, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_range, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_registry, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_search, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_segment, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_idc, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_typeinf, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_ua, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_xref, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_idautils, _inspect.isfunction): _add_link_to_docstring(l_function)
+for l_name, l_function in _inspect.getmembers(_ida_diskio, _inspect.isfunction): _add_link_to_docstring(l_function)
+_add_link_to_docstring(_ida_typeinf.func_type_data_t.set_cc, "https://python.docs.hex-rays.com/ida_typeinf/index.html#ida_typeinf.func_type_data_t.set_cc")
 
 
 # API extension ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- API extension
@@ -1187,7 +1188,6 @@ def pdb_load(arg_local_pdb_file: str = "",
     @param arg_image_base If you have a specific image base, then set this. If this is not set then use the image base from the file
     @param arg_force_reload If you already have PDB data, force a new reload and parse
     @param arg_local_symbol_cache Save the PDB here on the disk, it not set, then use the same directory as where the IDB is
-    @param arg_debug Print debug data during the function call
 
     @return True if everything went fine, False otherwise
     '''
@@ -1298,6 +1298,7 @@ class _input_file_object():
     size = property(fget=lambda self: _ida_nalt.retrieve_input_file_size(), doc='The target file size in bytes. _NOT_ the IDB size.')
     sha256 = property(fget=lambda self: ''.join(hex_parse(_idaapi_retrieve_input_file_sha256())), doc='SHA-256 as ascii string')
 
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def _as_dict(self) -> Dict[str, str]:
         ''' Return all info about the file in a dict (JSON) '''
         res = {}
@@ -1313,14 +1314,16 @@ class _input_file_object():
             res[l_property] = l_property_value
         return res
 
-    def __str__(self):
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def __str__(self) -> str:
         ''' Print all the properties as string '''
         res = ""
         for k,v in self._as_dict().items():
             res += f"{k}: {v}\n"
         return res
-
-    def __repr__(self):
+    
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def __repr__(self) -> str:
         return f"{type(self)} which has str(self):\n{str(self)}"
 
 input_file = _input_file_object() # Recreated in the "new_file_opened_notification_callback" function
@@ -1515,7 +1518,10 @@ rva = relative_virtual_address
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def fileoffset_to_virtual_address(arg_file_offset: int) -> int:
-    ''' Take in a file offset and return the Virtual Address that matches to '''
+    ''' Take in a file offset and return the Virtual Address that matches to
+    
+    @return ida_idaapi.BADADDR on fail, otherwise the virtual address
+    '''
     return _ida_loader.get_fileregion_ea(arg_file_offset)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -3015,12 +3021,12 @@ def _idaapi_encoding_from_strtype(arg_strtype: int) -> str:
     '''
     l_default_encoding = "UTF-8"
     if _is_invalid_strtype(arg_strtype):
-        log_print(f"Check 1: Invalid encoding. Got 0x{arg_strtype:x}. Returning the default encoding: {l_default_encoding}")
+        log_print(f"Invalid encoding. Got 0x{arg_strtype:x}. Returning the default encoding: {l_default_encoding}")
         return l_default_encoding
     
     res = _ida_nalt.encoding_from_strtype(arg_strtype)
     if res is None:
-        log_print(f"Check 2: Invalid encoding. Got 0x{arg_strtype:x} which ida_nalt.encoding_from_strtype() returned None for. Returning the default encoding: {l_default_encoding} ")
+        log_print(f"Invalid encoding. Got 0x{arg_strtype:x} which ida_nalt.encoding_from_strtype() returned None for. Returning the default encoding: {l_default_encoding} ")
         return l_default_encoding
     return res
 
@@ -3052,7 +3058,6 @@ def string(arg_ea: EvaluateType,
         l_type: int = arg_ea.strtype
         arg_len = arg_ea.length
         arg_ea = arg_ea.ea
-
 
     l_t_len = eval_expression(arg_len, arg_debug=arg_debug)
     if l_t_len is None:
@@ -4205,6 +4210,7 @@ def _display_type_at_as_dict(arg_ea: EvaluateType,
                              arg_max_num_recursive: int = 10,
                              arg_debug: bool = False) -> Optional[Dict[int, Tuple]]:
     ''' Like Windbgs command dt, this can show you an object pasted at a given address '''
+    # TODO: This function is very brittle, test hard and maybe rewrite?
     if arg_max_num_recursive < 1:
         log_print(f"Max recusive depth reached ({arg_max_num_recursive}), not going deeper.", arg_type="WARNING")
         return {}
@@ -5595,7 +5601,8 @@ def ida_registy_write(arg_key: str, arg_subkey: Optional[str] = None) -> Tuple[s
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def function_convert_to_usercall(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
     ''' Convert a function to __usercall (or __userpurge)
-    Code is almost a pure copy from [HexraysPyTools](https://github.com/oopsmishap/HexRaysPyTools/blob/4742ce4ac7db72ad0cfb862d34cb15065b1b136e/HexRaysPyTools/callbacks/function_signature_modifiers.py#L15)
+    Code was almost a pure copy from [HexraysPyTools](https://github.com/oopsmishap/HexRaysPyTools/blob/4742ce4ac7db72ad0cfb862d34cb15065b1b136e/HexRaysPyTools/callbacks/function_signature_modifiers.py#L15)
+    It is now updated with the new code for 9.2 which means that I drop support for 9.1
 
     Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-51-custom-calling-conventions>
 
@@ -5610,15 +5617,20 @@ def function_convert_to_usercall(arg_ea: EvaluateType, arg_debug: bool = False) 
         return False
     l_function_details = _ida_typeinf.func_type_data_t()
     l_function_tinfo.get_func_details(l_function_details)
-    l_calling_convention: int = _ida_typeinf.CM_CC_MASK & l_function_details.cc
+    l_calling_convention: int = _ida_typeinf.CM_CC_MASK & l_function_details.get_explicit_cc() # https://python.docs.hex-rays.com/ida_typeinf/index.html#ida_typeinf.func_type_data_t.get_explicit_cc
     if l_calling_convention == _ida_typeinf.CM_CC_CDECL:
-        l_function_details.cc = _ida_typeinf.CM_CC_SPECIAL
+        l_function_details.set_cc(_ida_typeinf.CM_CC_SPECIAL) # __usercall
     elif l_calling_convention in (_ida_typeinf.CM_CC_STDCALL, _ida_typeinf.CM_CC_FASTCALL, _ida_typeinf.CM_CC_PASCAL, _ida_typeinf.CM_CC_THISCALL):
-        l_function_details.cc = _ida_typeinf.CM_CC_SPECIALP
+        l_function_details.set_cc(_ida_typeinf.CM_CC_SPECIALP) # __userpurge
     elif l_calling_convention == _ida_typeinf.CM_CC_ELLIPSIS:
-        l_function_details.cc = _ida_typeinf.CM_CC_SPECIALE
+        l_function_details.set_cc(_ida_typeinf.CM_CC_SPECIALE)
+    elif l_calling_convention == _ida_typeinf.CM_CC_SPECIALP: # __userpurge
+        log_print(f"Function {_hex_str_if_int(arg_ea)} is already __userpurge", arg_type="WARNING")
+    elif l_calling_convention == _ida_typeinf.CM_CC_SPECIAL: # __usercall
+        log_print(f"Function {_hex_str_if_int(arg_ea)} is already __usercall", arg_type="WARNING")
     else:
-        log_print(f"Unknown calling convention, I don't know what to do with: 0x{l_calling_convention:x}", arg_type="ERROR")
+        l_calling_conventions = _int_to_str_dict_from_module(_ida_typeinf, "CM_CC.*")
+        log_print(f"Unknown calling convention, I don't know what to do with: {l_calling_conventions.get(l_calling_convention, '<<< no such key: ' + hex(l_calling_convention) + ' >>>')} ", arg_type="ERROR")
         return False
     l_function_tinfo.create_func(l_function_details)
     return _bool(_ida_typeinf.apply_tinfo(l_cfunc.entry_ea, l_function_tinfo, _ida_typeinf.TINFO_DEFINITE))
@@ -6175,7 +6187,7 @@ def _test_decompiler_comments(arg_debug: bool = False) -> bool:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_relative_virtual_address(arg_debug: bool = False) -> bool:
-    ''' Tests: relative_virtual_address. Requires a running process. '''
+    ''' Tests: relative_virtual_address. Requires a running process in a Windows system. '''
     l_rva_of_ep = relative_virtual_address(input_file.entry_point, arg_from_DLL_base=False, arg_debug=arg_debug)
     log_print(f"relative_virtual_address of entry point: {l_rva_of_ep}", arg_debug)
 
@@ -6193,6 +6205,20 @@ def _test_relative_virtual_address(arg_debug: bool = False) -> bool:
     return name(l_module.base + l_rva_of_GetProcAddress, arg_debug=arg_debug) == l_API_to_test
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_convert_to_usercall(arg_debug: bool = False) -> bool:
+    ''' Convert the entry point to usercall and verify that it has __userpurge or __usercall in the prototype '''
+    l_function_to_convert = input_file.entry_point # TODO: Some files have an CM_CC_UNKNOWN at the entrypoint, how to make this test work relibly?
+    l_prototype_before = function_prototype(l_function_to_convert, arg_debug=arg_debug)
+    res = function_convert_to_usercall(l_function_to_convert, arg_debug=arg_debug)
+    log_print("function_convert_to_usercall(l_function_to_convert) failed", not res, arg_type="ERROR")
+    l_prototype_after = function_prototype(l_function_to_convert, arg_debug=arg_debug)
+    res &= "__user" in l_prototype_after
+    log_print("__user in l_prototype_after failed", not res, arg_type="ERROR")
+    res &= set_type(l_function_to_convert, l_prototype_before, arg_debug=arg_debug)
+    log_print(f"resetting the prototype back to '{l_prototype_before}' failed", not res, arg_type="ERROR")
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_all(arg_debug: bool = False) -> bool:
     ''' Tests all tests we have. This is NOT complete and needs to be extended '''
     l_test_functions = {'_test_appcall_on_Windows': _test_appcall_on_Windows(arg_debug=arg_debug),
@@ -6204,7 +6230,8 @@ def _test_all(arg_debug: bool = False) -> bool:
                         '_test_decompiler': _test_decompiler(arg_debug=arg_debug),
                         '_test_licence': _test_licence(arg_debug=arg_debug),
                         '_test_decompiler_comments': _test_decompiler_comments(arg_debug=arg_debug),
-                        '_test_relative_virtual_address': _test_relative_virtual_address(arg_debug=arg_debug)
+                        '_test_relative_virtual_address': _test_relative_virtual_address(arg_debug=arg_debug),
+                        '_test_convert_to_usercall': _test_convert_to_usercall(arg_debug=arg_debug)
                         }
     for l_test_in_key, l_test_in_value in l_test_functions.items():
         log_print(f"{l_test_in_key}: {l_test_in_value}", arg_type="INFO")
@@ -6223,7 +6250,7 @@ def _export_names_and_types(arg_save_to_file: str = "",
                             arg_full_export: bool = False,
                             arg_debug: bool = False) -> Dict[str, Dict[str,str]]:
     ''' Exports functions name and function type so we can import that file in another project that use the same name and function prototype
-    TODO: Export the notepad, and optionally the C header file, and optionally the pseudo code
+    TODO: Export: types in .h file, notepad in .txt, the assembly code in .asm and the pseudo code in .c
 
     TODO: WARNING! This function is "working" but is very slow and I am not happy with how it works right now, consider it experimental
     EXPERIMENTAL
