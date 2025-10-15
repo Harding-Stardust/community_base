@@ -65,8 +65,8 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 
 | OS | IDA | Python | Comment
 |--|--|--|--|
-| ~~Windows 10~~ | ~~8.4~~ | ~~3.8~~  | ~~Long time since I tested this...~~
-| ~~Windows 10~~ | ~~9.1~~ | ~~3.12~~ | ~~OK~~
+| Windows 10 | 8.4 | 3.8  | Should be OK
+| Windows 10 | 9.1 | 3.12 | OK
 | Windows 10 | 9.2 | 3.12 | OK
 
 # Future
@@ -75,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-10-14 23:45:09"
+__version__ = "2025-10-15 23:59:01"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -97,6 +97,7 @@ import re as _re
 import time as _time
 import platform as _platform
 from datetime import datetime as _datetime
+from dateutil.relativedelta import relativedelta as _relativedelta
 from datetime import timezone as _timezone
 import logging as _logging
 import ctypes as _ctypes
@@ -586,14 +587,9 @@ def ida_exit(arg_exit_code: int = 0,
         _ = ida_config("ABANDON_DATABASE", "YES")
         _ida_pro.qexit(arg_exit_code)
         return # We will never reach this line
-
-    if arg_collect_garbage:
-        _ = ida_config("COLLECT_GARBAGE", "YES")
-
-    if arg_compress_database:
-        _ = ida_config("PACK_DATABASE", "2") # set the default database packing option to "deflate" in old IDA and "zstd" in 9.1+;
-    else:
-        _ = ida_config("PACK_DATABASE", "1")
+    
+    _ = ida_config("COLLECT_GARBAGE", "YES" if _bool(arg_collect_garbage) else "NO")
+    _ = ida_config("PACK_DATABASE", "2" if arg_compress_database else "1") # set the default database packing option to "deflate" in old IDA and "zstd" in 9.1+;
 
     _ida_pro.qexit(arg_exit_code)
     return # We will never reach this line
@@ -1360,7 +1356,7 @@ def _idaapi_str2ea(arg_expression: str, arg_screen_ea: int = _ida_idaapi.BADADDR
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def eval_expression(arg_expression: EvaluateType, arg_supress_error: bool = False, arg_debug: bool = False) -> Optional[int]:
-    ''' This function tries to evaluate whatever you give it into an int. E.g. "esi + edx * 0x10 + 3" (if the debugger is running) or "0x11 + 0x11"
+    ''' This function tries to evaluate whatever you give it into an int. E.g. "esi + edx * 0x10 + 3" (if the debugger is active) or "0x11 + 0x11"
 
         Replacement for ida_kernwin.str2ea()
 
@@ -3475,11 +3471,11 @@ def _idaapi_get_flags(arg_ea: EvaluateType, arg_debug: bool = False) -> Optional
     return _ida_bytes.get_flags(l_addr)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _idaapi_generate_disassembly(arg_ea: int, arg_max_lines: int, arg_as_stack: bool, arg_notag: bool) -> tuple[int, List[str]]:
+def _idaapi_generate_disassembly(arg_ea: int, arg_max_lines: int, arg_as_stack: bool, arg_notag: bool) -> Tuple[int, List[str]]:
     ''' Wrapper around ida_lines.generate_disassembly()
-    IDA < 9.2 uses notags, IDA >= 9.2 uses notag as argument name
+    IDA < 9.2 uses notags, IDA >= 9.2 uses notag as argument name, 8.4 have no keyword args so I use no keyword args to make it work on all of them
     '''
-    return _ida_lines.generate_disassembly(ea=arg_ea, max_lines=arg_max_lines, as_stack=arg_as_stack, notag=arg_notag) if ida_version() >= 920 else _ida_lines.generate_disassembly(ea=arg_ea, max_lines=arg_max_lines, as_stack=arg_as_stack, notags=arg_notag)
+    return _ida_lines.generate_disassembly(arg_ea, arg_max_lines, arg_as_stack, arg_notag)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def is_code(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
@@ -4079,7 +4075,7 @@ def get_type(arg_name_or_ea: Union[EvaluateType, _ida_hexrays.lvar_t, _ida_typei
     "CreateFileA" or
     "0x00400000" or
     "char __stdcall(int a1, int a2, int a3)" or
-    a register (if the debugger is running) that points to a an address where there is a type
+    a register (if the debugger is active) that points to a an address where there is a type
     '''
     if isinstance(arg_name_or_ea, _ida_typeinf.tinfo_t):
         log_print("arg_name_or_ea is already a ida_typeinf.tinfo_t", arg_debug)
@@ -4307,16 +4303,16 @@ dt = display_type_at # Windbg <3
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def debugger_refresh_memory_WARNING_VERY_EXPENSIVE() -> None:
     ''' Force a refresh of IDAs view on the targets memory.
-    WARNING! This is a VERY expensive function if the debugger is running, if not--> fast
+    WARNING! This is a VERY expensive function if the debugger is active, if not--> fast
     Read more on refresh_debugger_memory: <https://python.docs.hex-rays.com/namespaceida__dbg.html#:~:text=refresh_debugger_memory()>
     '''
     _ida_dbg.refresh_debugger_memory()
     return
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def debugger_is_running() -> bool:
-    ''' Check if the debugger is running.
-      @return Returns True if the debugger is running and False otherwise
+def debugger_is_active() -> bool:
+    ''' Check if the debugger is active.
+      @return Returns True if the debugger is active and False otherwise
     '''
     return _ida_dbg.is_debugger_on()
 
@@ -4326,7 +4322,7 @@ def process_is_suspended() -> Optional[bool]:
         Returns False if the debugger is active but the process is not suspended.
         Returns None if debugger is not active
        '''
-    if not debugger_is_running():
+    if not debugger_is_active():
         log_print("You must have an active debugging session to use this function", arg_type="ERROR")
         return None
 
@@ -4764,7 +4760,7 @@ def appcall(arg_function_name: EvaluateType,
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def allocate_memory_in_target(arg_size: EvaluateType, arg_executable: bool = False, arg_debug: bool = False) -> Optional[int]:
-    ''' If the debugger is running, try to allocate memory in target process.
+    ''' If the debugger is active, try to allocate memory in target process.
 
     This function is using the Appcall magic in IDA, it can only be used in an active debugger session.
     It saves the current state and sets the arguments and then calls the function. After the function call is complete, IDA sets the state back to what it was before.
@@ -4897,7 +4893,7 @@ def modules(arg_name_filter_regex: str = ".*",  arg_debug: bool = False) -> Opti
         OBS! Modules here means loaded DLLs in the target process
         Replacement of idautils.Modules()
     '''
-    if not debugger_is_running():
+    if not debugger_is_active():
         log_print("You must have an active debugging session to use this function", arg_type="ERROR")
         return None
 
@@ -4969,7 +4965,7 @@ def load_file_into_memory(arg_file_path: str, arg_executable: bool = True, arg_d
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def win_PEB(arg_debug: bool = False) -> Optional[int]:
     ''' Gets the address to the PEB (Process Environment Block) '''
-    if not debugger_is_running():
+    if not debugger_is_active():
         log_print("This function can only be called in an active debugging session", arg_type="ERROR")
         return None
 
@@ -5598,46 +5594,103 @@ def ida_registy_write(arg_key: str, arg_subkey: Optional[str] = None) -> Tuple[s
     ''' # TODO: Implement '''
     return ("# TODO: Implement", "# TODO: Implement")
 
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def function_calling_convention(arg_ea: EvaluateType, 
+                                arg_new_calling_convertion: Union[str, int] = -1, 
+                                arg_cached_cfunc: Optional[_ida_hexrays.cfuncptr_t] = None, 
+                                arg_debug: bool = False) -> int:
+    ''' Gets or sets the calling convention of a function
+    @arg_new_calling_convertion ida_typeinf.CM_CC_* or the name of the calling convention, -1 means don't set any new calling convention
+    @return -1 on fail otherwise ida_typeinf.CM_CC_*
+    '''
+    
+    l_cfunc = arg_cached_cfunc or decompile(arg_ea, arg_force_fresh_decompilation=True, arg_debug=arg_debug)
+    if l_cfunc is None:
+        log_print(f"decompile({_hex_str_if_int(arg_ea)}) failed", arg_type="ERROR")
+        return -1
+    l_function_tinfo = _ida_typeinf.tinfo_t()
+    if not l_cfunc.get_func_type(l_function_tinfo):
+        log_print("l_cfunc.get_func_type() failed", arg_type="ERROR")
+        return -1
+    l_function_details = _ida_typeinf.func_type_data_t()
+    l_function_tinfo.get_func_details(l_function_details)
+    
+    l_calling_convention: int = _ida_typeinf.CM_CC_MASK
+    if ida_version() >= 920:
+        l_calling_convention &= l_function_details.get_explicit_cc() # https://python.docs.hex-rays.com/ida_typeinf/index.html#ida_typeinf.func_type_data_t.get_explicit_cc
+    else:
+        l_calling_convention &= l_function_details.cc
+    
+    if arg_new_calling_convertion == -1:
+        return l_calling_convention
+
+    # If we get here, then we are setting a new calling convention
+    l_calling_conventions_int_to_str: Dict[int, str] = _int_to_str_dict_from_module(_ida_typeinf, "CM_CC.*")
+    l_calling_conventions_str_to_int: Dict[str, int] = _dict_swap_key_and_value(l_calling_conventions_int_to_str)
+
+    # Smrat convert the user input to a ida_typinf.CM_CC_*
+    if isinstance(arg_new_calling_convertion, str):
+        arg_new_calling_convertion = arg_new_calling_convertion.upper()
+        if arg_new_calling_convertion.startswith("__"):
+            arg_new_calling_convertion = arg_new_calling_convertion[2:]
+        
+        if arg_new_calling_convertion == "USERCALL":
+            arg_new_calling_convertion = "SPECIAL"
+        elif arg_new_calling_convertion == "USERPURGE":
+            arg_new_calling_convertion = "SPECIALP"
+
+        if not arg_new_calling_convertion.startswith("CM_CC_"):
+            arg_new_calling_convertion = "CM_CC_" + arg_new_calling_convertion
+        log_print(f"Trying to look up: {arg_new_calling_convertion}", arg_debug)
+        res = l_calling_conventions_str_to_int.get(arg_new_calling_convertion, -1)
+        if res == -1:
+            log_print(f"Failed to find: {arg_new_calling_convertion}", arg_type="ERROR")
+            return -1
+    else:
+        res = arg_new_calling_convertion
+    
+    if res not in l_calling_conventions_int_to_str:
+        log_print(f"Invalid calling convention: {res}", arg_type="ERROR")
+        return -1
+    
+    if ida_version() >= 920:
+        l_function_details.set_cc(res)
+    else:
+        l_function_details.cc = res
+
+    l_function_tinfo.create_func(l_function_details)
+    _ = _ida_typeinf.apply_tinfo(l_cfunc.entry_ea, l_function_tinfo, _ida_typeinf.TINFO_DEFINITE)
+    return res
+
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def function_convert_to_usercall(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
     ''' Convert a function to __usercall (or __userpurge)
     Code was almost a pure copy from [HexraysPyTools](https://github.com/oopsmishap/HexRaysPyTools/blob/4742ce4ac7db72ad0cfb862d34cb15065b1b136e/HexRaysPyTools/callbacks/function_signature_modifiers.py#L15)
-    It is now updated with the new code for 9.2 which means that I drop support for 9.1
-
     Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-51-custom-calling-conventions>
-
     '''
-    l_cfunc = decompile(arg_ea, arg_debug=arg_debug)
-    if l_cfunc is None:
-        log_print(f"decompile({_hex_str_if_int(arg_ea)}) failed", arg_type="ERROR")
+    l_cfunc = decompile(arg_ea, arg_force_fresh_decompilation=True, arg_debug=arg_debug)
+    l_calling_convention: int = function_calling_convention(arg_ea=arg_ea, arg_new_calling_convertion=-1, arg_cached_cfunc=l_cfunc, arg_debug=arg_debug)
+    if l_calling_convention == -1:
+        log_print("Got invalid calling convention, aborting", arg_type="ERROR")
         return False
-    l_function_tinfo = _ida_typeinf.tinfo_t()
-    if not l_cfunc.get_func_type(l_function_tinfo):
-        log_print("l_cfunc.get_func_type() failed", arg_type="ERROR")
-        return False
-    l_function_details = _ida_typeinf.func_type_data_t()
-    l_function_tinfo.get_func_details(l_function_details)
-    l_calling_convention: int = _ida_typeinf.CM_CC_MASK & l_function_details.get_explicit_cc() # https://python.docs.hex-rays.com/ida_typeinf/index.html#ida_typeinf.func_type_data_t.get_explicit_cc
+
     if l_calling_convention == _ida_typeinf.CM_CC_CDECL:
-        l_function_details.set_cc(_ida_typeinf.CM_CC_SPECIAL) # __usercall
+        function_calling_convention(arg_ea=arg_ea, arg_new_calling_convertion=_ida_typeinf.CM_CC_SPECIAL, arg_cached_cfunc=l_cfunc, arg_debug=arg_debug) # __usercall
     elif l_calling_convention in (_ida_typeinf.CM_CC_STDCALL, _ida_typeinf.CM_CC_FASTCALL, _ida_typeinf.CM_CC_PASCAL, _ida_typeinf.CM_CC_THISCALL):
-        l_function_details.set_cc(_ida_typeinf.CM_CC_SPECIALP) # __userpurge
+        function_calling_convention(arg_ea=arg_ea, arg_new_calling_convertion=_ida_typeinf.CM_CC_SPECIALP, arg_cached_cfunc=l_cfunc, arg_debug=arg_debug) # __userpurge
     elif l_calling_convention == _ida_typeinf.CM_CC_ELLIPSIS:
-        l_function_details.set_cc(_ida_typeinf.CM_CC_SPECIALE)
+        function_calling_convention(arg_ea=arg_ea, arg_new_calling_convertion=_ida_typeinf.CM_CC_SPECIALE, arg_cached_cfunc=l_cfunc, arg_debug=arg_debug)
     elif l_calling_convention == _ida_typeinf.CM_CC_SPECIALP: # __userpurge
         log_print(f"Function {_hex_str_if_int(arg_ea)} is already __userpurge", arg_type="WARNING")
     elif l_calling_convention == _ida_typeinf.CM_CC_SPECIAL: # __usercall
         log_print(f"Function {_hex_str_if_int(arg_ea)} is already __usercall", arg_type="WARNING")
-    else:
-        l_calling_conventions = _int_to_str_dict_from_module(_ida_typeinf, "CM_CC.*")
-        log_print(f"Unknown calling convention, I don't know what to do with: {l_calling_conventions.get(l_calling_convention, '<<< no such key: ' + hex(l_calling_convention) + ' >>>')} ", arg_type="ERROR")
-        return False
-    l_function_tinfo.create_func(l_function_details)
-    return _bool(_ida_typeinf.apply_tinfo(l_cfunc.entry_ea, l_function_tinfo, _ida_typeinf.TINFO_DEFINITE))
+    return True
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def function_set_return_type(arg_ea: EvaluateType, arg_new_ret_type: Union[str, _ida_typeinf.tinfo_t], arg_debug: bool = False) -> bool:
     ''' Set the return type of a function '''
+    # TODO: Rewrite this as a get and set in the same?
     l_cfunc = decompile(arg_ea, arg_debug=arg_debug)
     if l_cfunc is None:
         log_print(f"decompile({arg_ea}) failed", arg_type="ERROR")
@@ -5675,7 +5728,7 @@ def file_generate(arg_outfile_type: Union[str, int],
 
     @returns The file path I wrote the result to, empty str if something failed
     '''
-    l_ofile_int_to_str = _int_to_str_dict_from_module("_ida_loader", "OFILE_.*")
+    l_ofile_int_to_str = _int_to_str_dict_from_module(_ida_loader, "OFILE_.*")
     l_ofile_str_to_int = _dict_swap_key_and_value(l_ofile_int_to_str)
     if isinstance(arg_outfile_type, str):
         if not arg_outfile_type.startswith("OFILE_"):
@@ -5839,7 +5892,7 @@ def _funcarg_t_str(arg_funcarg_t: _ida_typeinf.funcarg_t) -> str:
 
     res = f"argument: '{str(arg_funcarg_t.type)} {arg_funcarg_t.name if arg_funcarg_t.name else '<no name>' }' with argument location: {str(arg_funcarg_t.argloc)}"
     if arg_funcarg_t.argloc.is_reg1():
-        res += f'\nRegister: {str(arg_funcarg_t.register.name)}: {(f"0x{_register(arg_funcarg_t.register):x}" if debugger_is_running() else "<value only available when debugger is running>")}'
+        res += f'\nRegister: {str(arg_funcarg_t.register.name)}: {(f"0x{_register(arg_funcarg_t.register):x}" if debugger_is_active() else "<value only available when debugger is active>")}'
     # TODO: elif on stack: print stack var
     return res
 setattr(_ida_typeinf.funcarg_t, '__str__', _funcarg_t_str)
@@ -5945,7 +5998,7 @@ setattr(_ida_ua.op_t, 'register', property(fget=_op_t_to_register))
 setattr(_ida_ua.op_t, 'name', property(fget=name))
 setattr(_ida_ua.op_t, 'as_dict', property(fget=_operand_parser))
 setattr(_ida_ua.op_t, '__eq__', lambda self, other: self.type == other.type and self.dtype == other.dtype and self.value == other.value and self.value64 == other.value64 and self.specflag1 == other.specflag1 and self.specflag2 == other.specflag2 and self.reg == other.reg and self.addr == other.addr)
-setattr(_ida_idp.reg_info_t, '__str__', lambda self: f".name: {_ida_idp.get_reg_name(self.reg, self.size)}, .size: 0x{self.size:x}, .register_index: {self.reg}, .value: " + (_hex_str_if_int(_register(self)) if debugger_is_running() else "<value only available when debugger is running>") + "\n")
+setattr(_ida_idp.reg_info_t, '__str__', lambda self: f".name: {_ida_idp.get_reg_name(self.reg, self.size)}, .size: 0x{self.size:x}, .register_index: {self.reg}, .value: " + (_hex_str_if_int(_register(self)) if debugger_is_active() else "<value only available when debugger is active>") + "\n")
 setattr(_ida_idp.reg_info_t, '__repr__', __repr__type_str)
 setattr(_ida_idp.reg_info_t, '__len__', lambda self: self.size)
 setattr(_ida_idp.reg_info_t, 'name', property(fget=lambda self: _ida_idp.get_reg_name(self.reg, self.size)))
@@ -6210,7 +6263,7 @@ def _test_convert_to_usercall(arg_debug: bool = False) -> bool:
     l_function_to_convert = input_file.entry_point # TODO: Some files have an CM_CC_UNKNOWN at the entrypoint, how to make this test work relibly?
     l_prototype_before = function_prototype(l_function_to_convert, arg_debug=arg_debug)
     res = function_convert_to_usercall(l_function_to_convert, arg_debug=arg_debug)
-    log_print("function_convert_to_usercall(l_function_to_convert) failed", not res, arg_type="ERROR")
+    log_print(f"function_convert_to_usercall({_hex_str_if_int(l_function_to_convert)}) failed", not res, arg_type="ERROR")
     l_prototype_after = function_prototype(l_function_to_convert, arg_debug=arg_debug)
     res &= "__user" in l_prototype_after
     log_print("__user in l_prototype_after failed", not res, arg_type="ERROR")
@@ -6358,7 +6411,35 @@ def _comment_copy_from_disassembly_to_decompiler(arg_function: EvaluateType,  ar
 
     return True
 
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _time_since(arg_timestamp_str: str, arg_now: Optional[_datetime] = None) -> str:
+    """
+    Returns a human-readable elapsed time since timestamp_str.
+    timestamp_str format: "YYYY-MM-DD HH:MM:SS"
+    """
+    arg_now = arg_now or _datetime.now()
+    l_then = _datetime.strptime(arg_timestamp_str, "%Y-%m-%d %H:%M:%S")
+    l_diff = _relativedelta(arg_now, l_then)
+    l_past = True
+    if l_then > arg_now:
+        l_then, arg_now = arg_now, l_then
+        l_past = False
+    l_parts = []
+    if l_diff.years:
+        l_parts.append(f"{l_diff.years} year{'s' if l_diff.years != 1 else ''}")
+    if l_diff.months:
+        l_parts.append(f"{l_diff.months} month{'s' if l_diff.months != 1 else ''}")
+    if l_diff.days:
+        l_parts.append(f"{l_diff.days} day{'s' if l_diff.days != 1 else ''}")
+    if l_diff.hours:
+        l_parts.append(f"{l_diff.hours} hour{'s' if l_diff.hours != 1 else ''}")
+    if l_diff.minutes:
+        l_parts.append(f"{l_diff.minutes} minute{'s' if l_diff.minutes != 1 else ''}")
+    if l_diff.seconds or not l_parts:
+        l_parts.append(f"{l_diff.seconds} second{'s' if l_diff.seconds != 1 else ''}")
+    return f"{", ".join(l_parts[:3])} {"ago" if l_past else "from now"}"
 
+log_print(f"Loaded {__name__} version: {__version__} by {__author__}. This version was released {_time_since(__version__)}", arg_type="INFO")
 
 # Plugin mode  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- Plugin mode
 

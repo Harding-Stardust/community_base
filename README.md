@@ -60,8 +60,8 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 
 | OS | IDA | Python | Comment
 |--|--|--|--|
-| ~~Windows 10~~ | ~~8.4~~ | ~~3.8~~  | ~~Long time since I tested this...~~
-| ~~Windows 10~~ | ~~9.1~~ | ~~3.12~~ | ~~OK~~
+| Windows 10 | 8.4 | 3.8  | Should be OK
+| Windows 10 | 9.1 | 3.12 | OK
 | Windows 10 | 9.2 | 3.12 | OK
 
 # Future
