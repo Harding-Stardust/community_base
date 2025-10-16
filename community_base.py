@@ -75,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-10-15 23:59:01"
+__version__ = "2025-10-16 17:54:12"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -466,7 +466,7 @@ def _dict_sort(arg_dict: dict, arg_sort_by_value: bool = False, arg_descending: 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_version() -> int:
-    ''' Returns the version of IDA currently running. 7.7 --> 770, 8.4 --> 840, 9.0 --> 900, 9.2 --> 920 '''
+    ''' Returns the version of IDA currently running. e.g. 7.7 --> 770, 8.4 --> 840, 9.0 --> 900, 9.2 --> 920 '''
     return _ida_pro.IDA_SDK_VERSION
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -665,7 +665,7 @@ def reload_module(arg_module: Union[str, ModuleType, None] = None) -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _python_load_module(arg_filepath: str) -> bool:
     ''' Load a given Python file by full file path '''
-    # TODO: Test this on different drives (C: vs E:)
+    # This works fine cross drives also! 
     l_directory = _os.path.dirname(arg_filepath)
     l_filename = _os.path.basename(arg_filepath)
     l_saved_cwd = _os.getcwd()
@@ -677,11 +677,11 @@ def _python_load_module(arg_filepath: str) -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_is_64bit() -> bool:
     ''' Is the IDA process you are running in a 64 bit process? '''
-    # TODO: Delete this function?
+    # TODO: Delete this function? This is used for IDA 8.4
     return _ida_idaapi.__EA64__
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _ida_DLL() -> Any: # TODO: This used to be Union[_ctypes.CDLL, _ctypes.WinDLL] but WinDLL is not supported on Linux, what to do?
+def _ida_DLL() -> Any: #  This used to be Union[_ctypes.CDLL, _ctypes.WinDLL] but WinDLL is not supported on Linux, I guess I can't do anything useful here.
     ''' Load correct version of ida.dll. Works on IDA 8.4, 9.0, 9.1 and 9.2. Example of how to use ctypes.
 
     Hex-Rays blog about it (OBS! Outdated!): <https://hex-rays.com/blog/calling-ida-apis-from-idapython-with-ctypes>
@@ -1027,7 +1027,8 @@ for l_name, l_function in _inspect.getmembers(_ida_ua, _inspect.isfunction): _ad
 for l_name, l_function in _inspect.getmembers(_ida_xref, _inspect.isfunction): _add_link_to_docstring(l_function)
 for l_name, l_function in _inspect.getmembers(_idautils, _inspect.isfunction): _add_link_to_docstring(l_function)
 for l_name, l_function in _inspect.getmembers(_ida_diskio, _inspect.isfunction): _add_link_to_docstring(l_function)
-_add_link_to_docstring(_ida_typeinf.func_type_data_t.set_cc, "https://python.docs.hex-rays.com/ida_typeinf/index.html#ida_typeinf.func_type_data_t.set_cc")
+if ida_version() >= 920:
+    _add_link_to_docstring(_ida_typeinf.func_type_data_t.set_cc, "https://python.docs.hex-rays.com/ida_typeinf/index.html#ida_typeinf.func_type_data_t.set_cc")
 
 
 # API extension ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- API extension
@@ -6272,6 +6273,14 @@ def _test_convert_to_usercall(arg_debug: bool = False) -> bool:
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_input_file(arg_debug: bool = False) -> bool:
+    ''' Test the input file object '''
+    l_loader_name = input_file.loader # This property will make call chain to ctypes also
+    log_print(f"loader name: {l_loader_name}", arg_debug)
+    res = l_loader_name != ""
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_all(arg_debug: bool = False) -> bool:
     ''' Tests all tests we have. This is NOT complete and needs to be extended '''
     l_test_functions = {'_test_appcall_on_Windows': _test_appcall_on_Windows(arg_debug=arg_debug),
@@ -6284,7 +6293,8 @@ def _test_all(arg_debug: bool = False) -> bool:
                         '_test_licence': _test_licence(arg_debug=arg_debug),
                         '_test_decompiler_comments': _test_decompiler_comments(arg_debug=arg_debug),
                         '_test_relative_virtual_address': _test_relative_virtual_address(arg_debug=arg_debug),
-                        '_test_convert_to_usercall': _test_convert_to_usercall(arg_debug=arg_debug)
+                        '_test_convert_to_usercall': _test_convert_to_usercall(arg_debug=arg_debug),
+                        '_test_input_file' : _test_input_file(arg_debug=arg_debug)
                         }
     for l_test_in_key, l_test_in_value in l_test_functions.items():
         log_print(f"{l_test_in_key}: {l_test_in_value}", arg_type="INFO")
@@ -6424,7 +6434,7 @@ def _time_since(arg_timestamp_str: str, arg_now: Optional[_datetime] = None) -> 
     if l_then > arg_now:
         l_then, arg_now = arg_now, l_then
         l_past = False
-    l_parts = []
+    l_parts: List[str] = []
     if l_diff.years:
         l_parts.append(f"{l_diff.years} year{'s' if l_diff.years != 1 else ''}")
     if l_diff.months:
@@ -6437,7 +6447,7 @@ def _time_since(arg_timestamp_str: str, arg_now: Optional[_datetime] = None) -> 
         l_parts.append(f"{l_diff.minutes} minute{'s' if l_diff.minutes != 1 else ''}")
     if l_diff.seconds or not l_parts:
         l_parts.append(f"{l_diff.seconds} second{'s' if l_diff.seconds != 1 else ''}")
-    return f"{", ".join(l_parts[:3])} {"ago" if l_past else "from now"}"
+    return f"{', '.join(l_parts[:3])} {'ago' if l_past else 'from now'}"
 
 log_print(f"Loaded {__name__} version: {__version__} by {__author__}. This version was released {_time_since(__version__)}", arg_type="INFO")
 
