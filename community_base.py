@@ -75,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-10-16 17:54:12"
+__version__ = "2025-10-19 23:21:54"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -170,7 +170,7 @@ class _IDAOutputHandler(_logging.Handler):
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def __init__(self, level: int = _logging.NOTSET):
         super().__init__(level)
-    
+
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def emit(self, record: _logging.LogRecord):
         try:
@@ -200,7 +200,7 @@ def __simulate_long_running_task() -> None:
     ''' Simulate some long running task so I can test _check_if_long_running_script_should_abort()
     copy the string "abort.ida" into the clipboard to raise a TimeoutError exception
      '''
-    
+
     for i in range(0, 1_000_000):
         log_print(f"Simulating a long running task: {i}")
         _time.sleep(1.0)
@@ -219,10 +219,8 @@ def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
     l_now = _time.time()
     if (l_now - _g_timestamp_of_last_checked) > 10:
         _g_timestamp_of_last_checked = l_now
-        if arg_debug:
-            # l_timestamp: str = _time.strftime("%Y-%m-%d %H:%M:%S", _datetime.timetuple(_datetime.now()))
-            # print(f"{l_timestamp} _long_running_script_should_abort(): Checking for abort.ida in clipboard...")
-            _g_logger.info("Checking for abort.ida in clipboard...")
+        # if arg_debug:
+            # log_print("Checking for abort.ida in clipboard...")
 
         l_clipboard_content = _pyperclip.paste().strip()
         if l_clipboard_content in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]:
@@ -257,7 +255,7 @@ def _bool(arg_user_input: BoolishType) -> bool:
     ''' Try to convert a user input to a boolean True or False in a smart way.
     If I cannot parse it, I will return False (and print an error message)
     @param arg_user_input if it's a str, then check for "Y", "YES", "ON", "1", "TRUE", "T"
-    @returns True if I can parse it to something the user want to be true, False otherwise (incl. a string I cannot parse anything useful from)
+    @return True if I can parse it to something the user want to be true, False otherwise (incl. a string I cannot parse anything useful from)
     '''
     if isinstance(arg_user_input, str):
         arg_user_input = arg_user_input.upper()
@@ -433,7 +431,7 @@ def help(arg_search: str) -> List[Tuple[str, str]]:
     ''' Search for a given string and show what function it is in.
         @param arg_search is the text to search for
 
-        @returns a list of tuples with the line of the match as the first member and the function name as the second value
+        @return a list of tuples with the line of the match as the first member and the function name as the second value
     '''
     res = []
     with open(__file__, "r", encoding="utf-8") as fp:
@@ -514,7 +512,7 @@ def ida_arguments() -> List[str]:
     OBS! Cannot be used in ida_domain mode
     '''
     # TODO: Delete this function?
-    # TODO: check idc.ARGV?
+    # TODO: check idc.ARGV? idc.ARGV is writeable, maybe use that?
     if __QT_IS_AVAILABLE:
         return QApplication.arguments()
     log_print("QT is not available, atm we cannot get the program arguments", arg_type="ERROR")
@@ -557,7 +555,7 @@ def ida_save_database(arg_new_filename: str = "",
     @param arg_database_flags: 0xFFFFFFFF means the current flags, See ida_loader.DBFL_* for flags
     @param arg_snapshot_root: optional, snapshot tree root.
     @param arg_snapshot_attribute: optional, snapshot attributes
-    @returns success
+    @return success
     '''
     # TODO: Check how this plays with ida_domain
     # TODO: How does this work with the flags? Like compressiong and so on? Should the user be able to set that in this function?
@@ -583,11 +581,12 @@ def ida_exit(arg_exit_code: int = 0,
     process_config_directive(): <https://python.docs.hex-rays.com/namespaceida__idp.html#:~:text=process_config_directive()>
     '''
     # TODO: Check how this plays with ida_domain
+    # TODO: Can I take a memory snapshot in case we are in a live debugging session?
     if not arg_save_database:
         _ = ida_config("ABANDON_DATABASE", "YES")
         _ida_pro.qexit(arg_exit_code)
         return # We will never reach this line
-    
+
     _ = ida_config("COLLECT_GARBAGE", "YES" if _bool(arg_collect_garbage) else "NO")
     _ = ida_config("PACK_DATABASE", "2" if arg_compress_database else "1") # set the default database packing option to "deflate" in old IDA and "zstd" in 9.1+;
 
@@ -642,9 +641,9 @@ def _python_module_to_str(arg_module: Union[str, ModuleType, None] = None) -> st
     return arg_module if isinstance(arg_module, str) else getattr(arg_module, '__name__', __name__)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def reload_module(arg_module: Union[str, ModuleType, None] = None) -> bool:
-    '''  During development, it's nice to have an easy way to reload the file and update all changes
-    Read more: <https://hex-rays.com/blog/loading-your-own-modules-from-your-idapython-scripts-with-idaapi-require>
+def reload_python_module(arg_python_module: Union[str, ModuleType, None] = None) -> bool:
+    '''  During development, it's nice to have an easy way to reload the script and update all changes
+    [Blog post about it](https://hex-rays.com/blog/loading-your-own-modules-from-your-idapython-scripts-with-idaapi-require)
 
     @param arg_module if this is set to None, then reload ourself
 
@@ -652,7 +651,7 @@ def reload_module(arg_module: Union[str, ModuleType, None] = None) -> bool:
 
     Replacement for ida_idaapi.require()
     '''
-    l_module_name: str = _python_module_to_str(arg_module)
+    l_module_name: str = _python_module_to_str(arg_python_module)
     log_print(f"Reloading '{l_module_name}' ( {getattr(_sys.modules.get(l_module_name, ''), '__file__', '<<< no file found >>>')} ) using ida_idaapi.require('{l_module_name}')", arg_type="INFO")
     try:
         _ida_idaapi.require(l_module_name)
@@ -665,12 +664,12 @@ def reload_module(arg_module: Union[str, ModuleType, None] = None) -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _python_load_module(arg_filepath: str) -> bool:
     ''' Load a given Python file by full file path '''
-    # This works fine cross drives also! 
+    # This works fine cross drives also!
     l_directory = _os.path.dirname(arg_filepath)
     l_filename = _os.path.basename(arg_filepath)
     l_saved_cwd = _os.getcwd()
     _os.chdir(l_directory)
-    res = reload_module(_os.path.splitext(l_filename)[0])
+    res = reload_python_module(_os.path.splitext(l_filename)[0])
     _os.chdir(l_saved_cwd)
     return res
 
@@ -776,9 +775,9 @@ def hex_parse(arg_list_of_strs: BufferType, arg_debug: bool = False) -> List[str
             hex_line: str = ""
             for b in line:
                 hex_line += f"{b:02x}"
-            l_list_of_strs.append(hex_line)
+            l_list_of_strs.append(hex_line) # TODO: Rewrite the last 5 lines?
     else:
-        l_list_of_strs = l_list_of_inputs # type: ignore[assignment] # I think this is correct bu mypy does not like it
+        l_list_of_strs = l_list_of_inputs # type: ignore[assignment] # I think this is correct but mypy does not like it
 
     log_print(f'l_list_of_strs is now: {l_list_of_strs}', arg_debug)
 
@@ -803,7 +802,7 @@ def hex_parse(arg_list_of_strs: BufferType, arg_debug: bool = False) -> List[str
 
     if not res:
         res = []
-        log_print("Result is empty. Your input might be wrong?", arg_type="ERROR")
+        log_print("Result is empty. Your input might be wrong?", arg_type="WARNING")
 
     log_print(f'res: {res}', arg_debug)
     return res
@@ -1038,7 +1037,7 @@ if ida_version() >= 920:
 def ida_licence_info(arg_delete_user_info_from_IDB: bool = False) -> Dict[str, str]:
     ''' Gets the license info. This function serves as example of 2 things: 1. How to get info that is not easy to get in a real way. 2. That your name is in every IDB, privacy warning!
 
-    @return {"serial_number": serial_number: str, "name_info": name_info: str}
+    @return {serial_number: str, name_info: str}
     '''
     if arg_delete_user_info_from_IDB:
         _ = _ida_licence_info_delete()
@@ -1318,7 +1317,7 @@ class _input_file_object():
         for k,v in self._as_dict().items():
             res += f"{k}: {v}\n"
         return res
-    
+
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def __repr__(self) -> str:
         return f"{type(self)} which has str(self):\n{str(self)}"
@@ -1516,7 +1515,7 @@ rva = relative_virtual_address
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def fileoffset_to_virtual_address(arg_file_offset: int) -> int:
     ''' Take in a file offset and return the Virtual Address that matches to
-    
+
     @return ida_idaapi.BADADDR on fail, otherwise the virtual address
     '''
     return _ida_loader.get_fileregion_ea(arg_file_offset)
@@ -3020,7 +3019,7 @@ def _idaapi_encoding_from_strtype(arg_strtype: int) -> str:
     if _is_invalid_strtype(arg_strtype):
         log_print(f"Invalid encoding. Got 0x{arg_strtype:x}. Returning the default encoding: {l_default_encoding}")
         return l_default_encoding
-    
+
     res = _ida_nalt.encoding_from_strtype(arg_strtype)
     if res is None:
         log_print(f"Invalid encoding. Got 0x{arg_strtype:x} which ida_nalt.encoding_from_strtype() returned None for. Returning the default encoding: {l_default_encoding} ")
@@ -3069,7 +3068,7 @@ def string(arg_ea: EvaluateType,
         return None
 
     if isinstance(arg_encoding, str):
-        l_type = _encoding_to_strtype(arg_encoding)
+        l_type = _encoding_to_strtype(arg_encoding) # TODO: This will overwrite l_type if it was set from StringItem, is this correct?
         if l_type == -1:
             log_print(f'_encoding_to_strtype("{arg_encoding}") failed')
             return None
@@ -3175,7 +3174,8 @@ def strings(arg_only_first: int = 100000, arg_debug: bool = False) -> List[Tuple
 
     res = []
     for string_item in _idautils.Strings():
-        l_string_content: Optional[str] = string(string_item, arg_encoding=_idaapi_encoding_from_strtype(string_item.strtype), arg_debug=arg_debug)
+        # l_string_content = "# TODO: testing speed"
+        l_string_content: Optional[str] = string(string_item, arg_encoding=_idaapi_encoding_from_strtype(string_item.strtype), arg_debug=arg_debug) # TODO: Verify that this read is OK since I pass a StringItem and that will make string() ignore some arguments
         if l_string_content is None:
             l_string_content = f"<<< Could not read string at 0x{string_item.ea:x} >>>"
         res.append((string_item.ea, string_item.length, _idaapi_encoding_from_strtype(string_item.strtype), l_string_content, string_item.strtype))
@@ -4292,7 +4292,7 @@ def display_type_at(arg_ea: EvaluateType,
                     arg_max_num_recursive: int = 10,
                     arg_debug: bool = False) -> str:
     ''' Display the data as nice to look at. If you want to parse it, use _display_type_at_as_dict() '''
-
+    # TODO: Test case that is not correct: cb.clipboard_copy(cb.display_type_at(cb.win_PEB(), "_PEB"))
     return _json.dumps(_display_type_at_as_dict(arg_ea=arg_ea, arg_type=arg_type, arg_member_name="", arg_max_num_recursive=arg_max_num_recursive, arg_debug=arg_debug), ensure_ascii=False,  indent=4, default=str)
 
 dt = display_type_at # Windbg <3
@@ -4926,6 +4926,7 @@ def module(arg_module_name_or_address: Union[str, EvaluateType] = None, arg_debu
     ''' Find a module based on the name or an address
     OBS! Module in this context refers to a DLL loaded in the target process while it is running '''
 
+    # TODO: https://youtu.be/rgyTaXkPzfM?t=440 maybe look into _ida_name.get_debug_names()?
     l_modules = modules(arg_debug=arg_debug)
     if l_modules is None:
         log_print("modules() returned None", arg_type="ERROR")
@@ -4944,21 +4945,22 @@ def module(arg_module_name_or_address: Union[str, EvaluateType] = None, arg_debu
         if l_module.base <= l_addr <= l_module.base+l_module.size:
             return l_module
 
-    log_print(f"No module found for '{arg_module_name_or_address}'", arg_type="ERROR")
+    log_print(f"No module found for '{_hex_str_if_int(arg_module_name_or_address)}'", arg_type="ERROR")
     return None
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def load_file_into_memory(arg_file_path: str, arg_executable: bool = True, arg_debug: bool = False) -> Optional[int]:
-    ''' Take a file on disk (usually shellcode) and allocates that much memory and write the file content to that memory location
+    ''' Take a file on disk (usually shellcode) and allocates that much memory and write the file content to that memory location.
+    Requires an active debugging session
     @return Returns the address the data (shellcode) was written to
     '''
     with open(arg_file_path, 'rb') as f:
-        shellcode = f.read()
-    res = allocate_memory_in_target(len(shellcode), arg_executable=arg_executable, arg_debug=arg_debug)
+        l_shellcode = f.read()
+    res = allocate_memory_in_target(len(l_shellcode), arg_executable=arg_executable, arg_debug=arg_debug)
     if res is None:
         log_print("Could not allocate memory", arg_type="ERROR")
         return None
-    if not write_bytes(res, shellcode, arg_debug=arg_debug):
+    if not write_bytes(res, l_shellcode, arg_debug=arg_debug):
         log_print("Writing the shellcode failed.", arg_type="ERROR")
         return None
     return res
@@ -4974,11 +4976,11 @@ def win_PEB(arg_debug: bool = False) -> Optional[int]:
     teb_segm_name: str = f"TIB[{l_thread_id:08X}]"
     log_print(f"Segment with TEB/TIB information: '{teb_segm_name}'", arg_debug)
 
-    teb: Optional[_ida_segment.segment_t] = _ida_segment.get_segm_by_name(teb_segm_name)
-    if not teb:
+    l_TEB: Optional[_ida_segment.segment_t] = _ida_segment.get_segm_by_name(teb_segm_name)
+    if not l_TEB:
         log_print(f"Could not find any segment with the name: '{teb_segm_name}'", arg_type="ERROR")
         return None
-    return teb.start_ea if input_file.bits == 64 else teb.start_ea + 0x1000
+    return l_TEB.start_ea if input_file.bits == 64 else l_TEB.start_ea + 0x1000
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def win_GetCommandLineW(arg_debug: bool = False) -> Optional[str]:
@@ -5046,7 +5048,7 @@ def win_GetProcAddress(arg_hmodule: EvaluateType, arg_function_name: str, arg_de
         l_error_message: Optional[str] = _ctypes.WinError(l_last_error).strerror
         if l_error_message is None:
             l_error_message = "<<< unknown error >>>"
-        log_print(f"GetProcAddress('{arg_function_name}') failed with error code: {l_last_error} (0x{l_last_error:x}), error description: '{l_error_message}'", arg_type="ERROR")
+        log_print(f"GetProcAddress('{arg_hmodule}', '{arg_function_name}') failed with error code: {l_last_error} (0x{l_last_error:x}), error description: '{l_error_message}'", arg_type="ERROR")
         return None
 
     return res
@@ -5445,6 +5447,7 @@ def jumpto(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
     ''' Moves the current (last used) view to show the address/name/label/register.
     Replacement for ida_kernwin.jumpto()
     '''
+    # TODO: Test how this plays with ida_domain
     l_addr: int = address(arg_ea, arg_debug=arg_debug)
     if l_addr == _ida_idaapi.BADADDR:
         log_print(f"address({_hex_str_if_int(arg_ea)}) failed", arg_type="ERROR")
@@ -5520,7 +5523,7 @@ def ipyida_jupyter_console_from_shell(arg_copy_to_clipboard: bool = True) -> str
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ipyida_exit(arg_copy_to_clipboard: bool = True) -> str:
-    ''' If you have connected to the Jupyter kernel from the shell using ipyida_jupyter_console_from_cmd() use this command to exit the shell window without killing the kernel
+    ''' If you have connected to the Jupyter kernel from the shell using ipyida_jupyter_console_from_shell() use this command to exit the shell window without killing the kernel
         @param arg_copy_to_clipboard Copy the command to the clipboard
     '''
     l_connection_file: str = _ipyida_find_connection_file(arg_copy_to_clipboard=arg_copy_to_clipboard)
@@ -5590,22 +5593,21 @@ def ida_registy_read(arg_key: str, arg_subkey: Optional[str] = None) -> Tuple[st
 
     return ("ERROR", f"<<< Not implemented read for type: 0x{l_reg_type:x} >>>")
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_registy_write(arg_key: str, arg_subkey: Optional[str] = None) -> Tuple[str, str]:
-    ''' # TODO: Implement '''
-    return ("# TODO: Implement", "# TODO: Implement")
+# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+# def ida_registy_write(arg_key: str, arg_subkey: Optional[str] = None) -> Tuple[str, str]:
+#     ''' # TODO: Implement '''
+#     return ("# TODO: Implement", "# TODO: Implement")
 
-
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def function_calling_convention(arg_ea: EvaluateType, 
-                                arg_new_calling_convertion: Union[str, int] = -1, 
-                                arg_cached_cfunc: Optional[_ida_hexrays.cfuncptr_t] = None, 
+def function_calling_convention(arg_ea: EvaluateType,
+                                arg_new_calling_convertion: Union[str, int] = -1,
+                                arg_cached_cfunc: Optional[_ida_hexrays.cfuncptr_t] = None,
                                 arg_debug: bool = False) -> int:
     ''' Gets or sets the calling convention of a function
     @arg_new_calling_convertion ida_typeinf.CM_CC_* or the name of the calling convention, -1 means don't set any new calling convention
     @return -1 on fail otherwise ida_typeinf.CM_CC_*
     '''
-    
+
     l_cfunc = arg_cached_cfunc or decompile(arg_ea, arg_force_fresh_decompilation=True, arg_debug=arg_debug)
     if l_cfunc is None:
         log_print(f"decompile({_hex_str_if_int(arg_ea)}) failed", arg_type="ERROR")
@@ -5616,13 +5618,13 @@ def function_calling_convention(arg_ea: EvaluateType,
         return -1
     l_function_details = _ida_typeinf.func_type_data_t()
     l_function_tinfo.get_func_details(l_function_details)
-    
+
     l_calling_convention: int = _ida_typeinf.CM_CC_MASK
     if ida_version() >= 920:
         l_calling_convention &= l_function_details.get_explicit_cc() # https://python.docs.hex-rays.com/ida_typeinf/index.html#ida_typeinf.func_type_data_t.get_explicit_cc
     else:
         l_calling_convention &= l_function_details.cc
-    
+
     if arg_new_calling_convertion == -1:
         return l_calling_convention
 
@@ -5635,7 +5637,7 @@ def function_calling_convention(arg_ea: EvaluateType,
         arg_new_calling_convertion = arg_new_calling_convertion.upper()
         if arg_new_calling_convertion.startswith("__"):
             arg_new_calling_convertion = arg_new_calling_convertion[2:]
-        
+
         if arg_new_calling_convertion == "USERCALL":
             arg_new_calling_convertion = "SPECIAL"
         elif arg_new_calling_convertion == "USERPURGE":
@@ -5650,11 +5652,11 @@ def function_calling_convention(arg_ea: EvaluateType,
             return -1
     else:
         res = arg_new_calling_convertion
-    
+
     if res not in l_calling_conventions_int_to_str:
         log_print(f"Invalid calling convention: {res}", arg_type="ERROR")
         return -1
-    
+
     if ida_version() >= 920:
         l_function_details.set_cc(res)
     else:
@@ -5727,7 +5729,7 @@ def file_generate(arg_outfile_type: Union[str, int],
     @param arg_end_ea end at this EA (Effective Address)
     @param arg_flags see ida_loader.GENFLG_*
 
-    @returns The file path I wrote the result to, empty str if something failed
+    @return The file path I wrote the result to, empty str if something failed
     '''
     l_ofile_int_to_str = _int_to_str_dict_from_module(_ida_loader, "OFILE_.*")
     l_ofile_str_to_int = _dict_swap_key_and_value(l_ofile_int_to_str)
@@ -6223,7 +6225,7 @@ def _test_decompiler(arg_debug: bool = False) -> bool:
     ''' Tests: decompiler '''
     l_pseudocode = decompiler_pseudocode(input_file.entry_point, arg_debug=arg_debug)
     log_print(f"pseudocode of entrypoint: {l_pseudocode}", arg_debug)
-    return l_pseudocode is not None
+    return l_pseudocode != ""
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_licence(arg_debug: bool = False) -> bool:
@@ -6281,6 +6283,19 @@ def _test_input_file(arg_debug: bool = False) -> bool:
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_GetProcAddress_on_Windows(arg_debug: bool = False) -> bool:
+    ''' Test GetProcAddress(), needs an active debugging session '''
+    l_function_to_test = "LoadLibraryA"
+    l_LoadLibraryA_addr = win_GetProcAddress("kernel32", l_function_to_test)
+    res = name(l_LoadLibraryA_addr, arg_debug=arg_debug) == "kernel32_" + l_function_to_test
+
+
+    l_should_be_None = win_GetProcAddress("kernel32", "Nonexistantfunction")
+    res &= l_should_be_None is None
+
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_all(arg_debug: bool = False) -> bool:
     ''' Tests all tests we have. This is NOT complete and needs to be extended '''
     l_test_functions = {'_test_appcall_on_Windows': _test_appcall_on_Windows(arg_debug=arg_debug),
@@ -6294,7 +6309,8 @@ def _test_all(arg_debug: bool = False) -> bool:
                         '_test_decompiler_comments': _test_decompiler_comments(arg_debug=arg_debug),
                         '_test_relative_virtual_address': _test_relative_virtual_address(arg_debug=arg_debug),
                         '_test_convert_to_usercall': _test_convert_to_usercall(arg_debug=arg_debug),
-                        '_test_input_file' : _test_input_file(arg_debug=arg_debug)
+                        '_test_input_file' : _test_input_file(arg_debug=arg_debug),
+                        '_test_GetProcAddress_on_Windows' : _test_GetProcAddress_on_Windows(arg_debug=arg_debug)
                         }
     for l_test_in_key, l_test_in_value in l_test_functions.items():
         log_print(f"{l_test_in_key}: {l_test_in_value}", arg_type="INFO")
@@ -6422,31 +6438,34 @@ def _comment_copy_from_disassembly_to_decompiler(arg_function: EvaluateType,  ar
     return True
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _time_since(arg_timestamp_str: str, arg_now: Optional[_datetime] = None) -> str:
+def _time_since(arg_timestamp_str: str, arg_now: str = "") -> str:
     """
     Returns a human-readable elapsed time since timestamp_str.
-    timestamp_str format: "YYYY-MM-DD HH:MM:SS"
+    @param timestamp_str format: "YYYY-MM-DD HH:MM:SS"
+    @param arg_now has the format: "YYYY-MM-DD HH:MM:SS", if you let it be empty, then take the current timestamp
+    @return The time ago, e.g. _time_since(community_base.__version__) --> '22 hours, 9 minutes, 8 seconds ago'
     """
-    arg_now = arg_now or _datetime.now()
+    arg_now = arg_now or _time.strftime("%Y-%m-%d %H:%M:%S", _datetime.timetuple(_datetime.now()))
+    l_now = _datetime.strptime(arg_now, "%Y-%m-%d %H:%M:%S")
     l_then = _datetime.strptime(arg_timestamp_str, "%Y-%m-%d %H:%M:%S")
-    l_diff = _relativedelta(arg_now, l_then)
+    l_diff = _relativedelta(l_now, l_then)
     l_past = True
-    if l_then > arg_now:
-        l_then, arg_now = arg_now, l_then
+    if l_then > l_now:
+        l_then, l_now = l_now, l_then
         l_past = False
     l_parts: List[str] = []
     if l_diff.years:
-        l_parts.append(f"{l_diff.years} year{'s' if l_diff.years != 1 else ''}")
+        l_parts.append(f"{abs(l_diff.years)} year{'s' if abs(l_diff.years) != 1 else ''}")
     if l_diff.months:
-        l_parts.append(f"{l_diff.months} month{'s' if l_diff.months != 1 else ''}")
+        l_parts.append(f"{abs(l_diff.months)} month{'s' if abs(l_diff.months) != 1 else ''}")
     if l_diff.days:
-        l_parts.append(f"{l_diff.days} day{'s' if l_diff.days != 1 else ''}")
+        l_parts.append(f"{abs(l_diff.days)} day{'s' if abs(l_diff.days) != 1 else ''}")
     if l_diff.hours:
-        l_parts.append(f"{l_diff.hours} hour{'s' if l_diff.hours != 1 else ''}")
+        l_parts.append(f"{abs(l_diff.hours)} hour{'s' if abs(l_diff.hours) != 1 else ''}")
     if l_diff.minutes:
-        l_parts.append(f"{l_diff.minutes} minute{'s' if l_diff.minutes != 1 else ''}")
+        l_parts.append(f"{abs(l_diff.minutes)} minute{'s' if abs(l_diff.minutes) != 1 else ''}")
     if l_diff.seconds or not l_parts:
-        l_parts.append(f"{l_diff.seconds} second{'s' if l_diff.seconds != 1 else ''}")
+        l_parts.append(f"{abs(l_diff.seconds)} second{'s' if abs(l_diff.seconds) != 1 else ''}")
     return f"{', '.join(l_parts[:3])} {'ago' if l_past else 'from now'}"
 
 log_print(f"Loaded {__name__} version: {__version__} by {__author__}. This version was released {_time_since(__version__)}", arg_type="INFO")
