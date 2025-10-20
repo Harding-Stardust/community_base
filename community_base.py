@@ -75,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-10-19 23:21:54"
+__version__ = "2025-10-20 17:41:54"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -232,7 +232,7 @@ def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
     return
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def log_print(arg_string: str, arg_actually_print: bool = True, arg_type: str = "DEBUG") -> None:
+def log_print(arg_string: Union[str, int, bool], arg_actually_print: bool = True, arg_type: str = "DEBUG") -> None:
     ''' Used for code trace while developing the project '''
     _check_if_long_running_script_should_abort(arg_actually_print)
     if arg_actually_print or __GLOBAL_LOG_EVERYTHING:
@@ -686,7 +686,7 @@ def _ida_DLL() -> Any: #  This used to be Union[_ctypes.CDLL, _ctypes.WinDLL] bu
     Hex-Rays blog about it (OBS! Outdated!): <https://hex-rays.com/blog/calling-ida-apis-from-idapython-with-ctypes>
     '''
 
-    l_bits: str = "64" if ida_is_64bit() else "32"
+    l_bits: str = "64" if ida_is_64bit() else ""
     if ida_version() >= 900:
         l_bits = "" # IDA 9.0 removed the ida64.dll and ida32.dll and just calls it ida.dll now
 
@@ -1260,10 +1260,9 @@ def pdb_load(arg_local_pdb_file: str = "",
 
 class _input_file_object():
     ''' Information about the file that is loaded in IDA such as filename, file type and so on
-
         Please use the object created in community_base.input_file. E.g. print(community_base.input_file.idb_path)
+        There are some entries that are hidden by having the first character '_'
     '''
-    _SHOW_USELESS_PROPERTIES = False
     bits = property(fget=lambda self: _ida_ida.inf_get_app_bitness() or 0, doc='64/32/16: int')
     compiler = property(fget=lambda self: _compiler_str(), doc="What compiler was used to compile this code")
     crc32 = property(fget=lambda self: ''.join(hex_parse(_ida_nalt.retrieve_input_file_crc32().to_bytes(4, 'big'))), doc='CRC-32 as ascii string')
@@ -1271,16 +1270,13 @@ class _input_file_object():
     entry_point = property(fget=lambda self: _ida_ida.inf_get_start_ip(), doc='Address of the first instruction that is executed')
     filename = property(fget=lambda self: _ida_nalt.get_input_file_path() or "", doc='Full path and filename to the file WHEN IT WAS LOADED INTO IDA. The file might been moved by the user and this path might not be valid.')
     format = property(fget=lambda self: _ida_loader.get_file_type_name() if self.filename else "<<< no file loaded >>>", doc='Basically PE or ELF. e.g. PE gives "Portable executable for 80386 (PE)"')
-    if _SHOW_USELESS_PROPERTIES:
-        idb_creation_time = property(fget=lambda self: _time.strftime("%Y-%m-%d %H:%M:%S", _datetime.timetuple(_datetime.fromtimestamp(_ida_nalt.get_idb_ctime()))), doc='When the IDB was created') # useless?
-        idb_number_of_changes = property(fget=lambda self: _ida_ida.inf_get_database_change_count(), doc='Number of changes done in the IDB') # useless?
-        idb_opened_number_of_times = property(fget=lambda self: _ida_nalt.get_idb_nopens(), doc='Number of times the IDB have been opened') # useless?
+    _idb_creation_time = property(fget=lambda self: _time.strftime("%Y-%m-%d %H:%M:%S", _datetime.timetuple(_datetime.fromtimestamp(_ida_nalt.get_idb_ctime()))), doc='When the IDB was created') # useless?
+    _idb_number_of_changes = property(fget=lambda self: _ida_ida.inf_get_database_change_count(), doc='Number of changes done in the IDB') # useless?
+    _idb_opened_number_of_times = property(fget=lambda self: _ida_nalt.get_idb_nopens(), doc='Number of times the IDB have been opened') # useless?
     idb_path = property(fget=lambda self: _ida_loader.get_path(_ida_loader.PATH_TYPE_IDB), doc='Full path to the IDB. Replacement for ida_utils.GetIdbDir()')
-    if _SHOW_USELESS_PROPERTIES:
-        idb_work_seconds = property(fget=lambda self: _ida_nalt.get_elapsed_secs(), doc='Number of seconds the IDB have been open') # useless?
+    _idb_work_seconds = property(fget=lambda self: _ida_nalt.get_elapsed_secs(), doc='Number of seconds the IDB have been open') # useless?
     idb_version = property(fget=lambda self: _ida_ida.inf_get_version(), doc='The version that the IDB format is in. If you created the IDB in an older version of IDA Pro, then this will differ from ida_version()')
-    if _SHOW_USELESS_PROPERTIES:
-        initial_ida_version = property(fget=lambda self: _ida_nalt.get_initial_ida_version(), doc="The version of IDA that created this IDB") # useless?
+    _initial_ida_version = property(fget=lambda self: _ida_nalt.get_initial_ida_version(), doc="The version of IDA that created this IDB") # useless?
     imagebase = property(fget=lambda self: _ida_nalt.get_imagebase(), doc='The address the input file will be/is loaded at')
     is_dll = property(fget=lambda self: _ida_ida.inf_is_dll(), doc='Is the file a DLL file?')
     loader = property(fget=lambda self: _loader_name().upper() if self.filename else "<<< No file loaded >>>", doc='Name of the IDA loader that is parsing the file when loading it into IDA')
@@ -6191,7 +6187,7 @@ def _test_TWidget(arg_debug: bool = False) -> bool:
     if not __QT_IS_AVAILABLE:
         log_print("Qt is not available, failing test", arg_type="ERROR")
         return False
-    l_funcs_TWidget_ptr = _ida_kernwin.open_funcs_window(0)
+    l_funcs_TWidget_ptr = _ida_kernwin.open_disasm_window("test_window")
     test_1 = TWidget(l_funcs_TWidget_ptr)
     test_2 = TWidget(test_1)
     test_3 = TWidget(test_2.as_PyQtWidget())
@@ -6203,6 +6199,11 @@ def _test_TWidget(arg_debug: bool = False) -> bool:
     log_print(f"Checkpoint 2: {res}", arg_debug)
     res &= test_3.window_title() == test_4.window_title()
     log_print(f"Checkpoint 3: {res}", arg_debug)
+    test_1.close()
+    test_2.close()
+    test_3.close()
+    test_4.close()
+
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -6262,8 +6263,10 @@ def _test_relative_virtual_address(arg_debug: bool = False) -> bool:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_convert_to_usercall(arg_debug: bool = False) -> bool:
-    ''' Convert the entry point to usercall and verify that it has __userpurge or __usercall in the prototype '''
-    l_function_to_convert = input_file.entry_point # TODO: Some files have an CM_CC_UNKNOWN at the entrypoint, how to make this test work relibly?
+    ''' Convert the entry point to usercall and verify that it has __userpurge or __usercall in the prototype.
+        Requires an active debugging session.
+    '''
+    l_function_to_convert = "kernelbase_LoadLibraryA"
     l_prototype_before = function_prototype(l_function_to_convert, arg_debug=arg_debug)
     res = function_convert_to_usercall(l_function_to_convert, arg_debug=arg_debug)
     log_print(f"function_convert_to_usercall({_hex_str_if_int(l_function_to_convert)}) failed", not res, arg_type="ERROR")
@@ -6277,9 +6280,9 @@ def _test_convert_to_usercall(arg_debug: bool = False) -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_input_file(arg_debug: bool = False) -> bool:
     ''' Test the input file object '''
-    l_loader_name = input_file.loader # This property will make call chain to ctypes also
-    log_print(f"loader name: {l_loader_name}", arg_debug)
-    res = l_loader_name != ""
+    l_info = str(input_file) # Some properties will make call chain to ctypes also
+    log_print(f"l_info:\n{l_info}", arg_debug)
+    res = l_info != ""
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -6288,8 +6291,6 @@ def _test_GetProcAddress_on_Windows(arg_debug: bool = False) -> bool:
     l_function_to_test = "LoadLibraryA"
     l_LoadLibraryA_addr = win_GetProcAddress("kernel32", l_function_to_test)
     res = name(l_LoadLibraryA_addr, arg_debug=arg_debug) == "kernel32_" + l_function_to_test
-
-
     l_should_be_None = win_GetProcAddress("kernel32", "Nonexistantfunction")
     res &= l_should_be_None is None
 
