@@ -31,7 +31,7 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 - Cancel scripts that take too long. You can copy the the string "abort.ida" into the clipboard and within 10 seconds, the script will stop. Check out ```_check_if_long_running_script_should_abort()``` for implementation
 - Easy bug reporting. See the function ```bug_report()```
 - Get some good links to helpful resources. See the function ```links()```
-- when developing, it's nice to have a fast and easy way to reload the script and all it's dependencies, see the function ```reload_module()```
+- when developing, it's nice to have a fast and easy way to reload the script and all it's dependencies, see the function ```reload_python_module()```
 - Load shellcode into the running process. See ```load_file_into_memory()``` using [AppCall](https://www.youtube.com/watch?v=GZUHXkV0vdM)
 - Help with [AppCall](https://www.youtube.com/watch?v=GZUHXkV0vdM) to call functions that are inside the executable. (Think of decrypt functions) E.g. ```win_LoadLibraryA()```
 - Simple and fast way to get info about APIs, see ```google()```
@@ -75,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-10-20 17:41:54"
+__version__ = "2025-10-23 16:19:06"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -97,7 +97,6 @@ import re as _re
 import time as _time
 import platform as _platform
 from datetime import datetime as _datetime
-from dateutil.relativedelta import relativedelta as _relativedelta
 from datetime import timezone as _timezone
 import logging as _logging
 import ctypes as _ctypes
@@ -105,12 +104,27 @@ import json as _json # TODO: Change to json5?
 from typing import Union, List, Dict, Tuple, Any, Optional, Callable
 from types import ModuleType
 import inspect as _inspect
-from pydantic import validate_call # pip install pydantic
-import pyperclip as _pyperclip # type: ignore[import-untyped] # pip install pyperclip
+__missing_imports: List[str] = []
 try:
-    import chardet as _chardet # pip install chardet
+    from pydantic import validate_call
 except ImportError:
-    print(f"{__file__}: Missing module chardet, this module is used to guess string encoding. It's nice to have, not need to have. pip install chardet")
+    __missing_imports.append("pydantic")
+try:
+    import pyperclip as _pyperclip # type: ignore[import-untyped]
+except ImportError:
+    __missing_imports.append("pyperclip")
+try:
+    import chardet as _chardet
+except ImportError:
+    __missing_imports.append("chardet")
+try:
+    from dateutil.relativedelta import relativedelta as _relativedelta
+except ImportError:
+    __missing_imports.append("python-dateutil")
+
+if __missing_imports:
+    print(f"{__file__}: You are missing some needed modules, you can run the following to install them: pip install {' '.join(__missing_imports)}")
+    raise ImportError(f"Missing some important modules: {' '.join(__missing_imports)}")
 
 import ida_allins as _ida_allins # type: ignore[import-untyped]
 import ida_auto as _ida_auto # type: ignore[import-untyped]
@@ -546,14 +560,14 @@ def ida_config(arg_key: str, arg_value: str) -> bool:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_save_database(arg_new_filename: str = "",
-                      arg_database_flags: int = 0xFFFFFFFF,
+                      arg_database_flags: int = -1,
                       arg_snapshot_root: Optional[_ida_loader.snapshot_t] = None,
                       arg_snapshot_attribute: Optional[_ida_loader.snapshot_t] = None) -> bool:
     ''' Save current database using a new file name.
 
     @param arg_new_filename: output database file name; not set means the current path
-    @param arg_database_flags: 0xFFFFFFFF means the current flags, See ida_loader.DBFL_* for flags
-    @param arg_snapshot_root: optional, snapshot tree root.
+    @param arg_database_flags: -1 means the current flags, See ida_loader.DBFL_* for flags
+    @param arg_snapshot_root: optional, snapshot tree root
     @param arg_snapshot_attribute: optional, snapshot attributes
     @return success
     '''
@@ -564,7 +578,7 @@ def ida_save_database(arg_new_filename: str = "",
     if l_new_filename and not l_new_filename.endswith(l_my_extension):
         l_new_filename += l_my_extension
 
-    return _ida_loader.save_database(outfile=l_new_filename, flags=arg_database_flags, root=arg_snapshot_root, attr=arg_snapshot_attribute)
+    return _ida_loader.save_database(outfile=l_new_filename, flags=_ida_idaapi.as_uint32(arg_database_flags), root=arg_snapshot_root, attr=arg_snapshot_attribute)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_exit(arg_exit_code: int = 0,
@@ -587,7 +601,7 @@ def ida_exit(arg_exit_code: int = 0,
         _ida_pro.qexit(arg_exit_code)
         return # We will never reach this line
 
-    _ = ida_config("COLLECT_GARBAGE", "YES" if _bool(arg_collect_garbage) else "NO")
+    _ = ida_config("COLLECT_GARBAGE", "YES" if _bool(arg_collect_garbage) else "NO") # TODO: _ida_loader.set_database_flag(_ida_loader.DBFL_COMP, True) ?
     _ = ida_config("PACK_DATABASE", "2" if arg_compress_database else "1") # set the default database packing option to "deflate" in old IDA and "zstd" in 9.1+;
 
     _ida_pro.qexit(arg_exit_code)
@@ -625,14 +639,6 @@ def decompiler_version() -> str:
         log_print(l_error_str, arg_type="ERROR")
         return l_error_str
     return l_temp
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _python_version() -> Tuple[int, int]:
-    ''' Find the Python version we are running.
-    Returns a tuple with (major_version: int, minor_version: int)
-    '''
-    # TODO: Delete this function?
-    return (_sys.version_info.major, _sys.version_info.minor)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _python_module_to_str(arg_module: Union[str, ModuleType, None] = None) -> str:
@@ -2159,7 +2165,13 @@ def function_prototype(arg_function_name_or_ea: EvaluateType,
         arg_cached_cfunc = decompile(arg_function_name_or_ea, arg_force_fresh_decompilation=arg_force_fresh_decompilation, arg_debug=arg_debug)
     if not arg_cached_cfunc:
         log_print(f"Since we failed to decompile {_hex_str_if_int(arg_function_name_or_ea)}, we are calling str(get_type({_hex_str_if_int(arg_function_name_or_ea)}, arg_debug={arg_debug}))", arg_type="INFO")
-        return str(get_type(arg_function_name_or_ea, arg_debug=arg_debug))
+        l_temp = get_type(arg_function_name_or_ea, arg_debug=arg_debug)
+        if l_temp is None:
+            log_print(f"get_type({_hex_str_if_int(arg_function_name_or_ea)}) failed to get any type")
+            return "<<< Error: No type found >>>"
+        res = str(l_temp)
+        log_print(f"Returning '{res}'", arg_debug)
+        return res
 
     l_function_prototype: str = _ida_lines.tag_remove(arg_cached_cfunc.print_dcl()) + ';'
     if arg_allow_comments:
@@ -4515,14 +4527,10 @@ def debugger_process_start(arg_path: str = "", arg_args: str = "", arg_start_dir
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def debugger_process_id() -> int:
-    ''' Get the PID of the running process. Only works when the process is suspended (I think...)
+    ''' Get the PID of the running process.
 
     @return pid on OK, -1 --> error
     '''
-    if not process_is_suspended():
-        log_print("The process must be suspended to be able to get the PID. Use process_suspend() and to resume the process, use process_resume()", arg_type="ERROR")
-        return -1
-
     l_debug_event: _ida_idd.debug_event_t = _ida_dbg.get_debug_event()
     # l_debug_event.info() or l_debug_event.modinfo() # Causes IDA bug: Internal error 1502 occurred when running a script. Either
     #   - the script misused the IDA API, or
@@ -4963,7 +4971,7 @@ def load_file_into_memory(arg_file_path: str, arg_executable: bool = True, arg_d
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def win_PEB(arg_debug: bool = False) -> Optional[int]:
-    ''' Gets the address to the PEB (Process Environment Block) '''
+    ''' Gets the address to the PEB (Process Environment Block). Needs a running debugging session and it needs to be Local Windows Debugger. '''
     if not debugger_is_active():
         log_print("This function can only be called in an active debugging session", arg_type="ERROR")
         return None
@@ -5594,6 +5602,8 @@ def ida_registy_read(arg_key: str, arg_subkey: Optional[str] = None) -> Tuple[st
 #     ''' # TODO: Implement '''
 #     return ("# TODO: Implement", "# TODO: Implement")
 
+_G_CALLING_CONVENTION_INT_TO_STR: Dict[int, str] = _dict_sort(_int_to_str_dict_from_module(_ida_typeinf, "CM_CC.*"))
+
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def function_calling_convention(arg_ea: EvaluateType,
                                 arg_new_calling_convertion: Union[str, int] = -1,
@@ -5604,17 +5614,16 @@ def function_calling_convention(arg_ea: EvaluateType,
     @return -1 on fail otherwise ida_typeinf.CM_CC_*
     '''
 
-    l_cfunc = arg_cached_cfunc or decompile(arg_ea, arg_force_fresh_decompilation=True, arg_debug=arg_debug)
-    if l_cfunc is None:
-        log_print(f"decompile({_hex_str_if_int(arg_ea)}) failed", arg_type="ERROR")
+    l_function = function(arg_ea, arg_debug=arg_debug)
+    if l_function is None:
+        log_print(f"No function at {_hex_str_if_int(arg_ea)}", arg_type="ERROR")
         return -1
-    l_function_tinfo = _ida_typeinf.tinfo_t()
-    if not l_cfunc.get_func_type(l_function_tinfo):
-        log_print("l_cfunc.get_func_type() failed", arg_type="ERROR")
+    l_function_tinfo = get_type(arg_name_or_ea=l_function.start_ea, arg_cached_cfunc=arg_cached_cfunc, arg_debug=arg_debug)
+    if l_function_tinfo is None:
+        log_print(f"get_type(0x{l_function.start_ea:x}) failed", arg_type="ERROR")
         return -1
     l_function_details = _ida_typeinf.func_type_data_t()
     l_function_tinfo.get_func_details(l_function_details)
-
     l_calling_convention: int = _ida_typeinf.CM_CC_MASK
     if ida_version() >= 920:
         l_calling_convention &= l_function_details.get_explicit_cc() # https://python.docs.hex-rays.com/ida_typeinf/index.html#ida_typeinf.func_type_data_t.get_explicit_cc
@@ -5625,10 +5634,7 @@ def function_calling_convention(arg_ea: EvaluateType,
         return l_calling_convention
 
     # If we get here, then we are setting a new calling convention
-    l_calling_conventions_int_to_str: Dict[int, str] = _int_to_str_dict_from_module(_ida_typeinf, "CM_CC.*")
-    l_calling_conventions_str_to_int: Dict[str, int] = _dict_swap_key_and_value(l_calling_conventions_int_to_str)
-
-    # Smrat convert the user input to a ida_typinf.CM_CC_*
+    # Smart convert the user input to a ida_typinf.CM_CC_*
     if isinstance(arg_new_calling_convertion, str):
         arg_new_calling_convertion = arg_new_calling_convertion.upper()
         if arg_new_calling_convertion.startswith("__"):
@@ -5642,14 +5648,14 @@ def function_calling_convention(arg_ea: EvaluateType,
         if not arg_new_calling_convertion.startswith("CM_CC_"):
             arg_new_calling_convertion = "CM_CC_" + arg_new_calling_convertion
         log_print(f"Trying to look up: {arg_new_calling_convertion}", arg_debug)
-        res = l_calling_conventions_str_to_int.get(arg_new_calling_convertion, -1)
+        res = _dict_swap_key_and_value(_G_CALLING_CONVENTION_INT_TO_STR).get(arg_new_calling_convertion, -1)
         if res == -1:
             log_print(f"Failed to find: {arg_new_calling_convertion}", arg_type="ERROR")
             return -1
     else:
         res = arg_new_calling_convertion
 
-    if res not in l_calling_conventions_int_to_str:
+    if res not in _G_CALLING_CONVENTION_INT_TO_STR:
         log_print(f"Invalid calling convention: {res}", arg_type="ERROR")
         return -1
 
@@ -5659,7 +5665,7 @@ def function_calling_convention(arg_ea: EvaluateType,
         l_function_details.cc = res
 
     l_function_tinfo.create_func(l_function_details)
-    _ = _ida_typeinf.apply_tinfo(l_cfunc.entry_ea, l_function_tinfo, _ida_typeinf.TINFO_DEFINITE)
+    _ = _ida_typeinf.apply_tinfo(l_function.start_ea, l_function_tinfo, _ida_typeinf.TINFO_DEFINITE)
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})

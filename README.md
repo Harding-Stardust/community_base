@@ -26,7 +26,7 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 - Cancel scripts that take too long. You can copy the the string "abort.ida" into the clipboard and within 10 seconds, the script will stop. Check out ```_check_if_long_running_script_should_abort()``` for implementation
 - Easy bug reporting. See the function ```bug_report()```
 - Get some good links to helpful resources. See the function ```links()```
-- when developing, it's nice to have a fast and easy way to reload the script and all it's dependencies, see the function ```reload_module()```
+- when developing, it's nice to have a fast and easy way to reload the script and all it's dependencies, see the function ```reload_python_module()```
 - Load shellcode into the running process. See ```load_file_into_memory()``` using [AppCall](https://www.youtube.com/watch?v=GZUHXkV0vdM)
 - Help with [AppCall](https://www.youtube.com/watch?v=GZUHXkV0vdM) to call functions that are inside the executable. (Think of decrypt functions) E.g. ```win_LoadLibraryA()```
 - Simple and fast way to get info about APIs, see ```google()```
