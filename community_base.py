@@ -75,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-10-23 16:19:06"
+__version__ = "2025-10-23 23:20:06"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -123,8 +123,9 @@ except ImportError:
     __missing_imports.append("python-dateutil")
 
 if __missing_imports:
-    print(f"{__file__}: You are missing some needed modules, you can run the following to install them: pip install {' '.join(__missing_imports)}")
-    raise ImportError(f"Missing some important modules: {' '.join(__missing_imports)}")
+    l_error_msg = f"{__file__}: You are missing some needed modules, you can run the following to install them: pip install {' '.join(__missing_imports)}"
+    print(l_error_msg)
+    raise ImportError(l_error_msg)
 
 import ida_allins as _ida_allins # type: ignore[import-untyped]
 import ida_auto as _ida_auto # type: ignore[import-untyped]
@@ -223,7 +224,7 @@ def __simulate_long_running_task() -> None:
 
 _g_timestamp_of_last_checked = _time.time()
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
+def _check_if_long_running_script_should_abort() -> None:
     ''' Scripts that take long time to run can be aborted by copying any of the following strings into the clipboard: "abort.ida", "ida.abort", "ida.stop", "stop.ida"
         This is checked every 10 seconds and raises a TimeoutError() exception
 
@@ -233,9 +234,6 @@ def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
     l_now = _time.time()
     if (l_now - _g_timestamp_of_last_checked) > 10:
         _g_timestamp_of_last_checked = l_now
-        # if arg_debug:
-            # log_print("Checking for abort.ida in clipboard...")
-
         l_clipboard_content = _pyperclip.paste().strip()
         if l_clipboard_content in ["abort.ida", "ida.abort", "ida.stop", "stop.ida"]:
             _pyperclip.copy("") # Clear the clipboard
@@ -246,23 +244,38 @@ def _check_if_long_running_script_should_abort(arg_debug: bool = False) -> None:
     return
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def log_print(arg_string: Union[str, int, bool], arg_actually_print: bool = True, arg_type: str = "DEBUG") -> None:
+def log_print(arg_string: Union[str, int, bool], arg_actually_print: bool = True, arg_stack_level: int = 4, arg_type: str = "DEBUG") -> None:
     ''' Used for code trace while developing the project '''
-    _check_if_long_running_script_should_abort(arg_actually_print)
+    _check_if_long_running_script_should_abort()
     if arg_actually_print or __GLOBAL_LOG_EVERYTHING:
         if arg_type == "DEBUG":
-            _g_logger.debug(arg_string, stacklevel=4)
+            _g_logger.debug(arg_string, stacklevel=arg_stack_level)
         elif arg_type == "INFO":
-            _g_logger.info(arg_string, stacklevel=4)
+            _g_logger.info(arg_string, stacklevel=arg_stack_level)
         elif arg_type == "WARNING":
-            _g_logger.warning(arg_string, stacklevel=4)
+            _g_logger.warning(arg_string, stacklevel=arg_stack_level)
         elif arg_type == "ERROR":
-            _g_logger.error(arg_string, stacklevel=4)
+            _g_logger.error(arg_string, stacklevel=arg_stack_level)
         elif arg_type == "CRITICAL":
-            _g_logger.critical(arg_string, stacklevel=4)
+            _g_logger.critical(arg_string, stacklevel=arg_stack_level)
         else:
-            _g_logger.debug(arg_string, stacklevel=4)
+            _g_logger.debug(arg_string, stacklevel=arg_stack_level)
     return
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def log_error(arg_string: Union[str, int, bool], arg_actually_print: bool = True) -> None:
+    ''' Prints Error messages '''
+    log_print(arg_string=arg_string, arg_actually_print=arg_actually_print, arg_stack_level=7, arg_type="ERROR")
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def log_warning(arg_string: Union[str, int, bool], arg_actually_print: bool = True) -> None:
+    ''' Prints Warning messages '''
+    log_print(arg_string=arg_string, arg_actually_print=arg_actually_print, arg_stack_level=7, arg_type="WARNING")
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def log_info(arg_string: Union[str, int, bool], arg_actually_print: bool = True) -> None:
+    ''' Prints Info messages '''
+    log_print(arg_string=arg_string, arg_actually_print=arg_actually_print, arg_stack_level=7, arg_type="INFO")
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _bool(arg_user_input: BoolishType) -> bool:
@@ -378,12 +391,11 @@ def open_url(arg_text_blob_with_urls_in_it_or_function: Union[str, Callable]) ->
         ida_kernwin.open_url docs: <https://python.docs.hex-rays.com/ida_kernwin/index.html#ida_kernwin.open_url>
         Replacement for ida_kernwin.open_url()
     '''
-
     if isinstance(arg_text_blob_with_urls_in_it_or_function, str):
         l_url_regex: str = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))" # https://www.geeksforgeeks.org/python-check-url-string/
         urls = _re.findall(l_url_regex, arg_text_blob_with_urls_in_it_or_function)
         if not urls:
-            log_print(f"No URLs found in '{arg_text_blob_with_urls_in_it_or_function}'", arg_type="ERROR")
+            log_error(f"No URLs found in '{arg_text_blob_with_urls_in_it_or_function}'")
         for url in urls:
             _ida_kernwin.open_url(url[0])
         return
