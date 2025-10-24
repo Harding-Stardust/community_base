@@ -75,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-10-23 23:20:06"
+__version__ = "2025-10-24 15:25:12"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -244,38 +244,23 @@ def _check_if_long_running_script_should_abort() -> None:
     return
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def log_print(arg_string: Union[str, int, bool], arg_actually_print: bool = True, arg_stack_level: int = 4, arg_type: str = "DEBUG") -> None:
+def log_print(arg_string: Union[str, int, bool], arg_actually_print: bool = True, arg_type: str = "DEBUG") -> None:
     ''' Used for code trace while developing the project '''
     _check_if_long_running_script_should_abort()
     if arg_actually_print or __GLOBAL_LOG_EVERYTHING:
         if arg_type == "DEBUG":
-            _g_logger.debug(arg_string, stacklevel=arg_stack_level)
+            _g_logger.debug(arg_string, stacklevel=4)
         elif arg_type == "INFO":
-            _g_logger.info(arg_string, stacklevel=arg_stack_level)
+            _g_logger.info(arg_string, stacklevel=4)
         elif arg_type == "WARNING":
-            _g_logger.warning(arg_string, stacklevel=arg_stack_level)
+            _g_logger.warning(arg_string, stacklevel=4)
         elif arg_type == "ERROR":
-            _g_logger.error(arg_string, stacklevel=arg_stack_level)
+            _g_logger.error(arg_string, stacklevel=4)
         elif arg_type == "CRITICAL":
-            _g_logger.critical(arg_string, stacklevel=arg_stack_level)
+            _g_logger.critical(arg_string, stacklevel=4)
         else:
-            _g_logger.debug(arg_string, stacklevel=arg_stack_level)
+            _g_logger.debug(arg_string, stacklevel=4)
     return
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def log_error(arg_string: Union[str, int, bool], arg_actually_print: bool = True) -> None:
-    ''' Prints Error messages '''
-    log_print(arg_string=arg_string, arg_actually_print=arg_actually_print, arg_stack_level=7, arg_type="ERROR")
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def log_warning(arg_string: Union[str, int, bool], arg_actually_print: bool = True) -> None:
-    ''' Prints Warning messages '''
-    log_print(arg_string=arg_string, arg_actually_print=arg_actually_print, arg_stack_level=7, arg_type="WARNING")
-
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def log_info(arg_string: Union[str, int, bool], arg_actually_print: bool = True) -> None:
-    ''' Prints Info messages '''
-    log_print(arg_string=arg_string, arg_actually_print=arg_actually_print, arg_stack_level=7, arg_type="INFO")
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _bool(arg_user_input: BoolishType) -> bool:
@@ -395,7 +380,7 @@ def open_url(arg_text_blob_with_urls_in_it_or_function: Union[str, Callable]) ->
         l_url_regex: str = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))" # https://www.geeksforgeeks.org/python-check-url-string/
         urls = _re.findall(l_url_regex, arg_text_blob_with_urls_in_it_or_function)
         if not urls:
-            log_error(f"No URLs found in '{arg_text_blob_with_urls_in_it_or_function}'")
+            log_print(f"No URLs found in '{arg_text_blob_with_urls_in_it_or_function}'", arg_type="ERROR")
         for url in urls:
             _ida_kernwin.open_url(url[0])
         return
@@ -2995,20 +2980,24 @@ def _validate_encoding_name(arg_encoding: str) -> str:
     @return The normalized encoding name
     '''
     arg_encoding = arg_encoding.lower()
-    if not arg_encoding.startswith("iso"):
-        arg_encoding = arg_encoding.replace("-", "")
-
+    if arg_encoding.startswith(("iso", "windows")):
+        return arg_encoding
+    
+    arg_encoding = arg_encoding.replace("-", "")
     if arg_encoding in ["latin1"]:
         res = "Latin1"
     elif arg_encoding in ["utf8"]:
         res = "UTF-8"
-    elif arg_encoding in ["utf16", "utf16le", "ucs2"]:
+    elif arg_encoding in ["utf16", "utf16le"]:
         res = "UTF-16LE"
     elif arg_encoding in ["utf16be"]:
         res = "UTF-16BE"
     elif arg_encoding in ["utf32", "utf32le"]:
         res = "UTF-32LE"
+    elif arg_encoding in ["utf32be"]:
+        res = "UTF-32BE"
     else:
+        log_print(f"Got a very rare encoding, is this correct? arg_encoding: {arg_encoding}", arg_type="WARNING")
         res = arg_encoding
     return res
 
@@ -3019,13 +3008,14 @@ def _encoding_to_strtype(arg_encoding: str, arg_debug: bool = False) -> int:
     @return returns the str_type: int, returns -1 on error
     '''
     l_encoding: str = _validate_encoding_name(arg_encoding)
+    log_print(f"l_encoding: {l_encoding}", arg_debug)
     l_encoding_index: int = _ida_nalt.add_encoding(l_encoding) # If the encoding exists, then return the index, else create it and return index.
     if l_encoding_index == -1:
         log_print(f'ida_nalt.add_encoding("{arg_encoding}") failed.', arg_type="ERROR")
         return -1
     log_print(f"Encoding index: {l_encoding_index}", arg_debug)
     res: int = _ida_nalt.make_str_type(0, l_encoding_index)
-    log_print(f"l_strtype: {res}", arg_debug)
+    log_print(f"l_strtype: 0x{res:x}", arg_debug)
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -3111,7 +3101,7 @@ def string(arg_ea: EvaluateType,
     if arg_encoding is None:
         l_type = _ida_nalt.get_str_type(l_addr)
     if _is_invalid_strtype(l_type):
-        log_print(f"IDA doesn't think there is a string at this address. (0x{l_type:x} is not a valid string type).", arg_type="ERROR")
+        log_print(f"IDA doesn't think there is a string at {_hex_str_if_int(arg_ea)}. (0x{l_type:x} is not a valid string type).", arg_type="ERROR")
         l_item_head: int = _ida_bytes.get_item_head(l_addr)
         if l_addr != l_item_head:
             log_print(f"IDA thinks that the item starts at 0x{l_item_head:x} instead of 0x{l_addr:x} which you entered. Maybe that's a clue?", arg_type="ERROR")
@@ -3140,7 +3130,7 @@ def string(arg_ea: EvaluateType,
         l_bytes_read = _ida_bytes.get_strlit_contents(l_addr, l_len, l_type)
         res = l_bytes_read.decode(_idaapi_encoding_from_strtype(l_type))
         if not res:
-            log_print('l_bytes_read.decode() failed', arg_type="ERROR")
+            log_print(f'l_bytes_read.decode() failed. arg_ea: {_hex_str_if_int(arg_ea)}, l_type: 0x{l_type:x}, _idaapi_encoding_from_strtype(l_type): {_idaapi_encoding_from_strtype(l_type)}', arg_type="ERROR")
             return None
 
     if not res:
@@ -3185,28 +3175,25 @@ def wide_string(arg_ea: EvaluateType, arg_len: int = 0, arg_flags: int = _ida_by
 utf16_string = string_utf16 = wide_string
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def strings(arg_only_first: int = 100000, arg_debug: bool = False) -> List[Tuple[int, int, str, str, int]]:
-    ''' Returns all strings that IDA has found.
-    The result is a list with tuples: (address: int, length: int, encoding: str, content: str, _ida_nalt.STRTYPE_*: enum)
-
-    @param arg_only_first: Only get the first X entries, default: 100000 (should be enough for most programs)
+def strings(arg_only_first: int = 100_000, arg_debug: bool = False) -> List[_idautils.Strings.StringItem]:
+    ''' Returns strings that IDA has found.
+    
+    @param arg_only_first: Only get the first X entries, default: 100_000 (should be enough for most programs)
     '''
-
+    # TODO: Add config to the arguments? Like arg_min_len = 10 ?
     res = []
-    for string_item in _idautils.Strings():
-        # l_string_content = "# TODO: testing speed"
-        l_string_content: Optional[str] = string(string_item, arg_encoding=_idaapi_encoding_from_strtype(string_item.strtype), arg_debug=arg_debug) # TODO: Verify that this read is OK since I pass a StringItem and that will make string() ignore some arguments
-        if l_string_content is None:
-            l_string_content = f"<<< Could not read string at 0x{string_item.ea:x} >>>"
-        res.append((string_item.ea, string_item.length, _idaapi_encoding_from_strtype(string_item.strtype), l_string_content, string_item.strtype))
-        log_print(f'Found string: {l_string_content}', arg_debug)
-        arg_only_first -= 1
-        if arg_only_first < 1:
+    l_idx: int = 0
+    for string_item in _idautils.Strings(): # TODO: Investigate id ida_domain should be used
+        res.append(string_item)
+        log_print(f'Found string at: 0x{string_item.ea:x}', arg_debug)
+        l_idx += 1
+        if l_idx >= arg_only_first:
+            log_print(f"Showing only first {arg_only_first} strings and I got to that number now", arg_type="WARNING")
             break
     log_print(f"len(res) = {len(res)}", arg_debug)
     return res
 
-def _strings_profiled():
+def __strings_profiled():
     r''' Internal function. Do not use.
     Profile code to see what is taking most time
     From the command console: snakeviz C:\temp\strings.prof
@@ -3226,6 +3213,7 @@ def _strings_profiled():
     stats = pstats.Stats(profiler).sort_stats('cumtime')
     stats.print_stats()
     stats.dump_stats(r'C:\temp\strings.prof')
+    return
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pointer_type(arg_type_or_function_name: Union[str, _ida_typeinf.tinfo_t], arg_debug: bool = False) -> Optional[_ida_typeinf.tinfo_t]:
@@ -6076,6 +6064,8 @@ setattr(_ida_idd.modinfo_t, '__repr__', __repr__type_address_str)
 setattr(_ida_range.range_t, '__str__', lambda self: f"start_ea: {_hex_str_if_int(self.start_ea)} --> end_ea: {_hex_str_if_int(self.end_ea)}")
 setattr(_ida_range.range_t, '__repr__', __repr__type_address_str)
 setattr(_ida_idd.process_info_t, '__repr__', lambda self: f"process name: {self.name}, PID: 0x{self.pid:x} ({self.pid})")
+setattr(_idautils.Strings.StringItem, "__repr__", __repr__type_address_str)
+setattr(_idautils.Strings.StringItem, "encoding", property(fget=lambda self: _idaapi_encoding_from_strtype(self.strtype)))
 
 
 # TESTS ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- TESTS
