@@ -4,11 +4,11 @@
 r''' This text is easier to read when the markdown is parsed: <https://github.com/Harding-Stardust/community_base/blob/main/README.md>
 
 # Summary
-This Python script will help you develop scripts for [Hexrays IDA Pro](https://hex-rays.com/ida-pro)
+This Python script will help you develop scripts for [Hex-Rays IDA Pro](https://hex-rays.com/ida-pro)
 community_base turns IDA Python into a [DWIM (Do What I Mean)](https://en.wikipedia.org/wiki/DWIM) style and I try to follow ["Principle of least astonishment"](https://en.wikipedia.org/wiki/Principle_of_least_astonishment)
 
 You can think of this script as padding between the user created scripts and the IDA Python API.
-If you develop scripts with this script as base, then if (when) Hexrays change something in their API, instead of fixing EVERY script out there
+If you develop scripts with this script as base, then if (when) Hex-Rays change something in their API, instead of fixing EVERY script out there
 the community can fix this script and all the user created scripts (that depends on this script) will work again.
 
 I try to have a low cognitive load. "What matters is the amount of confusion developers feel when going through the code." Quote from <https://minds.md/zakirullin/cognitive>
@@ -16,7 +16,7 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 # Why you should use this script
 - Easier to write plugins and scripts for IDA Python
 - Type hints on everything!
-- Strong typing. I use [Pydantic](https://docs.pydantic.dev/latest/) to force types. This makes the code much easier to read since you get an idea what a function expects and what it returns. I try to follow [PEP 484](https://peps.python.org/pep-0484/) as much as I can.
+- Strong typing. I use [Pydantic](https://docs.pydantic.dev/latest/) to force types. This makes the code much easier to read since you get an idea what a function expects and what it returns. I try to follow [PEP 484](https://peps.python.org/pep-0484/) as much as I can. I also use [mypy](https://www.mypy-lang.org/) to check my code.
 - Full function/variable names. This makes variables and functions easy to read at a glance.
 - Properly documented. I try to document as extensive I can without making redundent comments.
 - Easy to debug (hopefully!). All functions that are non-trivial have the last argument named ```arg_debug``` which is a bool that if set, prints out helpful information on what is happening in the code.
@@ -24,9 +24,9 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 - Understands what the user wants. I have type checks and treat input different depending on what you send in. E.g. addresses vs labels. In my script, everywhere you are expecting an address, you can send in a label (or register) that is then resolved. See ```address()``` and ```eval_expression()``` (same with where tinfo_t (type info) is expected, you can also send in a C-type string)
 - I have written the code as easy I can to READ (hopefully), it might not be the most Pythonic way (or the fastest) but I have focused on readability. However, I do understand that this is subjective.
 - Do _NOT_ conflict with other plugins. I am very careful to only overwrite things like docstrings, otherwise I add to the classes that are already in the IDA Python
-- I have wrappers around some of IDAs Python APIs that actually honors the type hints they have written. You can find them with this simple code:
+- I have wrappers around some of IDAs Python APIs that actually honors the type hints they have written. You can find them with this code:
 ```python
-[wrapper for wrapper in dir(community_base) if wrapper.startswith("_idaapi_")]
+import community_base; print("\n".join([wrapper.replace("_idaapi_","") for wrapper in dir(community_base) if wrapper.startswith("_idaapi_")]))
 ```
 - Cancel scripts that take too long. You can copy the the string "abort.ida" into the clipboard and within 10 seconds, the script will stop. Check out ```_check_if_long_running_script_should_abort()``` for implementation
 - Easy bug reporting. See the function ```bug_report()```
@@ -40,26 +40,19 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 - - alt + ins --> Copy current address into clipboard (same as [x64dbg](https://x64dbg.com/))
 - - shift + c --> Copy selected bytes into clipboard as hex text (same as [x64dbg](https://x64dbg.com/))
 - - delete --> smart delete. If the selected bytes are in code then make then NOPS (Intel only!) and if you press delete again (or if you are in data) then write 0x00
-- Much more that I can't think of right now as I need to publish this script before new years eve!
 
 # Installation
-To use this script, put is somewhere that IDA can find it. A good place is this filename:
+There are 2 ways to use this script, the recommended way is to download this file and put it in the plugins folder. That way you get access to the library and you get the new hotkeys. The plugins folder can be found like this:
 ```python
-import idaapi
-print(idaapi.__file__.replace("idaapi.py", "community_base.py"))
+import idaapi; print(idaapi.get_ida_subdirs("plugins")[0])
 ```
-It is strongly advised to edit your idapythonrc.py which can be found by typing the following in IDA:
-```python
-import idaapi
-import os
-print(os.path.join(idaapi.get_user_idadir(), "idapythonrc.py"))
-```
-and to get easy access to this script, add the line:
-```python
-import community_base as cb
-```
-Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directory-idausr>
 
+If you do __NOT__ want to add the new hotkeys and just use it as a library, download the file and put it somewhere IDA can find it:
+```python
+import idaapi; print(idaapi.__file__.replace("idaapi.py", "community_base.py"))
+```
+
+Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directory-idausr>
 
 # it _should_ work on all OSes but I have only tested on:
 
@@ -75,7 +68,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-10-24 15:25:12"
+__version__ = "2025-10-31 22:51:11"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -104,26 +97,26 @@ import json as _json # TODO: Change to json5?
 from typing import Union, List, Dict, Tuple, Any, Optional, Callable
 from types import ModuleType
 import inspect as _inspect
-__missing_imports: List[str] = []
+_missing_imports: List[str] = []
 try:
     from pydantic import validate_call
 except ImportError:
-    __missing_imports.append("pydantic")
+    _missing_imports.append("pydantic")
 try:
     import pyperclip as _pyperclip # type: ignore[import-untyped]
 except ImportError:
-    __missing_imports.append("pyperclip")
+    _missing_imports.append("pyperclip")
 try:
     import chardet as _chardet
 except ImportError:
-    __missing_imports.append("chardet")
+    _missing_imports.append("chardet")
 try:
     from dateutil.relativedelta import relativedelta as _relativedelta
 except ImportError:
-    __missing_imports.append("python-dateutil")
+    _missing_imports.append("python-dateutil")
 
-if __missing_imports:
-    l_error_msg = f"{__file__}: You are missing some needed modules, you can run the following to install them: pip install {' '.join(__missing_imports)}"
+if _missing_imports:
+    l_error_msg = f"{__file__}: You are missing some needed modules, you can run the following to install them: pip install {' '.join(_missing_imports)}"
     print(l_error_msg)
     raise ImportError(l_error_msg)
 
@@ -158,8 +151,8 @@ import ida_xref as _ida_xref # type: ignore[import-untyped]
 import idautils as _idautils # type: ignore[import-untyped]
 import ida_diskio as _ida_diskio # type: ignore[import-untyped]
 
-__QT_IS_AVAILABLE: bool = _ida_kernwin.is_idaq()
-if __QT_IS_AVAILABLE:
+_QT_IS_AVAILABLE: bool = _ida_kernwin.is_idaq()
+if _QT_IS_AVAILABLE:
     try:
         # IDA 9.2+ uses PySide6 while earlier versions use PyQt5
         from PySide6.QtWidgets import QApplication, QWidget, QMainWindow # type: ignore[import-untyped, import-not-found]
@@ -167,12 +160,7 @@ if __QT_IS_AVAILABLE:
         try:
             from PyQt5.QtWidgets import QApplication, QWidget, QMainWindow # type: ignore[import-untyped, import-not-found]
         except NotImplementedError:
-            __QT_IS_AVAILABLE = False
-
-    HOTKEY_DUMP_TO_DISK = 'w' # Select bytes and press w to dump it to disk in the same directory as the IDB. One can also call dump_to_disk(address, length) to dump from the console
-    HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT = 'shift-c' # Select bytes and press Shift-C to copy the marked bytes as hex text. Same shortcut as in x64dbg.
-    HOTKEY_COPY_CURRENT_ADDRESS = 'alt-ins' # Copy the current address as hex text into the clipboard. Same shortcut as x64dbg.
-    HOTKEY_SMART_DELETE_BYTES = 'del' # Pressing delete on code turns it into NOP (0x90) if it's already NOP (or data) then write 0x00
+            _QT_IS_AVAILABLE = False
 
 BufferType = Union[str, bytes, bytearray, List[str], List[bytes], List[bytearray]]
 BoolishType = Union[bool, int, str] # Can be evaluted by my function named _bool()
@@ -202,7 +190,7 @@ _g_custom_IDA_handler.setFormatter(_logging.Formatter('%(asctime)s [%(levelname)
 _g_logger.addHandler(_g_custom_IDA_handler)
 _g_logger.propagate = False
 
-# HELPERS ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Helpers ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- Helpers
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _timestamped_line(arg_str: str) -> str:
     ''' Add a timestamp at the beginning of the line
@@ -524,7 +512,7 @@ def ida_arguments() -> List[str]:
     '''
     # TODO: Delete this function?
     # TODO: check idc.ARGV? idc.ARGV is writeable, maybe use that?
-    if __QT_IS_AVAILABLE:
+    if _QT_IS_AVAILABLE:
         return QApplication.arguments()
     log_print("QT is not available, atm we cannot get the program arguments", arg_type="ERROR")
     return ["<<< invalid arguments >>>"]
@@ -679,8 +667,7 @@ def _python_load_module(arg_filepath: str) -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_is_64bit() -> bool:
     ''' Is the IDA process you are running in a 64 bit process? '''
-    # TODO: Delete this function? This is used for IDA 8.4
-    return _ida_idaapi.__EA64__
+    return _ida_idaapi.__EA64__ # This function is needed for IDA 8.4
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _ida_DLL() -> Any: #  This used to be Union[_ctypes.CDLL, _ctypes.WinDLL] but WinDLL is not supported on Linux, I guess I can't do anything useful here.
@@ -691,7 +678,7 @@ def _ida_DLL() -> Any: #  This used to be Union[_ctypes.CDLL, _ctypes.WinDLL] bu
 
     l_bits: str = "64" if ida_is_64bit() else ""
     if ida_version() >= 900:
-        l_bits = "" # IDA 9.0 removed the ida64.dll and ida32.dll and just calls it ida.dll now
+        l_bits = "" # IDA 9.0 removed the ida64.dll and (32-bits) ida.dll and just calls it ida.dll now
 
     if _sys.platform == 'win32':
         res = _ctypes.windll[f'ida{l_bits}.dll'] # windll is STDCALL
@@ -956,6 +943,11 @@ def google(arg_search: str) -> str:
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _is_running_as_plugin() -> bool:
+    ''' Is the script running as a plugin? '''
+    return __name__.startswith("__plugins__")
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _new_file_opened_notification_callback(arg_nw_code: int, arg_is_old_database: int) -> None:
     ''' Callback that is triggered whenever a file is opened in IDA Pro.
 
@@ -978,7 +970,8 @@ def _new_file_opened_notification_callback(arg_nw_code: int, arg_is_old_database
     l_addon.version = __version__
     _ida_kernwin.register_addon(l_addon)
 
-_ida_idaapi.notify_when(_ida_idaapi.NW_OPENIDB, _new_file_opened_notification_callback) # See also : NW_INITIDA, NW_REMOVE, NW_CLOSEIDB, NW_TERMIDA
+if not _is_running_as_plugin():
+    _ida_idaapi.notify_when(_ida_idaapi.NW_OPENIDB, _new_file_opened_notification_callback) # See also : NW_INITIDA, NW_REMOVE, NW_CLOSEIDB, NW_TERMIDA
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _add_link_to_docstring(arg_function: Callable, arg_link: str = "") -> None:
@@ -1031,6 +1024,37 @@ for l_name, l_function in _inspect.getmembers(_idautils, _inspect.isfunction): _
 for l_name, l_function in _inspect.getmembers(_ida_diskio, _inspect.isfunction): _add_link_to_docstring(l_function)
 if ida_version() >= 920:
     _add_link_to_docstring(_ida_typeinf.func_type_data_t.set_cc, "https://python.docs.hex-rays.com/ida_typeinf/index.html#ida_typeinf.func_type_data_t.set_cc")
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _time_since(arg_timestamp_str: str, arg_now: str = "") -> str:
+    """
+    Returns a human-readable elapsed time since timestamp_str.
+    @param timestamp_str format: "YYYY-MM-DD HH:MM:SS"
+    @param arg_now has the format: "YYYY-MM-DD HH:MM:SS", if you let it be empty, then take the current timestamp
+    @return The time ago, e.g. _time_since(community_base.__version__) --> '22 hours, 9 minutes, 8 seconds ago'
+    """
+    arg_now = arg_now or _time.strftime("%Y-%m-%d %H:%M:%S", _datetime.timetuple(_datetime.now()))
+    l_now = _datetime.strptime(arg_now, "%Y-%m-%d %H:%M:%S")
+    l_then = _datetime.strptime(arg_timestamp_str, "%Y-%m-%d %H:%M:%S")
+    l_diff = _relativedelta(l_now, l_then)
+    l_past = True
+    if l_then > l_now:
+        l_then, l_now = l_now, l_then
+        l_past = False
+    l_parts: List[str] = []
+    if l_diff.years:
+        l_parts.append(f"{abs(l_diff.years)} year{'s' if abs(l_diff.years) != 1 else ''}")
+    if l_diff.months:
+        l_parts.append(f"{abs(l_diff.months)} month{'s' if abs(l_diff.months) != 1 else ''}")
+    if l_diff.days:
+        l_parts.append(f"{abs(l_diff.days)} day{'s' if abs(l_diff.days) != 1 else ''}")
+    if l_diff.hours:
+        l_parts.append(f"{abs(l_diff.hours)} hour{'s' if abs(l_diff.hours) != 1 else ''}")
+    if l_diff.minutes:
+        l_parts.append(f"{abs(l_diff.minutes)} minute{'s' if abs(l_diff.minutes) != 1 else ''}")
+    if l_diff.seconds or not l_parts:
+        l_parts.append(f"{abs(l_diff.seconds)} second{'s' if abs(l_diff.seconds) != 1 else ''}")
+    return f"{', '.join(l_parts[:3])} {'ago' if l_past else 'from now'}"
 
 
 # API extension ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- API extension
@@ -1936,134 +1960,6 @@ def _struct_comments(arg_debug: bool = False) -> str:
     ''' When setting a comment on a struct member, you can use the ///< instead of the normal // in the c-style edit window '''
     return "When setting a comment on a struct member, you can use the ///< instead of the normal // in the c-style edit window"
 
-
-# ---- Hotkey: w --> Dump selected bytes to a file on disk ----------------------------------------------------------------------------------------
-if __QT_IS_AVAILABLE:
-    _ACTION_NAME_DUMP_SELECTED_BYTES = f"{__name__}:dump_selected_bytes_to_disk"
-
-    if _ACTION_NAME_DUMP_SELECTED_BYTES in _ida_kernwin.get_registered_actions():
-        if _ida_kernwin.unregister_action(_ACTION_NAME_DUMP_SELECTED_BYTES):
-            log_print(f"unregister_action(): '{_ACTION_NAME_DUMP_SELECTED_BYTES}' OK", arg_type="INFO")
-        else:
-            log_print(f"unregister_action(): '{_ACTION_NAME_DUMP_SELECTED_BYTES}' failed", arg_type="ERROR")
-
-    class ActionHandlerDumpToDisk(_ida_kernwin.action_handler_t):
-        ''' Handler for dump to disk '''
-        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-        def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
-            ''' This code is run when the hotkey is pressed '''
-            del ctx # Not used but needed in prototype
-            l_debug: bool = False
-            log_print("ActionHandlerDumpToDisk activate", l_debug)
-            _ = dump_to_disk(arg_debug=l_debug) # Without arguments --> selected bytes
-            return 1
-
-        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-        def update(self, ctx: _ida_kernwin.action_ctx_base_t):
-            ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
-            del ctx # Not used but needed in prototype
-            return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
-
-    if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_DUMP_SELECTED_BYTES, f"{__name__}: Dump selected bytes to disk", ActionHandlerDumpToDisk(), HOTKEY_DUMP_TO_DISK)):
-        log_print(f"register_action('{_ACTION_NAME_DUMP_SELECTED_BYTES}') OK, shortcut: {HOTKEY_DUMP_TO_DISK}", arg_type="INFO")
-    else:
-        log_print(f"register_action('{_ACTION_NAME_DUMP_SELECTED_BYTES}') failed", arg_type="ERROR")
-
-    # ---- Hotkey: Shift + C --> Copy selected bytes as hex text to clipboard ----------------------------------------------------------------------------------------
-    _ACTION_NAME_COPY_HEX_TEXT = f"{__name__}:copy_hex_text"
-    if _ACTION_NAME_COPY_HEX_TEXT in _ida_kernwin.get_registered_actions():
-        if _ida_kernwin.unregister_action(_ACTION_NAME_COPY_HEX_TEXT):
-            log_print(f"unregister_action(): '{_ACTION_NAME_COPY_HEX_TEXT}' OK", arg_type="INFO")
-        else:
-            log_print(f"unregister_action(): '{_ACTION_NAME_COPY_HEX_TEXT}' failed", arg_type="ERROR")
-
-    class ActionHandlerCopyHexText(_ida_kernwin.action_handler_t):
-        ''' Handler for copy hex text '''
-        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-        def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
-            ''' This code is run when the hotkey is pressed '''
-            del ctx # Not used but needed in prototype
-            l_debug: bool = False
-            log_print("ActionHandlerCopyHexText activate", l_debug)
-            clipboard_copy_hex_text_to_clipboard() # Without arguments --> Copy selected bytes as hex text
-            return 1
-
-        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-        def update(self, ctx: _ida_kernwin.action_ctx_base_t):
-            ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
-            del ctx # Not used but needed in prototype
-            return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
-
-    if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_COPY_HEX_TEXT, f"{__name__}: Copy selected bytes as hex text", ActionHandlerCopyHexText(), HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT)):
-        log_print(f"register_action('{_ACTION_NAME_COPY_HEX_TEXT}') OK, shortcut: {HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT}", arg_type="INFO")
-    else:
-        log_print(f"register_action('{_ACTION_NAME_COPY_HEX_TEXT}') failed", arg_type="ERROR")
-
-    # ---- Hotkey: Alt + Ins --> Copy current address ----------------------------------------------------------------------------------------
-    _ACTION_NAME_COPY_CURRENT_ADDRESS = f"{__name__}:copy_current_address"
-    if _ACTION_NAME_COPY_CURRENT_ADDRESS in _ida_kernwin.get_registered_actions():
-        if _ida_kernwin.unregister_action(_ACTION_NAME_COPY_CURRENT_ADDRESS):
-            log_print(f"unregister_action(): '{_ACTION_NAME_COPY_CURRENT_ADDRESS}' OK", arg_type="INFO")
-        else:
-            log_print(f"unregister_action(): '{_ACTION_NAME_COPY_CURRENT_ADDRESS}' failed", arg_type="ERROR")
-
-    class ActionHandlerCopyCurrentAddress(_ida_kernwin.action_handler_t):
-        ''' Handler for copy current address '''
-        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-        def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
-            ''' This code is run when the hotkey is pressed '''
-            del ctx # Not used but needed in prototype
-            l_debug: bool = False
-            log_print("ActionHandlerCopyCurrentAddress activate", l_debug)
-            _ = clipboard_copy(f'0x{current_address():x}')
-            return 1
-
-        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-        def update(self, ctx: _ida_kernwin.action_ctx_base_t):
-            ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
-            del ctx # Not used but needed in prototype
-            return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
-
-    if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_COPY_CURRENT_ADDRESS, f"{__name__}: Copy the current address as hex text", ActionHandlerCopyCurrentAddress(), HOTKEY_COPY_CURRENT_ADDRESS)):
-        log_print(f"register_action('{_ACTION_NAME_COPY_CURRENT_ADDRESS}') OK, shortcut: {HOTKEY_COPY_CURRENT_ADDRESS}", arg_type="INFO")
-    else:
-        log_print(f"register_action('{_ACTION_NAME_COPY_CURRENT_ADDRESS}') failed", arg_type="ERROR")
-
-    # ---- Hotkey: Delete --> Smart delete bytes ----------------------------------------------------------------------------------------
-    _ACTION_NAME_SMART_DELETE_BYTES = f"{__name__}:smart_delete_bytes"
-    if _ACTION_NAME_SMART_DELETE_BYTES in _ida_kernwin.get_registered_actions():
-        if _ida_kernwin.unregister_action(_ACTION_NAME_SMART_DELETE_BYTES):
-            log_print(f"unregister_action(): '{_ACTION_NAME_SMART_DELETE_BYTES}' OK", arg_type="INFO")
-        else:
-            log_print(f"unregister_action(): '{_ACTION_NAME_SMART_DELETE_BYTES}' failed", arg_type="ERROR")
-
-    class ActionHandlerSmartDeleteBytes(_ida_kernwin.action_handler_t):
-        ''' Handler for smart delete bytes'''
-        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-        def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
-            ''' This code is run when the hotkey is pressed '''
-            del ctx # Not used but needed in prototype
-            l_debug: bool = False
-            log_print("ActionHandlerSmartDeleteBytes activate", l_debug)
-            l_is_valid, l_start_address, l_end_address = _idaapi_read_range_selection(arg_allow_one_line=True)
-            if not l_is_valid:
-                log_print("Invalid selection", arg_type="ERROR")
-                return 1
-            _ = bytes_smart_delete(arg_ea=l_start_address, arg_len=l_end_address - l_start_address, arg_debug=l_debug)
-            return 1
-
-        @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-        def update(self, ctx: _ida_kernwin.action_ctx_base_t):
-            ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
-
-            if ctx.widget_type in (_ida_kernwin.BWN_PSEUDOCODE, _ida_kernwin.BWN_DISASM):
-                return _ida_kernwin.AST_ENABLE_FOR_WIDGET
-            return _ida_kernwin.AST_DISABLE_FOR_WIDGET
-
-    if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_SMART_DELETE_BYTES, f"{__name__}: Smart delete bytes", ActionHandlerSmartDeleteBytes(), HOTKEY_SMART_DELETE_BYTES)):
-        log_print(f"register_action('{_ACTION_NAME_SMART_DELETE_BYTES}') OK, shortcut: {HOTKEY_SMART_DELETE_BYTES}", arg_type="INFO")
-    else:
-        log_print(f"register_action('{_ACTION_NAME_SMART_DELETE_BYTES}') failed", arg_type="ERROR")
 
 # -------------------------------------------------------------------------------------------------------------------------------------------------------
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -5116,7 +5012,7 @@ def win_GetCurrentProcessId(arg_debug: bool = False) -> Optional[int]:
 
 
 # UI ---------------------------------------------------------------------------------------------------------------------
-if __QT_IS_AVAILABLE:
+if _QT_IS_AVAILABLE:
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def _is_TWidget_TWidget_ptr_or_QtWidget(arg_widget: Any) -> str:
         ''' Detects what kind of Widget you send in and returns that as a str '''
@@ -5513,11 +5409,11 @@ def _ipyida_find_connection_file(arg_copy_to_clipboard: bool = True) -> str:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ipyida_jupyter_console_from_shell(arg_copy_to_clipboard: bool = True) -> str:
     ''' The command you can run in your shell to connect to [IPyIda](https://github.com/eset/ipyida) and have it outside of IDA (But IDA and IPyIDA must both be up and running)
-        Read more: <https://hex-rays.com/blog/plugin-focus-ipyida> # TODO: Verify that we really are using IpyIDA to the max
+        [Read more at Hex-Rays blog](https://hex-rays.com/blog/plugin-focus-ipyida) # TODO: Verify that we really are using IpyIDA to the max
         @param arg_copy_to_clipboard Copy the command to the clipboard
     '''
     log_print("OBS! When leaving the external Jupyter-console, write: exit(keep_kernel=True)", arg_type="INFO")
-    l_connection_file: str = _ipyida_find_connection_file(arg_copy_to_clipboard=arg_copy_to_clipboard)
+    l_connection_file: str = _ipyida_find_connection_file()
     if l_connection_file:
         res = f"jupyter-console --existing {l_connection_file}"
         if arg_copy_to_clipboard:
@@ -5530,12 +5426,12 @@ def ipyida_exit(arg_copy_to_clipboard: bool = True) -> str:
     ''' If you have connected to the Jupyter kernel from the shell using ipyida_jupyter_console_from_shell() use this command to exit the shell window without killing the kernel
         @param arg_copy_to_clipboard Copy the command to the clipboard
     '''
-    l_connection_file: str = _ipyida_find_connection_file(arg_copy_to_clipboard=arg_copy_to_clipboard)
+    l_connection_file: str = _ipyida_find_connection_file()
     if l_connection_file:
         res = "exit(keep_kernel=True)"
         if arg_copy_to_clipboard:
             clipboard_copy(res)
-        log_print(f"This function does not do the exit, you need to paste in the following line in yout Jupyter console: {res}")
+        log_print(f"This function does not do the exit, you need to paste in the following line in yout Jupyter console: {res}", arg_type="INFO")
         return res
     return ""
 
@@ -6192,7 +6088,7 @@ def _test_eval_expression(arg_debug: bool = False) -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_TWidget(arg_debug: bool = False) -> bool:
     ''' Tests: TWidget(), needs Qt '''
-    if not __QT_IS_AVAILABLE:
+    if not _QT_IS_AVAILABLE:
         log_print("Qt is not available, failing test", arg_type="ERROR")
         return False
     l_funcs_TWidget_ptr = _ida_kernwin.open_disasm_window("test_window")
@@ -6217,7 +6113,7 @@ def _test_TWidget(arg_debug: bool = False) -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_Qt_stuff(arg_debug: bool = False) -> bool:
     ''' Tests: Qt stuff. This will make sure that PySide6/PyQt5 works as expected '''
-    if not __QT_IS_AVAILABLE:
+    if not _QT_IS_AVAILABLE:
         log_print("Qt is not available, failing test", arg_type="ERROR")
         return False
 
@@ -6296,13 +6192,30 @@ def _test_input_file(arg_debug: bool = False) -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_GetProcAddress_on_Windows(arg_debug: bool = False) -> bool:
     ''' Test GetProcAddress(), needs an active debugging session '''
+    l_module: str = "kernel32"
     l_function_to_test = "LoadLibraryA"
-    l_LoadLibraryA_addr = win_GetProcAddress("kernel32", l_function_to_test)
-    res = name(l_LoadLibraryA_addr, arg_debug=arg_debug) == "kernel32_" + l_function_to_test
-    l_should_be_None = win_GetProcAddress("kernel32", "Nonexistantfunction")
+    l_LoadLibraryA_addr = win_GetProcAddress(l_module, l_function_to_test)
+    if l_LoadLibraryA_addr is None:
+        log_print(f"win_GetProcAddress('kernel32', '{l_function_to_test}') failed! Test failed")
+        return False
+    res = name(l_LoadLibraryA_addr, arg_debug=arg_debug) == f"{l_module}_{l_function_to_test}"
+    l_should_be_None = win_GetProcAddress(l_module, "Nonexistantfunction")
     res &= l_should_be_None is None
-
     return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_virtual_address_to_file_offset_and_back_again(arg_debug: bool = False) -> bool:
+    ''' Test to convert an VA -> FO -> VA again '''
+    l_virtual_address_to_test = input_file.entry_point
+    l_file_offset = virtual_address_to_fileoffset(l_virtual_address_to_test)
+    if l_file_offset == -1:
+        log_print(f"virtual_address_to_fileoffset(0x{l_virtual_address_to_test:x}) returned -1 (fail)")
+        return False
+    l_virtual_address_again = fileoffset_to_virtual_address(l_file_offset)
+    res = l_virtual_address_to_test == l_virtual_address_again
+    log_print(f"res: {res}", arg_debug)
+    return res
+
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_all(arg_debug: bool = False) -> bool:
@@ -6319,7 +6232,8 @@ def _test_all(arg_debug: bool = False) -> bool:
                         '_test_relative_virtual_address': _test_relative_virtual_address(arg_debug=arg_debug),
                         '_test_convert_to_usercall': _test_convert_to_usercall(arg_debug=arg_debug),
                         '_test_input_file' : _test_input_file(arg_debug=arg_debug),
-                        '_test_GetProcAddress_on_Windows' : _test_GetProcAddress_on_Windows(arg_debug=arg_debug)
+                        '_test_GetProcAddress_on_Windows' : _test_GetProcAddress_on_Windows(arg_debug=arg_debug),
+                        '_test_virtual_address_to_file_offset_and_back_again': _test_virtual_address_to_file_offset_and_back_again(arg_debug=arg_debug)
                         }
     for l_test_in_key, l_test_in_value in l_test_functions.items():
         log_print(f"{l_test_in_key}: {l_test_in_value}", arg_type="INFO")
@@ -6330,6 +6244,7 @@ def _test_all(arg_debug: bool = False) -> bool:
 
 
 # EXPERIMENTAL --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- EXPERIMENTAL
+
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _export_names_and_types(arg_save_to_file: str = "",
@@ -6446,42 +6361,186 @@ def _comment_copy_from_disassembly_to_decompiler(arg_function: EvaluateType,  ar
 
     return True
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _time_since(arg_timestamp_str: str, arg_now: str = "") -> str:
-    """
-    Returns a human-readable elapsed time since timestamp_str.
-    @param timestamp_str format: "YYYY-MM-DD HH:MM:SS"
-    @param arg_now has the format: "YYYY-MM-DD HH:MM:SS", if you let it be empty, then take the current timestamp
-    @return The time ago, e.g. _time_since(community_base.__version__) --> '22 hours, 9 minutes, 8 seconds ago'
-    """
-    arg_now = arg_now or _time.strftime("%Y-%m-%d %H:%M:%S", _datetime.timetuple(_datetime.now()))
-    l_now = _datetime.strptime(arg_now, "%Y-%m-%d %H:%M:%S")
-    l_then = _datetime.strptime(arg_timestamp_str, "%Y-%m-%d %H:%M:%S")
-    l_diff = _relativedelta(l_now, l_then)
-    l_past = True
-    if l_then > l_now:
-        l_then, l_now = l_now, l_then
-        l_past = False
-    l_parts: List[str] = []
-    if l_diff.years:
-        l_parts.append(f"{abs(l_diff.years)} year{'s' if abs(l_diff.years) != 1 else ''}")
-    if l_diff.months:
-        l_parts.append(f"{abs(l_diff.months)} month{'s' if abs(l_diff.months) != 1 else ''}")
-    if l_diff.days:
-        l_parts.append(f"{abs(l_diff.days)} day{'s' if abs(l_diff.days) != 1 else ''}")
-    if l_diff.hours:
-        l_parts.append(f"{abs(l_diff.hours)} hour{'s' if abs(l_diff.hours) != 1 else ''}")
-    if l_diff.minutes:
-        l_parts.append(f"{abs(l_diff.minutes)} minute{'s' if abs(l_diff.minutes) != 1 else ''}")
-    if l_diff.seconds or not l_parts:
-        l_parts.append(f"{abs(l_diff.seconds)} second{'s' if abs(l_diff.seconds) != 1 else ''}")
-    return f"{', '.join(l_parts[:3])} {'ago' if l_past else 'from now'}"
-
-log_print(f"Loaded {__name__} version: {__version__} by {__author__}. This version was released {_time_since(__version__)}", arg_type="INFO")
 
 # Plugin mode  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- Plugin mode
 
-# TODO: Here will soon be the plugin code for the added hotkeys.
-# This way you can put community_base.py in the plugin directory if you want the added shortcuts
-# and if you just want to use it to write other plugins, you can put it in %PYTHONPATH%
 
+_G_PLUGIN_NAME = f"community_base_nice_hotkeys"
+_G_HOTKEY_DUMP_TO_DISK = 'w' # Select bytes and press w to dump it to disk in the same directory as the IDB. One can also call dump_to_disk(address, length) to dump from the console
+_G_HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT = 'shift-c' # Select bytes and press Shift-C to copy the marked bytes as hex text. Same shortcut as in x64dbg.
+_G_HOTKEY_COPY_CURRENT_ADDRESS = 'alt-ins' # Copy the current address as hex text into the clipboard. Same shortcut as x64dbg.
+_G_HOTKEY_SMART_DELETE_BYTES = 'del' # Pressing delete on code turns it into NOP (0x90) if it's already NOP (or data) then write 0x00
+
+class community_base_plugmod_t(_ida_idaapi.plugmod_t):
+    ''' This is the code that is actually run '''
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def __init__(self) -> None:
+        global _QT_IS_AVAILABLE
+        if not _QT_IS_AVAILABLE:
+            log_print(f"{_G_PLUGIN_NAME} found no QT and is not added any hotkeys", arg_type="WARNING")
+            return
+        log_print(f"{_G_PLUGIN_NAME} loaded as plugin", arg_type="INFO")
+
+        # ---- Hotkey: w --> Dump selected bytes to a file on disk ----------------------------------------------------------------------------------------
+        _ACTION_NAME_DUMP_SELECTED_BYTES = f"{__name__}:dump_selected_bytes_to_disk"
+        if _ACTION_NAME_DUMP_SELECTED_BYTES in _ida_kernwin.get_registered_actions():
+            if _ida_kernwin.unregister_action(_ACTION_NAME_DUMP_SELECTED_BYTES):
+                log_print(f"unregister_action(): '{_ACTION_NAME_DUMP_SELECTED_BYTES}' OK", arg_type="INFO")
+            else:
+                log_print(f"unregister_action(): '{_ACTION_NAME_DUMP_SELECTED_BYTES}' failed", arg_type="ERROR")
+
+        class ActionHandlerDumpToDisk(_ida_kernwin.action_handler_t):
+            ''' Handler for dump to disk '''
+            @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+            def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
+                ''' This code is run when the hotkey is pressed '''
+                del ctx # Not used but needed in prototype
+                l_debug: bool = False
+                log_print("ActionHandlerDumpToDisk activate", l_debug)
+                _ = dump_to_disk(arg_debug=l_debug) # Without arguments --> selected bytes
+                return 1
+
+            @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+            def update(self, ctx: _ida_kernwin.action_ctx_base_t):
+                ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
+                del ctx # Not used but needed in prototype
+                return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
+
+        if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_DUMP_SELECTED_BYTES, f"{__name__}: Dump selected bytes to disk", ActionHandlerDumpToDisk(), _G_HOTKEY_DUMP_TO_DISK)):
+            log_print(f"register_action('{_ACTION_NAME_DUMP_SELECTED_BYTES}') OK, shortcut: {_G_HOTKEY_DUMP_TO_DISK}", arg_type="INFO")
+        else:
+            log_print(f"register_action('{_ACTION_NAME_DUMP_SELECTED_BYTES}') failed", arg_type="ERROR")
+
+        # ---- Hotkey: Shift + C --> Copy selected bytes as hex text to clipboard ----------------------------------------------------------------------------------------
+        _ACTION_NAME_COPY_HEX_TEXT = f"{__name__}:copy_hex_text"
+        if _ACTION_NAME_COPY_HEX_TEXT in _ida_kernwin.get_registered_actions():
+            if _ida_kernwin.unregister_action(_ACTION_NAME_COPY_HEX_TEXT):
+                log_print(f"unregister_action(): '{_ACTION_NAME_COPY_HEX_TEXT}' OK", arg_type="INFO")
+            else:
+                log_print(f"unregister_action(): '{_ACTION_NAME_COPY_HEX_TEXT}' failed", arg_type="ERROR")
+
+        class ActionHandlerCopyHexText(_ida_kernwin.action_handler_t):
+            ''' Handler for copy hex text '''
+            @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+            def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
+                ''' This code is run when the hotkey is pressed '''
+                del ctx # Not used but needed in prototype
+                l_debug: bool = False
+                log_print("ActionHandlerCopyHexText activate", l_debug)
+                clipboard_copy_hex_text_to_clipboard() # Without arguments --> Copy selected bytes as hex text
+                return 1
+
+            @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+            def update(self, ctx: _ida_kernwin.action_ctx_base_t):
+                ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
+                del ctx # Not used but needed in prototype
+                return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
+
+        if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_COPY_HEX_TEXT, f"{__name__}: Copy selected bytes as hex text", ActionHandlerCopyHexText(), _G_HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT)):
+            log_print(f"register_action('{_ACTION_NAME_COPY_HEX_TEXT}') OK, shortcut: {_G_HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT}", arg_type="INFO")
+        else:
+            log_print(f"register_action('{_ACTION_NAME_COPY_HEX_TEXT}') failed", arg_type="ERROR")
+
+        # ---- Hotkey: Alt + Ins --> Copy current address ----------------------------------------------------------------------------------------
+        _ACTION_NAME_COPY_CURRENT_ADDRESS = f"{__name__}:copy_current_address"
+        if _ACTION_NAME_COPY_CURRENT_ADDRESS in _ida_kernwin.get_registered_actions():
+            if _ida_kernwin.unregister_action(_ACTION_NAME_COPY_CURRENT_ADDRESS):
+                log_print(f"unregister_action(): '{_ACTION_NAME_COPY_CURRENT_ADDRESS}' OK", arg_type="INFO")
+            else:
+                log_print(f"unregister_action(): '{_ACTION_NAME_COPY_CURRENT_ADDRESS}' failed", arg_type="ERROR")
+
+        class ActionHandlerCopyCurrentAddress(_ida_kernwin.action_handler_t):
+            ''' Handler for copy current address '''
+            @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+            def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
+                ''' This code is run when the hotkey is pressed '''
+                del ctx # Not used but needed in prototype
+                l_debug: bool = False
+                log_print("ActionHandlerCopyCurrentAddress activate", l_debug)
+                _ = clipboard_copy(f'0x{current_address():x}')
+                return 1
+
+            @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+            def update(self, ctx: _ida_kernwin.action_ctx_base_t):
+                ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
+                del ctx # Not used but needed in prototype
+                return _ida_kernwin.AST_ENABLE_ALWAYS # This hotkey should be available everywhere
+
+        if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_COPY_CURRENT_ADDRESS, f"{__name__}: Copy the current address as hex text", ActionHandlerCopyCurrentAddress(), _G_HOTKEY_COPY_CURRENT_ADDRESS)):
+            log_print(f"register_action('{_ACTION_NAME_COPY_CURRENT_ADDRESS}') OK, shortcut: {_G_HOTKEY_COPY_CURRENT_ADDRESS}", arg_type="INFO")
+        else:
+            log_print(f"register_action('{_ACTION_NAME_COPY_CURRENT_ADDRESS}') failed", arg_type="ERROR")
+
+        # ---- Hotkey: Delete --> Smart delete bytes ----------------------------------------------------------------------------------------
+        _ACTION_NAME_SMART_DELETE_BYTES = f"{__name__}:smart_delete_bytes"
+        if _ACTION_NAME_SMART_DELETE_BYTES in _ida_kernwin.get_registered_actions():
+            if _ida_kernwin.unregister_action(_ACTION_NAME_SMART_DELETE_BYTES):
+                log_print(f"unregister_action(): '{_ACTION_NAME_SMART_DELETE_BYTES}' OK", arg_type="INFO")
+            else:
+                log_print(f"unregister_action(): '{_ACTION_NAME_SMART_DELETE_BYTES}' failed", arg_type="ERROR")
+
+        class ActionHandlerSmartDeleteBytes(_ida_kernwin.action_handler_t):
+            ''' Handler for smart delete bytes'''
+            @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+            def activate(self, ctx: _ida_kernwin.action_ctx_base_t):
+                ''' This code is run when the hotkey is pressed '''
+                del ctx # Not used but needed in prototype
+                l_debug: bool = False
+                log_print("ActionHandlerSmartDeleteBytes activate", l_debug)
+                l_is_valid, l_start_address, l_end_address = _idaapi_read_range_selection(arg_allow_one_line=True)
+                if not l_is_valid:
+                    log_print("Invalid selection", arg_type="ERROR")
+                    return 1
+                _ = bytes_smart_delete(arg_ea=l_start_address, arg_len=l_end_address - l_start_address, arg_debug=l_debug)
+                return 1
+
+            @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+            def update(self, ctx: _ida_kernwin.action_ctx_base_t):
+                ''' This function is called whenever something has changed, and you can tell IDA in here when you want your update() function to be called. '''
+
+                if ctx.widget_type in (_ida_kernwin.BWN_PSEUDOCODE, _ida_kernwin.BWN_DISASM):
+                    return _ida_kernwin.AST_ENABLE_FOR_WIDGET
+                return _ida_kernwin.AST_DISABLE_FOR_WIDGET
+
+        if _ida_kernwin.register_action(_ida_kernwin.action_desc_t(_ACTION_NAME_SMART_DELETE_BYTES, f"{__name__}: Smart delete bytes", ActionHandlerSmartDeleteBytes(), _G_HOTKEY_SMART_DELETE_BYTES)):
+            log_print(f"register_action('{_ACTION_NAME_SMART_DELETE_BYTES}') OK, shortcut: {_G_HOTKEY_SMART_DELETE_BYTES}", arg_type="INFO")
+        else:
+            log_print(f"register_action('{_ACTION_NAME_SMART_DELETE_BYTES}') failed", arg_type="ERROR")
+
+        return
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def run(self, arg_user_argument: int) -> int:
+        del arg_user_argument # Not used but needed in prototype
+        log_print(f"{_G_PLUGIN_NAME} called the run() method. This does nothing as the contructor sets up the 4 hotkeys", arg_type="INFO")
+        return 0
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def __del__(self) -> None:
+        ''' This code is run when the user closes the IDB '''
+        log_print(f"{_G_PLUGIN_NAME} is running the destructor", arg_type="INFO")
+        return
+
+class community_base_plugin_t(_ida_idaapi.plugin_t):
+    ''' This is the config for the plugin, the actual code is in modern_plugmod_t() '''
+    flags = _ida_idaapi.PLUGIN_MULTI # if this flag is set, then init have to return a ida_idaapi.plugmod_t()
+    comment = f"{_G_PLUGIN_NAME}:Added 4 new hotkeys"
+    help = f"{_G_PLUGIN_NAME}:Added 4 new hotkeys"
+    wanted_name = _G_PLUGIN_NAME
+    wanted_hotkey = "" # The hotkeys are registered in the community_base_plugmod_t() constructor
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def init(self) -> Optional[_ida_idaapi.plugmod_t]:
+        ''' We can do checking and if we don't want to be loaded, we can return None.
+        If we want to be loaded, then we return a ida_idaapi.plugmod_t
+        '''
+        return community_base_plugmod_t()
+
+def PLUGIN_ENTRY() -> _ida_idaapi.plugin_t:
+    return community_base_plugin_t()
+
+# End of file  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- End of file
+if not _is_running_as_plugin():
+    log_print(f"Loaded {__name__} version: {__version__} by {__author__}. This version was released {_time_since(__version__)}", arg_type="INFO")
+    
