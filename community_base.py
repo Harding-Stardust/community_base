@@ -68,7 +68,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-10-31 22:51:11"
+__version__ = "2025-11-01 01:11:11"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -151,8 +151,8 @@ import ida_xref as _ida_xref # type: ignore[import-untyped]
 import idautils as _idautils # type: ignore[import-untyped]
 import ida_diskio as _ida_diskio # type: ignore[import-untyped]
 
-_QT_IS_AVAILABLE: bool = _ida_kernwin.is_idaq()
-if _QT_IS_AVAILABLE:
+_G_QT_IS_AVAILABLE: bool = _ida_kernwin.is_idaq()
+if _G_QT_IS_AVAILABLE:
     try:
         # IDA 9.2+ uses PySide6 while earlier versions use PyQt5
         from PySide6.QtWidgets import QApplication, QWidget, QMainWindow # type: ignore[import-untyped, import-not-found]
@@ -160,7 +160,7 @@ if _QT_IS_AVAILABLE:
         try:
             from PyQt5.QtWidgets import QApplication, QWidget, QMainWindow # type: ignore[import-untyped, import-not-found]
         except NotImplementedError:
-            _QT_IS_AVAILABLE = False
+            _G_QT_IS_AVAILABLE = False
 
 BufferType = Union[str, bytes, bytearray, List[str], List[bytes], List[bytearray]]
 BoolishType = Union[bool, int, str] # Can be evaluted by my function named _bool()
@@ -512,7 +512,7 @@ def ida_arguments() -> List[str]:
     '''
     # TODO: Delete this function?
     # TODO: check idc.ARGV? idc.ARGV is writeable, maybe use that?
-    if _QT_IS_AVAILABLE:
+    if _G_QT_IS_AVAILABLE:
         return QApplication.arguments()
     log_print("QT is not available, atm we cannot get the program arguments", arg_type="ERROR")
     return ["<<< invalid arguments >>>"]
@@ -1055,6 +1055,11 @@ def _time_since(arg_timestamp_str: str, arg_now: str = "") -> str:
     if l_diff.seconds or not l_parts:
         l_parts.append(f"{abs(l_diff.seconds)} second{'s' if abs(l_diff.seconds) != 1 else ''}")
     return f"{', '.join(l_parts[:3])} {'ago' if l_past else 'from now'}"
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _hotkey_str_fixer(arg_hotkey_str: str) -> str:
+    ''' IDA is very picky on how you give the hotkey string '''
+    return arg_hotkey_str.lower().replace('+', '-').replace(' ', '') # So very picky... >_<
 
 
 # API extension ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- API extension
@@ -5012,7 +5017,7 @@ def win_GetCurrentProcessId(arg_debug: bool = False) -> Optional[int]:
 
 
 # UI ---------------------------------------------------------------------------------------------------------------------
-if _QT_IS_AVAILABLE:
+if _G_QT_IS_AVAILABLE:
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def _is_TWidget_TWidget_ptr_or_QtWidget(arg_widget: Any) -> str:
         ''' Detects what kind of Widget you send in and returns that as a str '''
@@ -6088,7 +6093,7 @@ def _test_eval_expression(arg_debug: bool = False) -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_TWidget(arg_debug: bool = False) -> bool:
     ''' Tests: TWidget(), needs Qt '''
-    if not _QT_IS_AVAILABLE:
+    if not _G_QT_IS_AVAILABLE:
         log_print("Qt is not available, failing test", arg_type="ERROR")
         return False
     l_funcs_TWidget_ptr = _ida_kernwin.open_disasm_window("test_window")
@@ -6113,7 +6118,7 @@ def _test_TWidget(arg_debug: bool = False) -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_Qt_stuff(arg_debug: bool = False) -> bool:
     ''' Tests: Qt stuff. This will make sure that PySide6/PyQt5 works as expected '''
-    if not _QT_IS_AVAILABLE:
+    if not _G_QT_IS_AVAILABLE:
         log_print("Qt is not available, failing test", arg_type="ERROR")
         return False
 
@@ -6366,19 +6371,18 @@ def _comment_copy_from_disassembly_to_decompiler(arg_function: EvaluateType,  ar
 
 
 _G_PLUGIN_NAME = f"community_base_nice_hotkeys"
-_G_HOTKEY_DUMP_TO_DISK = 'w' # Select bytes and press w to dump it to disk in the same directory as the IDB. One can also call dump_to_disk(address, length) to dump from the console
-_G_HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT = 'shift-c' # Select bytes and press Shift-C to copy the marked bytes as hex text. Same shortcut as in x64dbg.
-_G_HOTKEY_COPY_CURRENT_ADDRESS = 'alt-ins' # Copy the current address as hex text into the clipboard. Same shortcut as x64dbg.
-_G_HOTKEY_SMART_DELETE_BYTES = 'del' # Pressing delete on code turns it into NOP (0x90) if it's already NOP (or data) then write 0x00
+_G_HOTKEY_DUMP_TO_DISK = _hotkey_str_fixer('W') # Select bytes and press w to dump it to disk in the same directory as the IDB. One can also call dump_to_disk(address, length) to dump from the console
+_G_HOTKEY_COPY_SELECTED_BYTES_AS_HEX_TEXT = _hotkey_str_fixer('Shift + C') # Select bytes and press Shift-C to copy the marked bytes as hex text. Same shortcut as in x64dbg.
+_G_HOTKEY_COPY_CURRENT_ADDRESS = _hotkey_str_fixer('Alt + Ins') # Copy the current address as hex text into the clipboard. Same shortcut as x64dbg.
+_G_HOTKEY_SMART_DELETE_BYTES = _hotkey_str_fixer('Del') # Pressing delete on code turns it into NOP (0x90) if it's already NOP (or data) then write 0x00
 
 class community_base_plugmod_t(_ida_idaapi.plugmod_t):
     ''' This is the code that is actually run '''
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def __init__(self) -> None:
-        global _QT_IS_AVAILABLE
-        if not _QT_IS_AVAILABLE:
-            log_print(f"{_G_PLUGIN_NAME} found no QT and is not added any hotkeys", arg_type="WARNING")
+        if not _G_QT_IS_AVAILABLE:
+            log_print(f"{_G_PLUGIN_NAME} found no QT and will not add any hotkeys", arg_type="WARNING")
             return
         log_print(f"{_G_PLUGIN_NAME} loaded as plugin", arg_type="INFO")
 
