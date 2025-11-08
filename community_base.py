@@ -42,7 +42,7 @@ import community_base; print("\n".join([wrapper.replace("_idaapi_","") for wrapp
 - - delete --> smart delete. If the selected bytes are in code then make then NOPS (Intel only!) and if you press delete again (or if you are in data) then write 0x00
 
 # Installation
-There are 2 ways to use this script, the recommended way is to download this file and put it in the plugins folder. That way you get access to the library and you get the new hotkeys. The plugins folder can be found like this:
+There are 2 ways to use this script, the recommended way is to download this file and put it in the plugins directory. That way you get access to the library and you get the new hotkeys. The plugins directory can be found like this:
 ```python
 import idaapi; print(idaapi.get_ida_subdirs("plugins")[0])
 ```
@@ -68,7 +68,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-11-01 01:11:11"
+__version__ = "2025-11-08 03:07:40"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -93,6 +93,8 @@ from datetime import datetime as _datetime
 from datetime import timezone as _timezone
 import logging as _logging
 import ctypes as _ctypes
+import importlib.util as _importlib_util
+import importlib.machinery as _importlib_machinery
 import json as _json # TODO: Change to json5?
 from typing import Union, List, Dict, Tuple, Any, Optional, Callable
 from types import ModuleType
@@ -166,29 +168,209 @@ BufferType = Union[str, bytes, bytearray, List[str], List[bytes], List[bytearray
 BoolishType = Union[bool, int, str] # Can be evaluted by my function named _bool()
 # EvaluateType is anything that can be evalutad to an int. E.g. the address() function can take this type and then try to resolve an adress. Give it a str (a label) and it will work, give it a ida_segment.segment_t object and it will give the address to the start of the segment
 EvaluateType = Union[str, int, _ida_idp.reg_info_t, _ida_ua.insn_t, _ida_hexrays.cinsn_t, _ida_hexrays.cfuncptr_t, _ida_funcs.func_t, _ida_idaapi.PyIdc_cvt_int64__, _ida_segment.segment_t, _ida_ua.op_t, _ida_typeinf.funcarg_t, _idautils.Strings.StringItem, _ida_dbg.bpt_t, _ida_idd.modinfo_t, _ida_hexrays.carg_t, _ida_hexrays.cexpr_t, _ida_range.range_t]
-__GLOBAL_LOG_EVERYTHING = False # If this is set to True, then all calls to log_print() will be printed, this can cause massive logs but good for hard to find bugs
+_G_LOG_EVERYTHING = False # If this is set to True, then all calls to log_print() will be printed, this can cause massive logs but good for hard to find bugs
 
-# These custom logging handlers are needed to not conflict with IpyIDA
-class _IDAOutputHandler(_logging.Handler):
-    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def __init__(self, level: int = _logging.NOTSET):
-        super().__init__(level)
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _send_text_to_jupyter(arg_text: str) -> None:
+    ''' Send text directly to the IPyIDA/Jupyter frontend with colors preserved.
+        Writes directly to the Jupyter kernel's iopub socket, bypassing IDA's stdout.
+        @param arg_text: text to send to the Jupyter frontend
+        @return: None
+    '''
+    if _sys.modules.get('ipykernel') is None:
+        return
+
+    arg_text = arg_text.rstrip() + "\n"
+    try:
+        from ipykernel.kernelapp import IPKernelApp
+        if IPKernelApp.initialized():
+            l_app = IPKernelApp.instance()
+            l_kernel = l_app.kernel
+
+            # Get parent header from the current execution context
+            l_parent_header = getattr(l_kernel, '_parent_header', {})
+            if not l_parent_header:
+                # Try to get it from the shell's execution info
+                if hasattr(l_kernel, 'shell') and hasattr(l_kernel.shell, 'execution_count'):
+                    l_parent_header = {
+                        'msg_id': f'execute_{l_kernel.shell.execution_count}',
+                        'msg_type': 'execute_request'
+                    }
+
+            # Write directly to the kernel's iopub stream
+            if hasattr(l_kernel, 'iopub_socket') and l_kernel.iopub_socket:
+                l_kernel.session.send(
+                    l_kernel.iopub_socket,
+                    'stream',
+                    {
+                        'name': 'stdout',
+                        'text': arg_text
+                    },
+                    l_parent_header
+                )
+    except Exception as e:
+        print(f"Error sending to Jupyter: {e}")
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _send_text_to_ida_output(arg_text: str) -> None:
+    ''' Send text to IDA's output window with colors stripped.
+        IDA's Qt5/Qt6 text widget does not support ANSI colors.
+        @param arg_text: text to send to IDA's output window
+        @return: None
+    '''
+    _ida_kernwin.msg(_strip_ansi(arg_text.rstrip()+'\n'))
+
+# Global regex for stripping ANSI/terminal escape sequences.
+# Matches: ESC[ followed by parameters and a command letter (CSI sequences)
+#          ESC] followed by content and BEL or ST (OSC sequences)
+#          Other escape sequences
+_g_ANSI_STRIP_RE = _re.compile(
+    r'\x1b'                        # ESC
+    r'(?:'                         # non-capturing group for variations
+    r'\[[0-9;?]*[A-Za-z]'          # CSI [...] (Control Sequence Introducer)
+    r'|'                           # OR
+    r'\]'                          # OSC (Operating System Command start)
+    r'[^\x1b\x07]*'                # content (not ESC or BEL)
+    r'(?:\x07|\x1b\\)'             # BEL or ST terminator
+    r'|'                           # OR other escapes
+    r'[PX^_].*?\x1b\\'             # DCS/PM/APC ... terminated by ST
+    r')',
+    flags=_re.DOTALL,
+)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _strip_ansi(arg_text: str) -> str:
+    '''
+    Remove ANSI / terminal escape sequences from arg_text.
+
+    @param arg_text: text possibly containing ANSI escapes
+    @return: text with ANSI escapes removed
+    '''
+    return _g_ANSI_STRIP_RE.sub('', arg_text)
+
+class ColoredFormatter(_logging.Formatter):
+    ''' Formatter that adds ANSI color codes based on log level.
+        Colors are added for Jupyter console, and will be stripped for IDA output.
+    '''
+
+    l_colors_dict = {
+        "red": "\x1b[31m",
+        "green": "\x1b[32m",
+        "yellow": "\x1b[33m",
+        "blue": "\x1b[34m",
+        "magenta": "\x1b[35m",
+        "cyan": "\x1b[36m",
+        "grey": "\x1b[37m",
+        "reset": "\x1b[0m",
+        "bold": "\x1b[1m",
+        "underline": "\x1b[4m",
+        "reverse": "\x1b[7m",
+        "concealed": "\x1b[8m",
+        "black": "\x1b[30m",
+        "brown": "\x1b[33m",
+        "orange": "\x1b[33m",
+        "purple": "\x1b[35m",
+        "light_gray": "\x1b[37m",
+        "dark_gray": "\x1b[90m",
+        "light_red": "\x1b[91m",
+        "light_green": "\x1b[92m",
+        "light_yellow": "\x1b[93m",
+        "light_blue": "\x1b[94m",
+        "light_magenta": "\x1b[95m",
+        "light_cyan": "\x1b[96m",
+        "light_white": "\x1b[97m",
+        "reset": "\x1b[0m",
+    }
+    l_level_to_color = {
+        'DEBUG': 'cyan',
+        'INFO': 'green',
+        'WARNING': 'yellow',
+        'ERROR': 'magenta',
+        'CRITICAL': 'light_white',
+    }
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def emit(self, record: _logging.LogRecord):
+    def format(self, arg_record: _logging.LogRecord) -> str:
+        ''' Format the log record with color codes based on level.
+
+            @param arg_record: the log record to format
+            @return: formatted string with ANSI color codes
+        '''
+        l_formatted: str = super().format(arg_record)
+        l_level_name: str = arg_record.levelname
+        if l_level_name in self.l_level_to_color:
+            l_color = self.l_colors_dict[self.l_level_to_color[l_level_name]]
+            l_formatted = f"{l_color}{l_formatted}{self.l_colors_dict['reset']}"
+
+        return l_formatted
+
+class DualOutputHandler(_logging.Handler):
+    '''
+    Logging handler that emits formatted log records to two outputs:
+    - Jupyter frontend (accepts ANSI)
+    - IDA's output window (no color; ANSI removed)
+
+    It preserves the formatted message produced by the handler's Formatter.
+    '''
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def __init__(
+        self,
+        arg_level: int = _logging.NOTSET,
+        arg_jupyter_sender: Callable[[str], None] = _send_text_to_jupyter,
+        arg_ida_sender: Callable[[str], None] = _send_text_to_ida_output,
+    ) -> None:
+        ''' Initialize the handler.
+
+            @param arg_level: logging level for the handler
+            @param arg_jupyter_supports_ansi: whether the Jupyter frontend supports ANSI escapes
+            @param arg_jupyter_sender: callable to send text to Jupyter frontend
+            @param arg_ida_sender: callable to send text to IDA output window
+
+            @return: None
+        '''
+        super().__init__(arg_level)
+        self._jupyter_sender: Callable[[str], None] = arg_jupyter_sender
+        self._ida_sender: Callable[[str], None] = arg_ida_sender
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def emit(self, arg_record: _logging.LogRecord) -> None:
+        ''' Emit a LogRecord to both outputs. If the Jupyter frontend does not support ANSI,
+            ANSI escapes are removed. IDA output always receives stripped text.
+
+            @param arg_record: the logging.LogRecord to emit
+            
+            @return: None
+        '''
         try:
-            print(self.format(record))
+            l_formatted: str = self.format(arg_record)
+            l_jupyter_text: str = l_formatted
+            l_ida_text: str = _strip_ansi(l_formatted)
+            try:
+                self._jupyter_sender(l_jupyter_text)
+            except Exception:
+                pass # Avoid raising from the secondary sender
+
+            try:
+                self._ida_sender(l_ida_text)
+            except Exception:
+                pass # Avoid raising from the secondary sender
+
         except Exception:
-            self.handleError(record)
+            self.handleError(arg_record)
 
 _g_logger = _logging.getLogger(__name__)
 _g_logger.setLevel(_logging.DEBUG)
+# Remove existing handlers to avoid duplicates on reload
 while _g_logger.handlers:
-    _g_logger.removeHandler(_g_logger.handlers[0]) # When you importlib.reload() a module, we need to clear out the old loggers
-_g_custom_IDA_handler = _IDAOutputHandler()
-_g_custom_IDA_handler.setFormatter(_logging.Formatter('%(asctime)s [%(levelname)s] %(module)s.%(funcName)s:%(lineno)d - %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
-_g_logger.addHandler(_g_custom_IDA_handler)
+    _g_logger.removeHandler(_g_logger.handlers[0])
+
+# Create the dual output handler, Jupyter supports ANSI colors, IDA does not
+_g_dual_handler = DualOutputHandler(arg_level=_logging.DEBUG, arg_jupyter_sender=_send_text_to_jupyter, arg_ida_sender=_send_text_to_ida_output)
+_g_dual_handler.setFormatter(ColoredFormatter('%(asctime)s [%(levelname)s] %(module)s.%(funcName)s:%(lineno)d - %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+_g_logger.addHandler(_g_dual_handler)
 _g_logger.propagate = False
+
 
 # Helpers ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- Helpers
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -199,7 +381,7 @@ def _timestamped_line(arg_str: str) -> str:
     return _time.strftime("%Y-%m-%d %H:%M:%S", _datetime.timetuple(_datetime.now())) + " " + arg_str
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def __simulate_long_running_task() -> None:
+def _simulate_long_running_task() -> None:
     ''' Simulate some long running task so I can test _check_if_long_running_script_should_abort()
     copy the string "abort.ida" into the clipboard to raise a TimeoutError exception
      '''
@@ -235,7 +417,7 @@ def _check_if_long_running_script_should_abort() -> None:
 def log_print(arg_string: Union[str, int, bool], arg_actually_print: bool = True, arg_type: str = "DEBUG") -> None:
     ''' Used for code trace while developing the project '''
     _check_if_long_running_script_should_abort()
-    if arg_actually_print or __GLOBAL_LOG_EVERYTHING:
+    if arg_actually_print or _G_LOG_EVERYTHING:
         if arg_type == "DEBUG":
             _g_logger.debug(arg_string, stacklevel=4)
         elif arg_type == "INFO":
@@ -395,8 +577,7 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
     @param arg_bug_description A long description of the bug. Preferably on how to reproduce it.
     @param arg_module_to_blame The name of the module that is buggy, usually it's the plugin name or "IDA Pro"
 
-    @return The full path to the bug report
-    '''
+    @return The full path to the bug report '''
     l_timestamp: str = _time.strftime("%Y_%m_%d_%H_%M_%S", _datetime.timetuple(_datetime.now()))
     l_bug_report_file: str = f"{input_file.idb_path}.{l_timestamp}.bug_report.json"
     l_bug_report: Dict[str, str] = {}
@@ -559,11 +740,12 @@ def ida_save_database(arg_new_filename: str = "",
     # TODO: Check how this plays with ida_domain
     # TODO: How does this work with the flags? Like compressiong and so on? Should the user be able to set that in this function?
     l_new_filename = arg_new_filename or None
-    l_my_extension = _os.path.splitext(input_file.idb_path)[1]
+    l_my_extension = _os.path.splitext(input_file.idb_path)[1] # IDA 8.4 can have IDB, otherwise its always I64
     if l_new_filename and not l_new_filename.endswith(l_my_extension):
         l_new_filename += l_my_extension
 
-    return _ida_loader.save_database(outfile=l_new_filename, flags=_ida_idaapi.as_uint32(arg_database_flags), root=arg_snapshot_root, attr=arg_snapshot_attribute)
+    return _ida_loader.save_database(l_new_filename, _ida_idaapi.as_uint32(arg_database_flags), arg_snapshot_root, arg_snapshot_attribute) # IDA 8.4 does not keyword parameters
+
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_exit(arg_exit_code: int = 0,
@@ -653,21 +835,49 @@ def reload_python_module(arg_python_module: Union[str, ModuleType, None] = None)
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _python_load_module(arg_filepath: str) -> bool:
-    ''' Load a given Python file by full file path '''
-    # This works fine cross drives also!
-    l_directory = _os.path.dirname(arg_filepath)
-    l_filename = _os.path.basename(arg_filepath)
-    l_saved_cwd = _os.getcwd()
-    _os.chdir(l_directory)
-    res = reload_python_module(_os.path.splitext(l_filename)[0])
-    _os.chdir(l_saved_cwd)
-    return res
+def _python_load_module(arg_filepath: str, arg_name: Optional[str] = None) -> Optional[ModuleType]:
+    ''' Import a module from an absolute path and register it so Jupyter/IPython tab-completion sees it.
+    @param arg_filepath: full path to .py file or package directory (contains __init__.py).
+    @param arg_name: optional module name to register in sys.modules and IPython user namespace.
+    @return The imported module or None if the module could not be loaded.
+    '''
+    arg_filepath = _os.path.abspath(arg_filepath)
+    if arg_name is None:
+        arg_name = _os.path.splitext(_os.path.basename(arg_filepath))[0]
+
+    if _os.path.isdir(arg_filepath): # If it's a package directory
+        # ensure it's a package (has __init__.py)
+        l_init_path = _os.path.join(arg_filepath, "__init__.py")
+        if not _os.path.exists(l_init_path):
+            log_print(f"Directory '{arg_filepath}' is not a package (missing __init.py)", arg_type="ERROR")
+            return None
+        loader = _importlib_machinery.SourceFileLoader(arg_name, l_init_path)
+        spec = _importlib_util.spec_from_loader(arg_name, loader, origin=l_init_path, is_package=True)
+    else:
+        if not arg_filepath.endswith(".py") or not _os.path.exists(arg_filepath): # assume it's a .py file
+            log_print(f"File '{arg_filepath}' not found or not a .py file", arg_type="ERROR")
+            return None
+        loader = _importlib_machinery.SourceFileLoader(arg_name, arg_filepath)
+        spec = _importlib_util.spec_from_loader(arg_name, loader, origin=arg_filepath, is_package=False)
+
+    l_module = _importlib_util.module_from_spec(spec)
+    loader.exec_module(l_module)
+    _sys.modules[arg_name] = l_module
+
+    # If running inside IPython/Jupyter, also put into user namespace for tab-completion
+    try:
+        l_ipython = get_ipython()
+    except NameError:
+        l_ipython = None
+    if l_ipython is not None:
+        l_ipython.user_ns[arg_name] = l_module
+
+    return l_module
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_is_64bit() -> bool:
-    ''' Is the IDA process you are running in a 64 bit process? '''
-    return _ida_idaapi.__EA64__ # This function is needed for IDA 8.4
+    ''' Is the IDA process you are running in a 64 bit process? This function is needed for IDA 8.4 '''
+    return _ida_idaapi.__EA64__
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _ida_DLL() -> Any: #  This used to be Union[_ctypes.CDLL, _ctypes.WinDLL] but WinDLL is not supported on Linux, I guess I can't do anything useful here.
@@ -1783,11 +1993,11 @@ def decompiler_variable_set_name(arg_function: EvaluateType,
         return None
 
     l_function_address = l_function_temp.start_ea
-    l_lvar_saved_info = _ida_hexrays.lvar_saved_info_t()
     l_lvar = decompiler_variable(l_function_address, arg_variable, arg_debug=arg_debug)
     if l_lvar is None:
         log_print("l_lvar is None", arg_type="ERROR")
         return None
+    l_lvar_saved_info = _ida_hexrays.lvar_saved_info_t()
     l_lvar_saved_info.ll = l_lvar # ll --> Local variable Locator # TODO: If l_lvar is None, then the call to modify_user_lvar_info() crash IDA
     l_lvar_saved_info.name = arg_new_variable_name
     return _ida_hexrays.modify_user_lvar_info(l_function_address, _ida_hexrays.MLI_NAME, l_lvar_saved_info)
@@ -2065,7 +2275,7 @@ def function_prototype(arg_function_name_or_ea: EvaluateType,
         log_print(f"Since we failed to decompile {_hex_str_if_int(arg_function_name_or_ea)}, we are calling str(get_type({_hex_str_if_int(arg_function_name_or_ea)}, arg_debug={arg_debug}))", arg_type="INFO")
         l_temp = get_type(arg_function_name_or_ea, arg_debug=arg_debug)
         if l_temp is None:
-            log_print(f"get_type({_hex_str_if_int(arg_function_name_or_ea)}) failed to get any type")
+            log_print(f"get_type({_hex_str_if_int(arg_function_name_or_ea)}) failed to get any type", arg_type="ERROR")
             return "<<< Error: No type found >>>"
         res = str(l_temp)
         log_print(f"Returning '{res}'", arg_debug)
@@ -2801,7 +3011,7 @@ def export_h_file(arg_h_file: str = "", arg_add_comment_at_top: bool = True, arg
 
         Replacement for ida_typeinf.print_decls()
     '''
-    l_save_to_file: str = arg_h_file if arg_h_file else input_file.idb_path + ".h"
+    l_save_to_file: str = arg_h_file or f"{input_file.idb_path}.h"
     l_local_types: Optional[List[str]] = _local_types_as_c_types(arg_debug=arg_debug)
     if l_local_types is None:
         log_print('_local_types_as_c_types() failed.', arg_type="ERROR")
@@ -2810,7 +3020,8 @@ def export_h_file(arg_h_file: str = "", arg_add_comment_at_top: bool = True, arg
     with open(l_save_to_file, "w", encoding="UTF-8", newline="\n") as f:
         if arg_add_comment_at_top:
             l_header_dict: Dict[str, str] = {}
-            l_header_dict["generated_by"] = f"{__name__}.py version {__version__}"
+            l_header_dict["generated_by"] = f"{__name__}.py"
+            l_header_dict["plugin_version"] = __version__
             l_header_dict["generated_at"] = _timestamped_line('').strip()
             l_header_dict["input_file_filename"] = _os.path.basename(input_file.filename)
             l_header_dict["input_file_MD5"] = input_file.md5
@@ -2883,7 +3094,7 @@ def _validate_encoding_name(arg_encoding: str) -> str:
     arg_encoding = arg_encoding.lower()
     if arg_encoding.startswith(("iso", "windows")):
         return arg_encoding
-    
+
     arg_encoding = arg_encoding.replace("-", "")
     if arg_encoding in ["latin1"]:
         res = "Latin1"
@@ -3063,7 +3274,7 @@ utf8_string = string_utf8 = c_string
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def wide_string(arg_ea: EvaluateType, arg_len: int = 0, arg_flags: int = _ida_bytes.ALOPT_IGNHEADS | _ida_bytes.ALOPT_IGNPRINT | _ida_bytes.ALOPT_IGNCLT, arg_debug: bool = False) -> Optional[str]:
-    ''' Forcefully read the data as a NULL terminated wide/unicode/UTF-16/UCS-2 string. For more info about the flags, see the docstring for string()
+    ''' Forcefully read the data as a NULL terminated wide/unicode/UTF-16 string. For more info about the flags, see the docstring for string()
     @param arg_ea The address to read the string from
     @param arg_len The length of the string to read, set to 0 to use the length of the string at the given address
     @param arg_flags The flags to pass to string()
@@ -3078,7 +3289,7 @@ utf16_string = string_utf16 = wide_string
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def strings(arg_only_first: int = 100_000, arg_debug: bool = False) -> List[_idautils.Strings.StringItem]:
     ''' Returns strings that IDA has found.
-    
+
     @param arg_only_first: Only get the first X entries, default: 100_000 (should be enough for most programs)
     '''
     # TODO: Add config to the arguments? Like arg_min_len = 10 ?
@@ -3686,7 +3897,7 @@ def search_text(arg_search_for: str,
 def plugin_load_and_run(arg_plugin_name: str, arg_optional_argument_to_plugin: int = 0, arg_debug: bool = False) -> Optional[bool]:
     ''' Load a plugin and run it with optional argument.
 
-    @param arg_plugin_name: The name of the plugin on disk in the IDA plugin folder or a full path to a .py file or full path to a .dll file
+    @param arg_plugin_name: The name of the plugin on disk in the IDA plugin directory or a full path to a .py file or full path to a .dll file
     @param arg_optional_argument_to_plugin: Each plugin has it's own way to handle arguments but often it's just 0.
 
     @return: Returns True or False depening on what the plugin returns. Returns None if the plugin cannot be found.
@@ -4859,6 +5070,9 @@ def load_file_into_memory(arg_file_path: str, arg_executable: bool = True, arg_d
     Requires an active debugging session
     @return Returns the address the data (shellcode) was written to
     '''
+    if not _os.path.exists(arg_file_path):
+        log_print(f"File '{arg_file_path}' does not exist", arg_type="ERROR")
+        return None
     with open(arg_file_path, 'rb') as f:
         l_shellcode = f.read()
     res = allocate_memory_in_target(len(l_shellcode), arg_executable=arg_executable, arg_debug=arg_debug)
@@ -5415,6 +5629,7 @@ def _ipyida_find_connection_file(arg_copy_to_clipboard: bool = True) -> str:
 def ipyida_jupyter_console_from_shell(arg_copy_to_clipboard: bool = True) -> str:
     ''' The command you can run in your shell to connect to [IPyIda](https://github.com/eset/ipyida) and have it outside of IDA (But IDA and IPyIDA must both be up and running)
         [Read more at Hex-Rays blog](https://hex-rays.com/blog/plugin-focus-ipyida) # TODO: Verify that we really are using IpyIDA to the max
+        If you are having problems with the keyboard arrows, start powershell and then launch the Jupyter console from there.
         @param arg_copy_to_clipboard Copy the command to the clipboard
     '''
     log_print("OBS! When leaving the external Jupyter-console, write: exit(keep_kernel=True)", arg_type="INFO")
@@ -6008,7 +6223,7 @@ def _test_mem_alloc_write_read(arg_debug: bool = False) -> bool:
 
     l_input_test_string_wide: bytes = b"T\x00e\x00s\x00t\x00\x00\x00"
     write_bytes(l_memory, l_input_test_string_wide, arg_debug=arg_debug)
-    l_wide_string_res = string(l_memory, arg_encoding="UCS-2", arg_debug=arg_debug)
+    l_wide_string_res = string(l_memory, arg_encoding="UTF-16LE", arg_debug=arg_debug)
     res &= ("Test" == l_wide_string_res)
     log_print(f"simple wide string test: {res}", arg_debug)
     log_print(f"<<< FAILED >>> cstring test: {res}", arg_actually_print=not res, arg_type="ERROR")
@@ -6178,10 +6393,14 @@ def _test_convert_to_usercall(arg_debug: bool = False) -> bool:
     l_function_to_convert = "kernelbase_LoadLibraryA"
     l_prototype_before = function_prototype(l_function_to_convert, arg_debug=arg_debug)
     res = function_convert_to_usercall(l_function_to_convert, arg_debug=arg_debug)
-    log_print(f"function_convert_to_usercall({_hex_str_if_int(l_function_to_convert)}) failed", not res, arg_type="ERROR")
+    if not res:
+        log_print(f"function_convert_to_usercall({_hex_str_if_int(l_function_to_convert)}) failed", arg_type="ERROR")
+        return False
     l_prototype_after = function_prototype(l_function_to_convert, arg_debug=arg_debug)
     res &= "__user" in l_prototype_after
-    log_print("__user in l_prototype_after failed", not res, arg_type="ERROR")
+    if not res:
+        log_print("__user in l_prototype_after failed", arg_type="ERROR")
+        return False
     res &= set_type(l_function_to_convert, l_prototype_before, arg_debug=arg_debug)
     log_print(f"resetting the prototype back to '{l_prototype_before}' failed", not res, arg_type="ERROR")
     return res
@@ -6201,7 +6420,7 @@ def _test_GetProcAddress_on_Windows(arg_debug: bool = False) -> bool:
     l_function_to_test = "LoadLibraryA"
     l_LoadLibraryA_addr = win_GetProcAddress(l_module, l_function_to_test)
     if l_LoadLibraryA_addr is None:
-        log_print(f"win_GetProcAddress('kernel32', '{l_function_to_test}') failed! Test failed")
+        log_print(f"win_GetProcAddress('kernel32', '{l_function_to_test}') failed! Test failed", arg_type="ERROR")
         return False
     res = name(l_LoadLibraryA_addr, arg_debug=arg_debug) == f"{l_module}_{l_function_to_test}"
     l_should_be_None = win_GetProcAddress(l_module, "Nonexistantfunction")
@@ -6221,6 +6440,43 @@ def _test_virtual_address_to_file_offset_and_back_again(arg_debug: bool = False)
     log_print(f"res: {res}", arg_debug)
     return res
 
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_save_database(arg_debug: bool = False) -> bool:
+    ''' Test ida_save_database() '''
+    import tempfile
+    res = False
+    with tempfile.TemporaryDirectory() as l_temp_dir:
+        l_extension = _os.path.splitext(input_file.idb_path)[1] # IDA 8.4 can have IDB, otherwise its always I64
+        l_new_filename = _os.path.join(l_temp_dir, "test_ida_save_database" + l_extension)
+        res = ida_save_database(l_new_filename)
+        log_print(f"ida_save_database('{l_new_filename}') returned {res}", arg_debug)
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_python_load_module(arg_debug: bool = False) -> bool:
+    ''' Test _python_load_module() '''
+    import tempfile
+    res = False
+    with tempfile.TemporaryDirectory() as l_temp_dir:
+        l_temp_file = _os.path.join(l_temp_dir, "test_python_load_module.py")
+        with open(l_temp_file, "w", encoding="utf-8", newline="\n") as f:
+            f.write("def print_test_text() -> str:\n    return 'This text is from the test_python_load_module.py file'\n")
+        l_module = _python_load_module(l_temp_file)
+        if l_module is None:
+            log_print(f"_python_load_module({l_temp_file}) returned None", arg_type="ERROR")
+            return False
+        res = l_module.print_test_text() == "This text is from the test_python_load_module.py file"
+        log_print(f"l_module.print_test_text() failed", not res, arg_type="ERROR")
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_pe_header_linker_version(arg_debug: bool = False) -> bool:
+    ''' Test pe_header_linker_version() '''
+    res = False
+    (l_major, l_minor) = pe_header_linker_version()
+    res = l_major > 0 and l_minor > 0
+    log_print(f"pe_header_linker_version() returned {l_major}.{l_minor}", arg_debug)
+    return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_all(arg_debug: bool = False) -> bool:
@@ -6238,13 +6494,22 @@ def _test_all(arg_debug: bool = False) -> bool:
                         '_test_convert_to_usercall': _test_convert_to_usercall(arg_debug=arg_debug),
                         '_test_input_file' : _test_input_file(arg_debug=arg_debug),
                         '_test_GetProcAddress_on_Windows' : _test_GetProcAddress_on_Windows(arg_debug=arg_debug),
-                        '_test_virtual_address_to_file_offset_and_back_again': _test_virtual_address_to_file_offset_and_back_again(arg_debug=arg_debug)
+                        '_test_virtual_address_to_file_offset_and_back_again': _test_virtual_address_to_file_offset_and_back_again(arg_debug=arg_debug),
+                        '_test_save_database': _test_save_database(arg_debug=arg_debug),
+                        '_test_python_load_module': _test_python_load_module(arg_debug=arg_debug),
+                        '_test_pe_header_linker_version': _test_pe_header_linker_version(arg_debug=arg_debug)
                         }
-    for l_test_in_key, l_test_in_value in l_test_functions.items():
-        log_print(f"{l_test_in_key}: {l_test_in_value}", arg_type="INFO")
+    for l_test_name, l_test_result in l_test_functions.items():
+        if l_test_result:
+            log_print(f"{l_test_name}: {l_test_result}", arg_type="INFO")
+        else:
+            log_print(f"{l_test_name}: {l_test_result}", arg_type="ERROR")
 
     res = all(l_test_functions.values())
-    log_print(f"All tests passed OK: {res}", arg_type="INFO")
+    if res:
+        log_print(f"All tests passed OK!", arg_type="INFO")
+    else:
+        log_print(f"Some tests failed!", arg_type="ERROR")
     return res
 
 
@@ -6547,4 +6812,4 @@ def PLUGIN_ENTRY() -> _ida_idaapi.plugin_t:
 # End of file  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- End of file
 if not _is_running_as_plugin():
     log_print(f"Loaded {__name__} version: {__version__} by {__author__}. This version was released {_time_since(__version__)}", arg_type="INFO")
-    
+
