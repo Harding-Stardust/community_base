@@ -68,7 +68,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-11-08 03:07:40"
+__version__ = "2025-11-08 03:50:13"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -744,7 +744,7 @@ def ida_save_database(arg_new_filename: str = "",
     if l_new_filename and not l_new_filename.endswith(l_my_extension):
         l_new_filename += l_my_extension
 
-    return _ida_loader.save_database(l_new_filename, _ida_idaapi.as_uint32(arg_database_flags), arg_snapshot_root, arg_snapshot_attribute) # IDA 8.4 does not keyword parameters
+    return _ida_loader.save_database(l_new_filename, _ida_idaapi.as_uint32(arg_database_flags), arg_snapshot_root, arg_snapshot_attribute) # IDA 8.4 does not have keyword parameters
 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -860,13 +860,17 @@ def _python_load_module(arg_filepath: str, arg_name: Optional[str] = None) -> Op
         loader = _importlib_machinery.SourceFileLoader(arg_name, arg_filepath)
         spec = _importlib_util.spec_from_loader(arg_name, loader, origin=arg_filepath, is_package=False)
 
+    if spec is None:
+        log_print(f"spec is None for '{arg_filepath}'", arg_type="ERROR")
+        return None
     l_module = _importlib_util.module_from_spec(spec)
     loader.exec_module(l_module)
     _sys.modules[arg_name] = l_module
 
     # If running inside IPython/Jupyter, also put into user namespace for tab-completion
     try:
-        l_ipython = get_ipython()
+        from IPython import get_ipython as _get_ipython
+        l_ipython = _get_ipython()
     except NameError:
         l_ipython = None
     if l_ipython is not None:
@@ -5609,7 +5613,7 @@ def ida_output_text(arg_last_num_lines: int = -1, arg_clear_it_after: bool = Fal
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _ipyida_find_connection_file(arg_copy_to_clipboard: bool = True) -> str:
-    ''' If you are using the excellent plugin [IPyIda](https://github.com/eset/ipyida) then this function helps you to connect from the outside
+    ''' If you are using the excellent plugin [IPyIDA](https://github.com/eset/ipyida) then this function helps you to connect from the outside
         @param arg_copy_to_clipboard Copy the command to the clipboard
         @return The path to the connection file
     '''
