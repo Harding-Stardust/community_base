@@ -68,7 +68,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-11-08 03:50:13"
+__version__ = "2025-11-10 17:03:35"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -283,7 +283,7 @@ class ColoredFormatter(_logging.Formatter):
     }
     l_level_to_color = {
         'DEBUG': 'cyan',
-        'INFO': 'green',
+        'INFO': 'light_white',
         'WARNING': 'yellow',
         'ERROR': 'magenta',
         'CRITICAL': 'light_white',
@@ -474,60 +474,62 @@ def _dict_swap_key_and_value(arg_dict: dict) -> dict:
         res[v] = k
     return res
 
+_g_abbreviations = {
+    'ASG': "Assign",
+    'BPU': "Bytes Per Unit",
+    'CC' : "Calling Convention or Compiler, depending on context of the CC",
+    'CHCOL' : "Chooser Column",
+    'EA' : "Effective Address, just an address in the process",
+    'MBA': "Microcode",
+    'MD' : "MetaData",
+    'PEB': "Process Environment Block",
+    'TEB': "Thread Environment Block, a.k.a. TIB (Thread Information Block)",
+    'TIB': "Thread Information Block, a.k.a. TEB (Thread Environment Block)",
+    'tid': 'Type ID',
+    'TIF': "type info. E.g. int*, wchar_t* and so on",
+    'TIL': "Type Information Library, IDAs internal name for it's database with types in it. It's like a huge .h file but in IDAs own format",
+    "udt" : "user-defined type : a structure or union - but not enums. Read more at [the official docs](https://python.docs.hex-rays.com/ida_typeinf/index.html#ida_typeinf.udt_type_data_t)",
+    "udm" : "udt member : i.e., a structure or union member. See ida_typeinf.udm_t",
+    "edm": "enum member : i.e., an enumeration member - i.e., an enumerator. See ida_typeinf.edm_t"
+    }
+
+_g_links = {}
+_g_links["official_python_documentation"] =      "https://python.docs.hex-rays.com"
+_g_links["developer_guide"] =                    "https://docs.hex-rays.com/developer-guide"
+_g_links["getting_started_with_idapython"] =     "https://docs.hex-rays.com/developer-guide/idapython/idapython-getting-started"
+_g_links["idapython_examples"] =                 "https://docs.hex-rays.com/developer-guide/idapython/idapython-examples"
+_g_links["porting_guide"] =                      "https://docs.hex-rays.com/developer-guide/idapython/idapython-porting-guide-ida-9"
+_g_links["HexRays_official_Youtube_channel"] =   "https://www.youtube.com/@HexRaysSA"
+_g_links["AllThingsIDA_Youtube_channel"] =       "https://www.youtube.com/@allthingsida"
+_g_links["AllThingsIDA_github"] =                "https://github.com/allthingsida/allthingsida"
+_g_links["HexRays_official_plugins_repository"] ="https://plugins.hex-rays.com/"
+_g_links["how_to_create_a_plugin"] =             "https://docs.hex-rays.com/developer-guide/idapython/how-to-create-a-plugin"
+_g_links["appcall_guide"] =                      "https://docs.hex-rays.com/user-guide/debugger/debugger-tutorials/appcall_primer"
+_g_links["appcall_practical_examples"] =         "https://hex-rays.com/blog/practical-appcall-examples/"
+_g_links["community_forums"] =                   "https://community.hex-rays.com/"
+_g_links["HexRays_github_examples"] =            "https://github.com/HexRaysSA/IDAPython/tree/9.0sp1/examples"
+_g_links["ida_domain"] =                         "https://ida-domain.docs.hex-rays.com/"
+_g_links["plugins"] =                            "https://plugins.hex-rays.com/"
+
+_g_batch_mode = {}
+_g_batch_mode["command_line"] = "<full_path_to>ida.exe -A -S<script_I_want_to_run.py> -L<full_path_to>ida.log <full_path_to_input_file>"
+_g_batch_mode["official_link"] = "https://docs.hex-rays.com/user-guide/configuration/command-line-switches"
+
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, Dict[str, str]]:
     ''' Various information to help you develop your own scripts.
 
         Read more: <https://python.docs.hex-rays.com/>
        '''
-    l_abbreviations = {
-        'ASG': "Assign",
-        'BPU': "Bytes Per Unit",
-        'CC' : "Calling Convention or Compiler, depending on context of the CC",
-        'CHCOL' : "Chooser Column",
-        'EA' : "Effective Address, just an address in the process",
-        'MBA': "Microcode",
-        'MD' : "MetaData",
-        'PEB': "Process Environment Block",
-        'TEB': "Thread Environment Block, a.k.a. TIB (Thread Information Block)",
-        'TIB': "Thread Information Block, a.k.a. TEB (Thread Environment Block)",
-        'tid': 'Type ID',
-        'TIF': "type info. E.g. int*, wchar_t* and so on",
-        'TIL': "Type Information Library, IDAs internal name for it's database with types in it. It's like a huge .h file but in IDAs own format",
-        "udt" : "user-defined type : a structure or union - but not enums. See ida_typeinf.udt_type_data_t",
-        "udm" : "udt member : i.e., a structure or union member. See ida_typeinf.udm_t",
-        "edm": "enum member : i.e., an enumeration member - i.e., an enumerator. See ida_typeinf.edm_t"
-        }
-
-    l_links = {}
-    l_links["official_python_documentation"] =      "https://python.docs.hex-rays.com"
-    l_links["developer_guide"] =                    "https://docs.hex-rays.com/developer-guide"
-    l_links["getting_started_with_idapython"] =     "https://docs.hex-rays.com/developer-guide/idapython/idapython-getting-started"
-    l_links["idapython_examples"] =                 "https://docs.hex-rays.com/developer-guide/idapython/idapython-examples"
-    l_links["porting_guide"] =                      "https://docs.hex-rays.com/developer-guide/idapython/idapython-porting-guide-ida-9"
-    l_links["HexRays_official_Youtube_channel"] =   "https://www.youtube.com/@HexRaysSA"
-    l_links["AllThingsIDA_Youtube_channel"] =       "https://www.youtube.com/@allthingsida"
-    l_links["AllThingsIDA_github"] =                "https://github.com/allthingsida/allthingsida"
-    l_links["HexRays_official_plugins_repository"] ="https://plugins.hex-rays.com/"
-    l_links["how_to_create_a_plugin"] =             "https://docs.hex-rays.com/developer-guide/idapython/how-to-create-a-plugin"
-    l_links["appcall_guide"] =                      "https://docs.hex-rays.com/user-guide/debugger/debugger-tutorials/appcall_primer"
-    l_links["appcall_practical_examples"] =         "https://hex-rays.com/blog/practical-appcall-examples/"
-    l_links["community_forums"] =                   "https://community.hex-rays.com/"
-    l_links["HexRays_github_examples"] =            "https://github.com/HexRaysSA/IDAPython/tree/9.0sp1/examples"
-    l_links["ida_domain"] =                         "https://ida-domain.docs.hex-rays.com/"
-    l_links["plugins"] =                            "https://plugins.hex-rays.com/"
-
-    l_batch_mode = {}
-    l_batch_mode["command_line"] = "<full_path_to>ida.exe -A -S<script_I_want_to_run.py> -L<full_path_to>ida.log <full_path_to_input_file>"
-    l_batch_mode["official_link"] = "https://docs.hex-rays.com/user-guide/configuration/command-line-switches"
+    
 
     res = {}
-    res["links"] = l_links
-    res["abbreviations"] = l_abbreviations
-    res["batch_mode"] = l_batch_mode
+    res["links"] = _g_links
+    res["abbreviations"] = _g_abbreviations
+    res["batch_mode"] = _g_batch_mode
 
     if arg_open_browser_at_official_python_docs:
-        _ida_kernwin.open_url(l_links["official_python_documentation"])
+        _ida_kernwin.open_url(_g_links["official_python_documentation"])
 
     return res
 
@@ -583,7 +585,7 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
     l_bug_report: Dict[str, str] = {}
     l_bug_report["bug_in_module"] = _python_module_to_str(arg_module_to_blame)
     l_bug_report["IDA_version"] = str(ida_version())
-    l_bug_report["decompiler_version"] = decompiler_version()
+    l_bug_report["decompiler_version"] = _decompiler_version_deprecated()
     l_bug_report["community_base_version"] = __version__
     l_bug_report["python_version"] = _sys.version
     l_bug_report["os_version"] = f"{_platform.uname().system} {_platform.uname().version} {_platform.uname().machine}"
@@ -759,7 +761,7 @@ def ida_exit(arg_exit_code: int = 0,
     To exit without saving the IDB, see: <https://docs.hex-rays.com/9.0sp1/developer-guide/idc/idc-api-reference/alphabetical-list-of-idc-functions/197>
     and <https://hex-rays.com/blog/igors-tip-of-the-week-116-ida-startup-files>
 
-    process_config_directive(): <https://python.docs.hex-rays.com/namespaceida__idp.html#:~:text=process_config_directive()>
+    Read more at [the official docs](https://python.docs.hex-rays.com/ida_idp/index.html#ida_idp.process_config_directive)
     '''
     # TODO: Check how this plays with ida_domain
     # TODO: Can I take a memory snapshot in case we are in a live debugging session?
@@ -777,9 +779,7 @@ def ida_exit(arg_exit_code: int = 0,
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _idaapi_get_ida_notepad_text() -> str:
     ''' Wrapper around ida_nalt.get_ida_notepad_text() that actually honors the type hints.
-    Read more: <https://python.docs.hex-rays.com/namespaceida__nalt.html#:~:text=get_ida_notepad_text()>
-
-    Tag: Community fix, IDA Bug
+    Read more in [the official docs](https://python.docs.hex-rays.com/ida_nalt/index.html#ida_nalt.get_ida_notepad_text)
     '''
     return _ida_nalt.get_ida_notepad_text() or ""
 
@@ -794,7 +794,7 @@ def notepad_text(arg_text: Optional[str] = None) -> str:
     return _idaapi_get_ida_notepad_text()
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def decompiler_version() -> str:
+def _decompiler_version_deprecated() -> str:
     ''' What version of Hexrays decompiler we are running '''
     l_arch = f"{input_file.format}, {input_file.bits} bits, {input_file.endian} endian"
     l_error_str: str = f"<<< No decompiler for {l_arch} is loaded >>>"
@@ -881,13 +881,13 @@ def _python_load_module(arg_filepath: str, arg_name: Optional[str] = None) -> Op
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_is_64bit() -> bool:
     ''' Is the IDA process you are running in a 64 bit process? This function is needed for IDA 8.4 '''
-    return _ida_idaapi.__EA64__
+    return bool(_ida_idaapi.__EA64__)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _ida_DLL() -> Any: #  This used to be Union[_ctypes.CDLL, _ctypes.WinDLL] but WinDLL is not supported on Linux, I guess I can't do anything useful here.
     ''' Load correct version of ida.dll. Works on IDA 8.4, 9.0, 9.1 and 9.2. Example of how to use ctypes.
 
-    Hex-Rays blog about it (OBS! Outdated!): <https://hex-rays.com/blog/calling-ida-apis-from-idapython-with-ctypes>
+    [Read more at Hex-Rays blog about it (OBS! Outdated!)](https://hex-rays.com/blog/calling-ida-apis-from-idapython-with-ctypes)
     '''
 
     l_bits: str = "64" if ida_is_64bit() else ""
@@ -902,6 +902,7 @@ def _ida_DLL() -> Any: #  This used to be Union[_ctypes.CDLL, _ctypes.WinDLL] bu
         res = _ctypes.cdll[f'libida{l_bits}.dylib'] # type: ignore [assignment] # Not tested, cdll is CDECL. For some strange reason, when I renamed sys --> _sys, mypy fails to understand the code?!
     else:
         log_print(f"You are using an OS I do not know how to handle: {_sys.platform}", arg_type="ERROR")
+        return None
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -1146,7 +1147,7 @@ def _pretty_print_size(arg_input_size: int) -> Optional[str]:
     l_IDA_dll[l_exported_function_name].argtypes = _ctypes.c_char_p, _ctypes.c_size_t, _ctypes.c_uint64
     l_IDA_dll[l_exported_function_name].restype = _ctypes.c_size_t
     l_IDA_dll[l_exported_function_name](l_buf, l_buf_size, arg_input_size)
-    return l_buf.value.decode('utf-8') # buf.raw gives the whole buffer
+    return l_buf.value.decode('utf-8') # l_buf.raw gives the whole buffer
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def google(arg_search: str) -> str:
@@ -1516,13 +1517,13 @@ class _input_file_object():
     entry_point = property(fget=lambda self: _ida_ida.inf_get_start_ip(), doc='Address of the first instruction that is executed')
     filename = property(fget=lambda self: _ida_nalt.get_input_file_path() or "", doc='Full path and filename to the file WHEN IT WAS LOADED INTO IDA. The file might been moved by the user and this path might not be valid.')
     format = property(fget=lambda self: _ida_loader.get_file_type_name() if self.filename else "<<< no file loaded >>>", doc='Basically PE or ELF. e.g. PE gives "Portable executable for 80386 (PE)"')
-    _idb_creation_time = property(fget=lambda self: _time.strftime("%Y-%m-%d %H:%M:%S", _datetime.timetuple(_datetime.fromtimestamp(_ida_nalt.get_idb_ctime()))), doc='When the IDB was created') # useless?
-    _idb_number_of_changes = property(fget=lambda self: _ida_ida.inf_get_database_change_count(), doc='Number of changes done in the IDB') # useless?
-    _idb_opened_number_of_times = property(fget=lambda self: _ida_nalt.get_idb_nopens(), doc='Number of times the IDB have been opened') # useless?
+    _idb_creation_time = property(fget=lambda self: _time.strftime("%Y-%m-%d %H:%M:%S", _datetime.timetuple(_datetime.fromtimestamp(_ida_nalt.get_idb_ctime()))), doc='When the IDB was created')
+    _idb_number_of_changes = property(fget=lambda self: _ida_ida.inf_get_database_change_count(), doc='Number of changes done in the IDB')
+    _idb_opened_number_of_times = property(fget=lambda self: _ida_nalt.get_idb_nopens(), doc='Number of times the IDB have been opened')
     idb_path = property(fget=lambda self: _ida_loader.get_path(_ida_loader.PATH_TYPE_IDB), doc='Full path to the IDB. Replacement for ida_utils.GetIdbDir()')
-    _idb_work_seconds = property(fget=lambda self: _ida_nalt.get_elapsed_secs(), doc='Number of seconds the IDB have been open') # useless?
+    _idb_work_seconds = property(fget=lambda self: _ida_nalt.get_elapsed_secs(), doc='Number of seconds the IDB have been open')
     idb_version = property(fget=lambda self: _ida_ida.inf_get_version(), doc='The version that the IDB format is in. If you created the IDB in an older version of IDA Pro, then this will differ from ida_version()')
-    _initial_ida_version = property(fget=lambda self: _ida_nalt.get_initial_ida_version(), doc="The version of IDA that created this IDB") # useless?
+    _initial_ida_version = property(fget=lambda self: _ida_nalt.get_initial_ida_version(), doc="The version of IDA that created this IDB")
     imagebase = property(fget=lambda self: _ida_nalt.get_imagebase(), doc='The address the input file will be/is loaded at')
     is_dll = property(fget=lambda self: _ida_ida.inf_is_dll(), doc='Is the file a DLL file?')
     loader = property(fget=lambda self: _loader_name().upper() if self.filename else "<<< No file loaded >>>", doc='Name of the IDA loader that is parsing the file when loading it into IDA')
@@ -3334,7 +3335,7 @@ def __strings_profiled():
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pointer_type(arg_type_or_function_name: Union[str, _ida_typeinf.tinfo_t], arg_debug: bool = False) -> Optional[_ida_typeinf.tinfo_t]:
     ''' Send in a name or a type and get a pointer type back.
-    The reverse function is ida_typeinf.tinfo_t().remove_ptr_or_array()()
+    The reverse function is ida_typeinf.tinfo_t.remove_ptr_or_array()
     Usually one use str(res) to get it as a string
 
     @param arg_type_or_function_name The name or type to get a pointer type for
@@ -3342,7 +3343,6 @@ def pointer_type(arg_type_or_function_name: Union[str, _ida_typeinf.tinfo_t], ar
 
     Replacement for ida_typeinf.tinfo_t().create_ptr()
     '''
-
     l_type: Optional[_ida_typeinf.tinfo_t] = get_type(arg_type_or_function_name, arg_debug=arg_debug)
     if l_type is None:
         log_print(f"get_type({arg_type_or_function_name}) failed", arg_type="ERROR")
@@ -4204,11 +4204,11 @@ def get_type(arg_name_or_ea: Union[EvaluateType, _ida_hexrays.lvar_t, _ida_typei
     '''
     if isinstance(arg_name_or_ea, _ida_typeinf.tinfo_t):
         log_print("arg_name_or_ea is already a ida_typeinf.tinfo_t", arg_debug)
-        return arg_name_or_ea
+        return arg_name_or_ea.copy()
 
     if isinstance(arg_name_or_ea, _ida_hexrays.lvar_t):
         log_print(f"arg_name_or_ea is {type(arg_name_or_ea)} which have a function named 'type' that returns ida_typeinf.tinfo_t", arg_debug)
-        return arg_name_or_ea.type()
+        return arg_name_or_ea.type().copy()
 
     if hasattr(arg_name_or_ea, 'type') and isinstance(arg_name_or_ea.type, _ida_typeinf.tinfo_t):
         log_print(f"arg_name_or_ea is of type: {type(arg_name_or_ea)} which have a member called 'type' which is of type ida_typeinf.tinfo_t", arg_debug)
@@ -4223,7 +4223,7 @@ def get_type(arg_name_or_ea: Union[EvaluateType, _ida_hexrays.lvar_t, _ida_typei
         log_print("Failed to parse it as a str", arg_debug)
 
     # Is the name we are looking for a function/label/name/register we can reach in our IDB?
-    l_addr: int = address(arg_name_or_ea, arg_debug=arg_debug)
+    l_addr: int = address(arg_name_or_ea, arg_supress_error=True, arg_debug=arg_debug)
     if l_addr != _ida_idaapi.BADADDR:
         if not arg_cached_cfunc:
             arg_cached_cfunc = decompile(l_addr, arg_force_fresh_decompilation=True, arg_debug=arg_debug)
@@ -4235,7 +4235,7 @@ def get_type(arg_name_or_ea: Union[EvaluateType, _ida_hexrays.lvar_t, _ida_typei
             if res:
                 return res
 
-        # TODO: Look up _ida_typeinf.idc_get_type and compare with _ida_typeinf.print_type
+        # TODO: Look up _ida_typeinf.idc_get_type and compare with _ida_typeinf.print_type, also check https://python.docs.hex-rays.com/ida_nalt/index.html#ida_nalt.get_tinfo
         l_print_type_flags: int = 0
         l_print_type_flags |= _ida_typeinf.PRTYPE_1LINE # Everything on 1 line
         l_print_type_flags |= _ida_typeinf.PRTYPE_SEMI  # Adds a ';' at the end
@@ -6478,7 +6478,7 @@ def _test_pe_header_linker_version(arg_debug: bool = False) -> bool:
     ''' Test pe_header_linker_version() '''
     res = False
     (l_major, l_minor) = pe_header_linker_version()
-    res = l_major > 0 and l_minor > 0
+    res = l_major > 0 or l_minor > 0
     log_print(f"pe_header_linker_version() returned {l_major}.{l_minor}", arg_debug)
     return res
 
