@@ -68,7 +68,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-11-10 17:03:35"
+__version__ = "2025-11-11 22:29:01"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -418,6 +418,7 @@ def log_print(arg_string: Union[str, int, bool], arg_actually_print: bool = True
     ''' Used for code trace while developing the project '''
     _check_if_long_running_script_should_abort()
     if arg_actually_print or _G_LOG_EVERYTHING:
+        arg_type = arg_type.upper()
         if arg_type == "DEBUG":
             _g_logger.debug(arg_string, stacklevel=4)
         elif arg_type == "INFO":
@@ -909,7 +910,7 @@ def _ida_DLL() -> Any: #  This used to be Union[_ctypes.CDLL, _ctypes.WinDLL] bu
 def _loader_name() -> str:
     ''' Internal function. Example of how to use ctypes to call IDA C api.
     Hex-Rays blog about it (OBS! Outdated!): <https://hex-rays.com/blog/calling-ida-apis-from-idapython-with-ctypes>
-    [get_loader_name](https://cpp.docs.hex-rays.com/loader_8hpp.html#:~:text=get_loader_name())
+    [get_loader_name](https://cpp.docs.hex-rays.com/loader_8hpp.html#a9c79e47be0a36e47363409f3ce9ce6c5)
     '''
     l_IDA_dll = _ida_DLL()
     l_buf_size: int = 0x100
@@ -1720,6 +1721,8 @@ def address(arg_label_or_address: EvaluateType, arg_supress_error: bool = False,
 
     Replacement for ida_name.get_name_ea()
     '''
+    # _g_logger.debug("Called from", stacklevel=4) # Prints the caller of this function
+    
     # Resolve cursor relative jmps such as "+0x10" meaning current_address() + 0x10
     if isinstance(arg_label_or_address, int):
         res: Optional[int] = arg_label_or_address
@@ -1826,6 +1829,12 @@ def decompiler_set_config(arg_key: str, arg_value: BoolishType) -> bool:
     return _bool(_ida_hexrays.change_hexrays_config(f"{arg_key} = {arg_value}"))
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def decompiler_reset_decompiler_information() -> None:
+    ''' Flush all cached decompilation results '''
+    _ida_hexrays.clear_cached_cfuncs()
+    return
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def decompile(arg_ea: EvaluateType,
               arg_hf: Optional[_ida_hexrays.hexrays_failure_t] = None,
               arg_flags: int = _ida_hexrays.DECOMP_GXREFS_DEFLT,
@@ -1836,7 +1845,7 @@ def decompile(arg_ea: EvaluateType,
     ''' The problem with the normal ida_hexrays.decompile() is that it's not done with the decompilation when the the function returns.
     You can see the difference if you run: cfunc = ida_hexrays.decompile(<function that has not been decompiled before>);print(f"len of treeitems: {len(cfunc.treeitems)}")
 
-    @param arg_flags Default is ida_hexrays.DECOMP_GXREFS_DEFLT. Read more: <https://python.docs.hex-rays.com/namespaceida__hexrays.html#:~:text=decompile()>
+    @param arg_flags Default is ida_hexrays.DECOMP_GXREFS_DEFLT. Read more at [the official docs](https://python.docs.hex-rays.com/ida_hexrays/index.html#ida_hexrays.decompile)
 
     Replacement for ida_hexrays.decompile()
 
@@ -1849,13 +1858,8 @@ def decompile(arg_ea: EvaluateType,
 
     _ida_auto.auto_wait() # We always want to have the auto analysis done before we start decompiling. This is mostly important when we call this function in batch mode
 
-    l_addr: int = address(arg_ea, arg_debug=arg_debug)
-    if l_addr == _ida_idaapi.BADADDR:
-        log_print(f"arg_ea: '{_hex_str_if_int(arg_ea)}' could not be located in the IDB", arg_type="ERROR")
-        return None
-
-    l_func = function(l_addr, arg_create_function=arg_create_function, arg_debug=arg_debug)
-    if not l_func:
+    l_func: Optional[_ida_funcs.func_t] = function(arg_ea, arg_create_function=arg_create_function, arg_debug=arg_debug)
+    if l_func is None:
         log_print(f"Could not create a function at {_hex_str_if_int(arg_ea)}", arg_debug, arg_type="ERROR")
         return None
     l_function_address: int = address(l_func, arg_debug=arg_debug)
@@ -2727,8 +2731,10 @@ def imports(arg_debug: bool = False) -> Dict[str, Dict[str, Tuple[int, int]]]:
 def exports(arg_debug: bool = False) -> Dict[int, Tuple[int, int, str]]:
     ''' Get all exported functions including start/entrypoint. The dict returned is Dict[ea: int, (index: int, ordinal: int, name: str)] '''
     res = {}
-    for index, ordinal, ea, l_name in _idautils.Entries():
-        res[ea] = (index, ordinal, l_name)
+    for l_index, l_ordinal, l_ea, l_name in _idautils.Entries():
+        if l_name is None: l_name = name(l_ea) # TODO: IDA (at least) 9.2 gives invalid names in e.g. ntoskrnl.exe
+        if l_name is None: l_name = f"<<< no name found for ordinal 0x{l_ordinal:x} >>>"
+        res[l_ea] = (l_index, l_ordinal, l_name)
     log_print(f"Len of exports: {len(res)}", arg_debug)
     return res
 
@@ -4212,10 +4218,9 @@ def get_type(arg_name_or_ea: Union[EvaluateType, _ida_hexrays.lvar_t, _ida_typei
 
     if hasattr(arg_name_or_ea, 'type') and isinstance(arg_name_or_ea.type, _ida_typeinf.tinfo_t):
         log_print(f"arg_name_or_ea is of type: {type(arg_name_or_ea)} which have a member called 'type' which is of type ida_typeinf.tinfo_t", arg_debug)
-        return arg_name_or_ea.type
-
-    # Are we sending in a parsable C type?
-    if isinstance(arg_name_or_ea, str):
+        return arg_name_or_ea.type.copy()
+    
+    if isinstance(arg_name_or_ea, str): # Are we sending in a parsable C type?
         log_print("arg_name_or_ea is a str, trying to convert it directly to a type", arg_debug)
         parsed_c_type = _parse_decl(arg_name_or_ea, arg_debug=arg_debug)
         if parsed_c_type is not None:
@@ -4235,18 +4240,12 @@ def get_type(arg_name_or_ea: Union[EvaluateType, _ida_hexrays.lvar_t, _ida_typei
             if res:
                 return res
 
-        # TODO: Look up _ida_typeinf.idc_get_type and compare with _ida_typeinf.print_type, also check https://python.docs.hex-rays.com/ida_nalt/index.html#ida_nalt.get_tinfo
-        l_print_type_flags: int = 0
-        l_print_type_flags |= _ida_typeinf.PRTYPE_1LINE # Everything on 1 line
-        l_print_type_flags |= _ida_typeinf.PRTYPE_SEMI  # Adds a ';' at the end
-        l_type_at_addr = _ida_typeinf.print_type(l_addr, l_print_type_flags)
-        if l_type_at_addr:
-            res = _parse_decl(l_type_at_addr, arg_debug=arg_debug)
-            log_print(f"print_type() --> '{res}'", arg_debug)
-            return res
-
-        log_print(f"Resolved to address: 0x{l_addr:x} but ida_typeinf.print_type() found no type there.", arg_type="ERROR")
-        return None
+        res = _ida_typeinf.tinfo_t()
+        _ida_nalt.get_tinfo(res, l_addr)
+        if res.empty():
+            log_print(f"Resolved to address: 0x{l_addr:x} but ida_nalt.get_tinfo() found no type there.", arg_type="ERROR")
+            return None
+        return res
 
     # Is the name a standard type in the IDA Type Information Library (TIL)?
     if not isinstance(arg_name_or_ea, str):
@@ -6483,6 +6482,13 @@ def _test_pe_header_linker_version(arg_debug: bool = False) -> bool:
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_imports_and_exports(arg_debug: bool = False) -> bool:
+    ''' Test getting all imports and exports '''
+    l_imports = imports(arg_debug=arg_debug)
+    l_exports = exports(arg_debug=arg_debug)
+    return len(l_imports) >= 1 and len(l_exports) >= 1
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_all(arg_debug: bool = False) -> bool:
     ''' Tests all tests we have. This is NOT complete and needs to be extended '''
     l_test_functions = {'_test_appcall_on_Windows': _test_appcall_on_Windows(arg_debug=arg_debug),
@@ -6501,8 +6507,12 @@ def _test_all(arg_debug: bool = False) -> bool:
                         '_test_virtual_address_to_file_offset_and_back_again': _test_virtual_address_to_file_offset_and_back_again(arg_debug=arg_debug),
                         '_test_save_database': _test_save_database(arg_debug=arg_debug),
                         '_test_python_load_module': _test_python_load_module(arg_debug=arg_debug),
-                        '_test_pe_header_linker_version': _test_pe_header_linker_version(arg_debug=arg_debug)
+                        '_test_pe_header_linker_version': _test_pe_header_linker_version(arg_debug=arg_debug),
+                        '_test_imports_and_exports': _test_imports_and_exports(arg_debug=arg_debug)
                         }
+    log_print("---------------------------------------------------------------------------------------", arg_type="INFO")
+    log_print("-------------------------------- Start of test results --------------------------------", arg_type="INFO")
+    log_print("---------------------------------------------------------------------------------------", arg_type="INFO")
     for l_test_name, l_test_result in l_test_functions.items():
         if l_test_result:
             log_print(f"{l_test_name}: {l_test_result}", arg_type="INFO")
