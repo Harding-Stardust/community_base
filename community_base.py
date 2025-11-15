@@ -68,7 +68,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-11-11 22:29:01"
+__version__ = "2025-11-15 03:00:13"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -96,7 +96,7 @@ import ctypes as _ctypes
 import importlib.util as _importlib_util
 import importlib.machinery as _importlib_machinery
 import json as _json # TODO: Change to json5?
-from typing import Union, List, Dict, Tuple, Any, Optional, Callable
+from typing import Union, List, Dict, Tuple, Any, Optional, Callable, Set
 from types import ModuleType
 import inspect as _inspect
 _missing_imports: List[str] = []
@@ -169,6 +169,8 @@ BoolishType = Union[bool, int, str] # Can be evaluted by my function named _bool
 # EvaluateType is anything that can be evalutad to an int. E.g. the address() function can take this type and then try to resolve an adress. Give it a str (a label) and it will work, give it a ida_segment.segment_t object and it will give the address to the start of the segment
 EvaluateType = Union[str, int, _ida_idp.reg_info_t, _ida_ua.insn_t, _ida_hexrays.cinsn_t, _ida_hexrays.cfuncptr_t, _ida_funcs.func_t, _ida_idaapi.PyIdc_cvt_int64__, _ida_segment.segment_t, _ida_ua.op_t, _ida_typeinf.funcarg_t, _idautils.Strings.StringItem, _ida_dbg.bpt_t, _ida_idd.modinfo_t, _ida_hexrays.carg_t, _ida_hexrays.cexpr_t, _ida_range.range_t]
 _G_LOG_EVERYTHING = False # If this is set to True, then all calls to log_print() will be printed, this can cause massive logs but good for hard to find bugs
+_G_DEFAULT_ENCODING: str = "utf-8"
+_G_DEFAULT_TIME_FORMAT: str = "%Y-%m-%d %H:%M:%S"
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _send_text_to_jupyter(arg_text: str) -> None:
@@ -367,29 +369,29 @@ while _g_logger.handlers:
 
 # Create the dual output handler, Jupyter supports ANSI colors, IDA does not
 _g_dual_handler = DualOutputHandler(arg_level=_logging.DEBUG, arg_jupyter_sender=_send_text_to_jupyter, arg_ida_sender=_send_text_to_ida_output)
-_g_dual_handler.setFormatter(ColoredFormatter('%(asctime)s [%(levelname)s] %(module)s.%(funcName)s:%(lineno)d - %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+_g_dual_handler.setFormatter(ColoredFormatter('%(asctime)s [%(levelname)s] %(module)s.%(funcName)s:%(lineno)d - %(message)s', datefmt=_G_DEFAULT_TIME_FORMAT))
 _g_logger.addHandler(_g_dual_handler)
 _g_logger.propagate = False
 
 
 # Helpers ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- Helpers
+
+
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _timestamped_line(arg_str: str) -> str:
     ''' Add a timestamp at the beginning of the line
      e.g. 2024-12-31 13:59:59 This is the string I send in as argument
     '''
-    return _time.strftime("%Y-%m-%d %H:%M:%S", _datetime.timetuple(_datetime.now())) + " " + arg_str
+    return _time.strftime(_G_DEFAULT_TIME_FORMAT, _datetime.timetuple(_datetime.now())) + " " + arg_str
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _simulate_long_running_task() -> None:
     ''' Simulate some long running task so I can test _check_if_long_running_script_should_abort()
     copy the string "abort.ida" into the clipboard to raise a TimeoutError exception
-     '''
-
+    '''
     for i in range(0, 1_000_000):
         log_print(f"Simulating a long running task: {i}")
         _time.sleep(1.0)
-
     return
 
 _g_timestamp_of_last_checked = _time.time()
@@ -491,11 +493,13 @@ _g_abbreviations = {
     'TIL': "Type Information Library, IDAs internal name for it's database with types in it. It's like a huge .h file but in IDAs own format",
     "udt" : "user-defined type : a structure or union - but not enums. Read more at [the official docs](https://python.docs.hex-rays.com/ida_typeinf/index.html#ida_typeinf.udt_type_data_t)",
     "udm" : "udt member : i.e., a structure or union member. See ida_typeinf.udm_t",
-    "edm": "enum member : i.e., an enumeration member - i.e., an enumerator. See ida_typeinf.edm_t"
+    "edm": "enum member : i.e., an enumeration member - i.e., an enumerator. See ida_typeinf.edm_t",
+    "vdui": "Visual Decompiler User Interface. vd prefix is the internal name for the decompiler."
     }
 
 _g_links = {}
 _g_links["official_python_documentation"] =      "https://python.docs.hex-rays.com"
+_g_links["official_cpp_documentation"] =         "https://cpp.docs.hex-rays.com/"
 _g_links["developer_guide"] =                    "https://docs.hex-rays.com/developer-guide"
 _g_links["getting_started_with_idapython"] =     "https://docs.hex-rays.com/developer-guide/idapython/idapython-getting-started"
 _g_links["idapython_examples"] =                 "https://docs.hex-rays.com/developer-guide/idapython/idapython-examples"
@@ -581,8 +585,8 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
     @param arg_module_to_blame The name of the module that is buggy, usually it's the plugin name or "IDA Pro"
 
     @return The full path to the bug report '''
-    l_timestamp: str = _time.strftime("%Y_%m_%d_%H_%M_%S", _datetime.timetuple(_datetime.now()))
-    l_bug_report_file: str = f"{input_file.idb_path}.{l_timestamp}.bug_report.json"
+    l_timestamp_for_filename: str = _time.strftime(_G_DEFAULT_TIME_FORMAT.replace('-','_').replace(' ','_').replace(':','_').replace('/','_'), _datetime.timetuple(_datetime.now()))
+    l_bug_report_file: str = f"{input_file.idb_path}.{l_timestamp_for_filename}.bug_report.json"
     l_bug_report: Dict[str, str] = {}
     l_bug_report["bug_in_module"] = _python_module_to_str(arg_module_to_blame)
     l_bug_report["IDA_version"] = str(ida_version())
@@ -596,7 +600,7 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
     l_bug_report["bug_description"] = arg_bug_description
 
     l_bug_report_as_str = _json.dumps(l_bug_report, ensure_ascii=False, indent=4, default=str)
-    with open(l_bug_report_file, "w", encoding="UTF-8", newline="\n") as f:
+    with open(l_bug_report_file, "w", encoding="utf-8", newline="\n") as f:
         f.write(l_bug_report_as_str)
 
     log_print(f"Wrote bug report in {l_bug_report_file}", arg_type="INFO")
@@ -678,7 +682,7 @@ def ida_is_in_gui_mode() -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_is_running_in_batch_mode() -> bool:
     ''' Are we running in batch mode? a.k.a. headless
-    Credits goes to [arizvisa](https://github.com/arizvisa) : <https://github.com/Harding-Stardust/community_base/issues/1>
+    Credits goes to [arizvisa](https://github.com/arizvisa) : for [my first issue](https://github.com/Harding-Stardust/community_base/issues/1)
     There are 3 cases:
     ida.exe (normal mode with GUI) --> False
     ida.exe -A -Smy_script.py (before the GUI is painted) --> True
@@ -708,7 +712,7 @@ def ida_config(arg_key: str, arg_value: str) -> bool:
 
     Replacement for ida_idp.process_config_directive()
 
-    Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-116-ida-startup-files>
+    [Read more at Hex-Rays blog](https://hex-rays.com/blog/igors-tip-of-the-week-116-ida-startup-files)
     '''
     arg_key = arg_key.upper()
     arg_value = arg_value.upper()
@@ -748,7 +752,6 @@ def ida_save_database(arg_new_filename: str = "",
         l_new_filename += l_my_extension
 
     return _ida_loader.save_database(l_new_filename, _ida_idaapi.as_uint32(arg_database_flags), arg_snapshot_root, arg_snapshot_attribute) # IDA 8.4 does not have keyword parameters
-
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_exit(arg_exit_code: int = 0,
@@ -1188,6 +1191,7 @@ def _new_file_opened_notification_callback(arg_nw_code: int, arg_is_old_database
 
 if not _is_running_as_plugin():
     _ida_idaapi.notify_when(_ida_idaapi.NW_OPENIDB, _new_file_opened_notification_callback) # See also : NW_INITIDA, NW_REMOVE, NW_CLOSEIDB, NW_TERMIDA
+    # TODO: If I am running as ONLY plugin, will that cause problem if the user change IDB ?
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _add_link_to_docstring(arg_function: Callable, arg_link: str = "") -> None:
@@ -1245,13 +1249,13 @@ if ida_version() >= 920:
 def _time_since(arg_timestamp_str: str, arg_now: str = "") -> str:
     """
     Returns a human-readable elapsed time since timestamp_str.
-    @param timestamp_str format: "YYYY-MM-DD HH:MM:SS"
-    @param arg_now has the format: "YYYY-MM-DD HH:MM:SS", if you let it be empty, then take the current timestamp
+    @param timestamp_str format: "YYYY-MM-DD HH:MM:SS" (same as _G_DEFAULT_TIME_FORMAT)
+    @param arg_now has the format: "YYYY-MM-DD HH:MM:SS" (same as _G_DEFAULT_TIME_FORMAT), if you let it be empty, then take the current timestamp
     @return The time ago, e.g. _time_since(community_base.__version__) --> '22 hours, 9 minutes, 8 seconds ago'
     """
-    arg_now = arg_now or _time.strftime("%Y-%m-%d %H:%M:%S", _datetime.timetuple(_datetime.now()))
-    l_now = _datetime.strptime(arg_now, "%Y-%m-%d %H:%M:%S")
-    l_then = _datetime.strptime(arg_timestamp_str, "%Y-%m-%d %H:%M:%S")
+    arg_now = arg_now or _time.strftime(_G_DEFAULT_TIME_FORMAT, _datetime.timetuple(_datetime.now()))
+    l_now = _datetime.strptime(arg_now, _G_DEFAULT_TIME_FORMAT)
+    l_then = _datetime.strptime(arg_timestamp_str, _G_DEFAULT_TIME_FORMAT)
     l_diff = _relativedelta(l_now, l_then)
     l_past = True
     if l_then > l_now:
@@ -1394,7 +1398,7 @@ def pe_header_compiled_time() -> str:
     l_timestamp_and_hash: bytes = l_pe_header[8:12]
     l_timestamp = int.from_bytes(l_timestamp_and_hash, byteorder="little")
     l_datetime = _datetime.timetuple(_datetime.fromtimestamp(l_timestamp, tz=_timezone.utc))
-    return _time.strftime("%Y-%m-%d %H:%M:%S (UTC)", l_datetime)
+    return _time.strftime(f"{_G_DEFAULT_TIME_FORMAT} (UTC)", l_datetime)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pdb_path() -> str:
@@ -1518,7 +1522,7 @@ class _input_file_object():
     entry_point = property(fget=lambda self: _ida_ida.inf_get_start_ip(), doc='Address of the first instruction that is executed')
     filename = property(fget=lambda self: _ida_nalt.get_input_file_path() or "", doc='Full path and filename to the file WHEN IT WAS LOADED INTO IDA. The file might been moved by the user and this path might not be valid.')
     format = property(fget=lambda self: _ida_loader.get_file_type_name() if self.filename else "<<< no file loaded >>>", doc='Basically PE or ELF. e.g. PE gives "Portable executable for 80386 (PE)"')
-    _idb_creation_time = property(fget=lambda self: _time.strftime("%Y-%m-%d %H:%M:%S", _datetime.timetuple(_datetime.fromtimestamp(_ida_nalt.get_idb_ctime()))), doc='When the IDB was created')
+    _idb_creation_time = property(fget=lambda self: _time.strftime(_G_DEFAULT_TIME_FORMAT, _datetime.timetuple(_datetime.fromtimestamp(_ida_nalt.get_idb_ctime()))), doc='When the IDB was created')
     _idb_number_of_changes = property(fget=lambda self: _ida_ida.inf_get_database_change_count(), doc='Number of changes done in the IDB')
     _idb_opened_number_of_times = property(fget=lambda self: _ida_nalt.get_idb_nopens(), doc='Number of times the IDB have been opened')
     idb_path = property(fget=lambda self: _ida_loader.get_path(_ida_loader.PATH_TYPE_IDB), doc='Full path to the IDB. Replacement for ida_utils.GetIdbDir()')
@@ -1585,10 +1589,6 @@ def _idaapi_str2ea(arg_expression: str, arg_screen_ea: int = _ida_idaapi.BADADDR
     IDA < 8.3: ida_kernwin.str2ea() returns BADADDR, IDA >= 8.3: ida_kernwin.str2ea() returns None
 
     @return Returns ida_idaapi.BADADDR on failure
-
-    Read more: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=str2ea()>
-
-    Tag: Community fix
     '''
     try:
         l_ida_kernwin_str2ea_res: Optional[int] = _ida_kernwin.str2ea(arg_expression, arg_screen_ea)
@@ -1829,7 +1829,7 @@ def decompiler_set_config(arg_key: str, arg_value: BoolishType) -> bool:
     return _bool(_ida_hexrays.change_hexrays_config(f"{arg_key} = {arg_value}"))
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def decompiler_reset_decompiler_information() -> None:
+def decompiler_clear_cached_cfuncs() -> None:
     ''' Flush all cached decompilation results '''
     _ida_hexrays.clear_cached_cfuncs()
     return
@@ -1892,6 +1892,9 @@ def decompile_many(arg_outfile: str = "",
        @param arg_functions List of functions that should be decompiled, if this is empty then all functions that are not library functions are decompiled
        @param arg_allow_overwrite_c_file Default True. Create a new file or overwrite existing file, if this is False then the fail if the file already exists
     '''
+    
+    # TODO: This function does not work very well, it's slow and the output file is very hard to read. Maybe I should emulate the function with my own loop?
+    
     _ida_auto.auto_wait() # We always want to have the auto analysis done before we start decompiling. This is important when we call this function in batch mode
 
     if not _ida_hexrays.init_hexrays_plugin():
@@ -1916,28 +1919,42 @@ def decompile_many(arg_outfile: str = "",
         l_flags |= _ida_hexrays.VDRUN_STATS # Print statistics into vd_stats.txt
         l_flags |= _ida_hexrays.VDRUN_PERF # Print performance stats to ida.log
 
-    _ = decompiler_set_config("COLLAPSE_LVARS", "NO") # If this is set to YES (which I usually have when I do manually work) the decompiled C file will have them collapsed also
+    # Should I collapse the lvars when the decompile_many() is done?
+    import secrets
+    l_randomly_picked_functions: Set[int] = set()
+    l_num_random_funcs = 20
+    for _ in range(l_num_random_funcs):
+        l_randomly_picked_functions.add(secrets.choice(l_functions))
+    l_num_collapsed = 0
+    for l_function in l_randomly_picked_functions:
+        log_print(f"Checking function: {_hex_str_if_int(l_function)} if it got collapsed local variables", arg_debug)
+        if "[COLLAPSED LOCAL DECLARATIONS." in decompiler_pseudocode(l_function, arg_force_fresh_decompilation=True, arg_debug=arg_debug):
+            log_print(f"It does!", arg_debug)
+            l_num_collapsed += 1
 
-    # Unfortunately, the COLLAPSE_LVARS = NO force us to recompile ALL functions that are gonna be decompiled... YIKES!
+    _ = decompiler_set_config("COLLAPSE_LVARS", "NO") # If this is set to YES (which I usually have when I do manually work) the decompiled C file will have them collapsed also
+    # Unfortunately, the "COLLAPSE_LVARS = NO" force us to recompile ALL functions that are gonna be decompiled... YIKES!
     log_print(f"starting decompile_many() --> {arg_outfile}", arg_type="INFO")
-    _ida_hexrays.clear_cached_cfuncs()
+    decompiler_clear_cached_cfuncs()
     res = _ida_hexrays.decompile_many(arg_outfile, arg_functions, l_flags)
     log_print(f"done with decompile_many() --> {arg_outfile}", arg_type="INFO")
-    _ = decompiler_set_config("COLLAPSE_LVARS", "YES") # TODO: I can't find any way to read if this variable was set before and since I prefer to have it to YES, I hardcoded it here. Sorry!
+    
+    if (l_num_collapsed / len(l_randomly_picked_functions)) >= 0.25 :
+        log_print(f"{l_num_collapsed} / {len(l_randomly_picked_functions)} randomly picked functions have collapsed local variables so I'm going to collapse them again", arg_type="INFO")
+        _ = decompiler_set_config("COLLAPSE_LVARS", "YES")
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def decompiler_pseudocode(arg_ea: EvaluateType,
                arg_force_fresh_decompilation: bool = True,
                arg_debug: bool = False) -> str:
-    ''' Get the pseudo code for a function. To work with the object (cfunc_t) use decompile() '''
+    ''' Get the pseudo code for a function. To work with the object (ida_hexrays.cfunc_t) use decompile() '''
 
     l_cfunc = decompile(arg_ea, arg_force_fresh_decompilation=arg_force_fresh_decompilation, arg_debug=arg_debug)
     if l_cfunc is None:
         log_print(f"decompile({_hex_str_if_int(arg_ea)}) failed", arg_type="ERROR")
         return f"<<< Could NOT decompile function at {_hex_str_if_int(arg_ea)} >>>"
     return str(l_cfunc.get_pseudocode())
-
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def decompiler_comments(arg_functions: Optional[Union[List[EvaluateType], EvaluateType]] = None,
@@ -2111,9 +2128,10 @@ def dump_to_disk(arg_ea_start: EvaluateType = 0,
 def bookmark(arg_ea: EvaluateType, arg_description: Optional[str] = None, arg_debug: bool = False) -> Optional[str]:
     ''' Get bookmark at given EA (Effective Address), returns an empty str "" if there is no bookmark on that EA
     IDA has started to call these "marked positions"
-    [Read more on get_marked_pos](https://python.docs.hex-rays.com/namespaceida__idc.html#:~:text=get_marked_pos())
-    [Read more on mark_position](https://python.docs.hex-rays.com/namespaceida__idc.html#:~:text=mark_position())
-    [Read more on IDC reference](https://docs.hex-rays.com/developer-guide/idc/idc-api-reference/alphabetical-list-of-idc-functions/367)
+    [Read more on get_marked_pos](https://python.docs.hex-rays.com/ida_idc/index.html#ida_idc.get_marked_pos)
+    [Read more on mark_position](https://python.docs.hex-rays.com/ida_idc/index.html#ida_idc.mark_position)
+    [Read more on the IDC module](https://python.docs.hex-rays.com/idc/index.html)
+    [Read more on IDC reference](https://docs.hex-rays.com/developer-guide/idc)
 
     You can delete a bookmark by setting arg_description = ""
     @param arg_ea The address you want the bookmark on
@@ -2182,6 +2200,7 @@ def bookmarks(arg_debug: bool = False) -> Optional[List[Tuple[int, str]]]:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _struct_comments(arg_debug: bool = False) -> str:
     ''' When setting a comment on a struct member, you can use the ///< instead of the normal // in the c-style edit window '''
+    # TODO: Maybe have a better example? Like in export_h_file() ?
     return "When setting a comment on a struct member, you can use the ///< instead of the normal // in the c-style edit window"
 
 
@@ -2303,8 +2322,7 @@ def _idaapi_get_func_name(arg_ea: int) -> str:
     ''' Wrapper for ida_funcs.get_func_name()
     IDA Bug: The docstring say "@return: length of the function name" which is wrong
     '''
-    l_get_func_name_res = _ida_funcs.get_func_name(arg_ea)
-    return l_get_func_name_res or  ""
+    return _ida_funcs.get_func_name(arg_ea) or  ""
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def name(arg_ea: EvaluateType,
@@ -2406,7 +2424,7 @@ def demangle_string(arg_mangled_name: str,
     ''' Demangles a string. Can try to brute force demangle some names that IDA usually doesn't like.
     @param arg_mangled_name: str, the string to demangle
     @param arg_disable_mask: int, extra flags to ida_name.demangle_name(). To he honest, I don't know what these flags are.
-    @param arg_demangle_type: int, [How to demangle the name](https://cpp.docs.hex-rays.com/name_8hpp.html#:~:text=enum%20demreq_type_t)
+    @param arg_demangle_type: int, [How to demangle the name](https://cpp.docs.hex-rays.com/name_8hpp.html#afb78c30f35664f57311d5baa00360434)
     @param arg_allow_brute_force: If the name cannot be mangled as it is, I can try to "fuzzy" demangle it. Use on your own risk.
 
     @return Returns the demangled name, empty str "" on fail
@@ -2575,9 +2593,7 @@ def _comment_set_decompiler(arg_ea: EvaluateType,
             log_print(f"arg_type_of_comment: {arg_type_of_comment} is not valid. It should be one of ida_hexrays.ITP_*", arg_type="ERROR")
             return False
 
-        l_replacement_dict_of_types_of_comments = {}
-        l_replacement_dict_of_types_of_comments[arg_type_of_comment] = l_dict_of_types_of_comments[arg_type_of_comment]
-        l_dict_of_types_of_comments = l_replacement_dict_of_types_of_comments
+        l_dict_of_types_of_comments = {l_key: l_value for l_key, l_value in l_dict_of_types_of_comments.items() if arg_type_of_comment == l_key}
 
     # The following for loop is REALLY ugly but I can't find any better way to do this :-(
     l_decompiler_comment_set_ok = False
@@ -2948,7 +2964,7 @@ def bytes_smart_delete(arg_ea: EvaluateType, arg_len: EvaluateType, arg_debug: b
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def write_string(arg_ea: EvaluateType, arg_string: str, arg_append_NULL_byte: bool = True, arg_debug: bool = False) -> bool:
-    ''' Write a null-terminated C string (UTF-8) to IDB
+    ''' Write a null-terminated C string (utf-8) to IDB
     @param arg_ea The address to write the string to
     @param arg_string The string to write
     @param arg_append_NULL_byte If True, then append a NULL byte to the end of the string
@@ -2986,7 +3002,7 @@ def _ida_default_type_info_library() -> _ida_typeinf.til_t:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _local_types_as_c_types(arg_debug: bool = False) -> Optional[List[str]]:
     ''' Internal function. Get all local types as a list of strings that can be exported to a header file.
-    Read more at <https://github.com/idapython/src/blob/ae62cd4df534f18c8c3dc47bd159d50c9822d82d/python/idc.py#L5142>
+    Read more [at Github](https://github.com/idapython/src/blob/ae62cd4df534f18c8c3dc47bd159d50c9822d82d/python/idc.py#L5142)
     '''
     class CustomPrinter(_ida_typeinf.text_sink_t):
         ''' Handle the _print calls by putting them into a list '''
@@ -3028,7 +3044,7 @@ def export_h_file(arg_h_file: str = "", arg_add_comment_at_top: bool = True, arg
         log_print('_local_types_as_c_types() failed.', arg_type="ERROR")
         return "<<< Export header file failed >>>"
 
-    with open(l_save_to_file, "w", encoding="UTF-8", newline="\n") as f:
+    with open(l_save_to_file, "w", encoding="utf-8", newline="\n") as f:
         if arg_add_comment_at_top:
             l_header_dict: Dict[str, str] = {}
             l_header_dict["generated_by"] = f"{__name__}.py"
@@ -3068,6 +3084,7 @@ def string_encoding(arg_ea: EvaluateType, arg_detect: bool = False, arg_debug: b
         res = _idaapi_encoding_from_strtype(_ida_nalt.get_str_type(l_addr))
     elif arg_detect:
         l_bytes = b''
+        # TODO: This loop looks weird, make sure it's correct
         for i in range(0x30):
             l_byte = read_bytes(l_addr + i, 0x01)
             if l_byte is None:
@@ -3096,32 +3113,27 @@ def _is_invalid_strtype(arg_strtype: int) -> bool:
     return (arg_strtype >> 8) == 0xFFFFFF
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _validate_encoding_name(arg_encoding: str) -> str:
-    ''' Try to normalize some encoding names.
-    Maybe check against <https://docs.python.org/3.12/library/codecs.html#standard-encodings> ?
+def _normalize_encoding_name(arg_encoding: str, arg_debug: bool = False) -> str:
+    ''' Try to normalize some encoding names
     @param arg_encoding The encoding name to validate
     @return The normalized encoding name
     '''
-    arg_encoding = arg_encoding.lower()
-    if arg_encoding.startswith(("iso", "windows")):
-        return arg_encoding
+    # Encoding already exists in the IDB
+    for i in range(1, _ida_nalt.get_encoding_qty()):
+        l_encoding_name = _ida_nalt.get_encoding_name(i)
+        log_print(f"Encoding already in the IDB: {l_encoding_name}", arg_debug)
+        if arg_encoding.lower() == l_encoding_name.lower():
+            return l_encoding_name
 
-    arg_encoding = arg_encoding.replace("-", "")
-    if arg_encoding in ["latin1"]:
-        res = "Latin1"
-    elif arg_encoding in ["utf8"]:
-        res = "UTF-8"
-    elif arg_encoding in ["utf16", "utf16le"]:
-        res = "UTF-16LE"
-    elif arg_encoding in ["utf16be"]:
-        res = "UTF-16BE"
-    elif arg_encoding in ["utf32", "utf32le"]:
-        res = "UTF-32LE"
-    elif arg_encoding in ["utf32be"]:
-        res = "UTF-32BE"
-    else:
-        log_print(f"Got a very rare encoding, is this correct? arg_encoding: {arg_encoding}", arg_type="WARNING")
-        res = arg_encoding
+    # The user gave us an encoding name that is not in the IDB
+    import codecs
+    try:
+        res = codecs.lookup(arg_encoding).name
+    except LookupError as e:
+        log_print(f"Could not understand the encoding: {arg_encoding}, got exception: {e}. Returning default encoding: {_G_DEFAULT_ENCODING}", arg_type="ERROR")
+        return _G_DEFAULT_ENCODING
+        
+    log_print(f"codecs converted: {arg_encoding} --> {res}", arg_debug)
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -3130,7 +3142,7 @@ def _encoding_to_strtype(arg_encoding: str, arg_debug: bool = False) -> int:
     @param arg_encoding The encoding name to convert to a strtype
     @return returns the str_type: int, returns -1 on error
     '''
-    l_encoding: str = _validate_encoding_name(arg_encoding)
+    l_encoding: str = _normalize_encoding_name(arg_encoding, arg_debug=arg_debug)
     log_print(f"l_encoding: {l_encoding}", arg_debug)
     l_encoding_index: int = _ida_nalt.add_encoding(l_encoding) # If the encoding exists, then return the index, else create it and return index.
     if l_encoding_index == -1:
@@ -3148,15 +3160,14 @@ def _idaapi_encoding_from_strtype(arg_strtype: int) -> str:
     @param arg_strtype The strtype to convert to an encoding name
     @return The encoding name
     '''
-    l_default_encoding = "UTF-8"
     if _is_invalid_strtype(arg_strtype):
-        log_print(f"Invalid encoding. Got 0x{arg_strtype:x}. Returning the default encoding: {l_default_encoding}")
-        return l_default_encoding
+        log_print(f"Invalid encoding. Got 0x{arg_strtype:x}. Returning the default encoding: {_G_DEFAULT_ENCODING}")
+        return _G_DEFAULT_ENCODING
 
     res = _ida_nalt.encoding_from_strtype(arg_strtype)
     if res is None:
-        log_print(f"Invalid encoding. Got 0x{arg_strtype:x} which ida_nalt.encoding_from_strtype() returned None for. Returning the default encoding: {l_default_encoding} ")
-        return l_default_encoding
+        log_print(f"Invalid encoding. Got 0x{arg_strtype:x} which ida_nalt.encoding_from_strtype() returned None for. Returning the default encoding: {_G_DEFAULT_ENCODING} ")
+        return _G_DEFAULT_ENCODING
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -3166,7 +3177,7 @@ def string(arg_ea: EvaluateType,
            arg_create_string: bool = False,
            arg_flags: int = _ida_bytes.ALOPT_IGNHEADS | _ida_bytes.ALOPT_IGNPRINT | _ida_bytes.ALOPT_IGNCLT,
            arg_debug: bool = False) -> Optional[str]:
-    ''' Reads a string (excluding the NULL terminator) from the IDB that can handle C strings, wide strings (UTF-16).
+    ''' Reads a string (excluding the NULL terminator) from the IDB that can handle C strings, wide strings (utf-16).
     If you want to force read a string use the functions c_string() or wide_string().
 
     @param arg_encoding: See ida_nalt.STRTYPE_* for valid values. If you give it a string, I use this as encoding name
@@ -3179,8 +3190,6 @@ def string(arg_ea: EvaluateType,
     @return The string read from the IDB
 
     Replacement for ida_bytes.get_strlit_contents() and idc.get_strlit_contents()
-
-    Read more: <https://python.docs.hex-rays.com/namespaceida__bytes.html#:~:text=get_strlit_contents()>
     '''
     if isinstance(arg_ea, _idautils.Strings.StringItem):
         log_print("arg_ea is of type idautils.Strings.StringItem, I will use that info instead of rest of arguments", arg_debug)
@@ -3270,14 +3279,13 @@ def string(arg_ea: EvaluateType,
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def c_string(arg_ea: EvaluateType, arg_len: int = 0, arg_flags: int = _ida_bytes.ALOPT_IGNHEADS | _ida_bytes.ALOPT_IGNPRINT | _ida_bytes.ALOPT_IGNCLT, arg_debug: bool = False) -> Optional[str]:
-    ''' Forcefully read the data as a NULL terminated C string (in UTF-8) For more info about the flags, see the docstring for string()
+    ''' Forcefully read the data as a NULL terminated C string (in utf-8) For more info about the flags, see the docstring for string()
     @param arg_ea The address to read the string from
     @param arg_len The length of the string to read, set to 0 to use the length of the string at the given address
     @param arg_flags The flags to pass to string()
     @return The string read from the IDB
 
     Replacement for idc.get_cstr() and ida_bytes.get_cstr()
-
     '''
     return string(arg_ea=arg_ea, arg_encoding=_ida_nalt.STRTYPE_C, arg_len=arg_len, arg_flags=arg_flags, arg_debug=arg_debug)
 
@@ -3285,7 +3293,7 @@ utf8_string = string_utf8 = c_string
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def wide_string(arg_ea: EvaluateType, arg_len: int = 0, arg_flags: int = _ida_bytes.ALOPT_IGNHEADS | _ida_bytes.ALOPT_IGNPRINT | _ida_bytes.ALOPT_IGNCLT, arg_debug: bool = False) -> Optional[str]:
-    ''' Forcefully read the data as a NULL terminated wide/unicode/UTF-16 string. For more info about the flags, see the docstring for string()
+    ''' Forcefully read the data as a NULL terminated wide/unicode/utf-16 string. For more info about the flags, see the docstring for string()
     @param arg_ea The address to read the string from
     @param arg_len The length of the string to read, set to 0 to use the length of the string at the given address
     @param arg_flags The flags to pass to string()
@@ -3316,7 +3324,7 @@ def strings(arg_only_first: int = 100_000, arg_debug: bool = False) -> List[_ida
     log_print(f"len(res) = {len(res)}", arg_debug)
     return res
 
-def __strings_profiled():
+def _strings_profiled():
     r''' Internal function. Do not use.
     Profile code to see what is taking most time
     From the command console: snakeviz C:\temp\strings.prof
@@ -3461,10 +3469,10 @@ def disassemble(arg_ea: EvaluateType,
                 arg_show_bytes: bool = True,
                 arg_debug: bool = False) -> Optional[str]:
     ''' Disassemble bytes at the given address into assembly string. If you want an object, use ```instruction()``` instead
-        Replacement for idc.generate_disasm_line() and ida_lines.generate_disasm_line() <https://python.docs.hex-rays.com/namespaceida__lines.html#:~:text=generate_disasm_line()>
+        Replacement for idc.generate_disasm_line() and ida_lines.generate_disasm_line() Read more at [the official docs](https://python.docs.hex-rays.com/idc/index.html#idc.generate_disasm_line)
 
         @param arg_ea The address to disassemble
-        @param arg_flags Default to ida_lines.GENDSM_FORCE_CODE. Read more: <https://python.docs.hex-rays.com/namespaceida__lines.html#:~:text=GENDSM_FORCE_CODE>
+        @param arg_flags Default to ida_lines.GENDSM_FORCE_CODE. Read more at [the official docs](https://python.docs.hex-rays.com/ida_lines/index.html#ida_lines.GENDSM_FORCE_CODE)
         @param arg_show_size If True, then show the size of the instruction
         @param arg_show_bytes If True, then show the bytes of the instruction
         @return The disassembled assembly string or None if it failed
@@ -3638,6 +3646,7 @@ def is_unknown(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def is_head(arg_ea: EvaluateType, arg_debug: bool = False) -> bool:
     ''' Is the given EA (Effective Address) an instruction OR data item? '''
+    # TODO: Is the above comment correct?
     l_flags = _idaapi_get_flags(arg_ea, arg_debug=arg_debug)
     if l_flags is None:
         log_print(f"_flags({_hex_str_if_int(arg_ea)}) returned None", arg_type="ERROR")
@@ -3721,12 +3730,13 @@ def make_array(arg_ea: EvaluateType, arg_item_type: str, arg_number_of_items: in
     return make_data(arg_ea=arg_ea, arg_item_type=arg_item_type, arg_number_of_items=arg_number_of_items, arg_debug=arg_debug)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _idaapi_parse_binpat_str(arg_out: _ida_bytes.compiled_binpat_vec_t, arg_ea: int, arg_in: str, arg_radix: int, arg_strlits_encoding: int = 0) -> bool:
-    ''' Wrapper around ida_bytes.parse_binpat_str() which have a bad history of return type problems.
-    Read more: <https://python.docs.hex-rays.com/namespaceida__bytes.html#:~:text=bool%20parse_binpat_str>
-
-    Tags: Community fix, IDA Bug
-    '''
+def _idaapi_parse_binpat_str(arg_out: _ida_bytes.compiled_binpat_vec_t,
+                             arg_ea: int, 
+                             arg_in: str,
+                             arg_radix: int,
+                             arg_strlits_encoding: int = 0) -> bool:
+    ''' Wrapper around ida_bytes.parse_binpat_str() which have a bad history of return type problems '''
+    # TODO: IDA 9.2 say that parse_binpat_str() is deprecated: "Please use compiled_binpat_vec_t.from_pattern() instead" investigate
     l_temp = _ida_bytes.parse_binpat_str(arg_out, arg_ea, arg_in, arg_radix, arg_strlits_encoding) # IDA 9.0 documentation say this is a bool but it STILL returns None on fail and '' (empty string) on success! WTF
     # log_print(f"ida_bytes.parse_binpat_str() have a bad history of type problems... type: {type(_t)}  value: '{_t}'", arg_debug)
     return "" == l_temp
@@ -3740,28 +3750,25 @@ def _idaapi_bin_search(arg_start_ea: int, arg_end_ea: int, arg_data: _ida_bytes.
     @param flags: combination of ida_bytes.BIN_SEARCH_* flags
 
     @return: the address of a match, or ida_idaapi.BADADDR if not found
-
-    Tags: community fix, IDA bug
     '''
-    l_temp = _ida_bytes.bin_search(arg_start_ea, arg_end_ea, arg_data, arg_flags)
-    res = l_temp[0] if isinstance(l_temp, tuple) else l_temp # IDA 9.0 returns a tuple, IDA < 9.0 returns int
+    res = _ida_bytes.bin_search(arg_start_ea, arg_end_ea, arg_data, arg_flags)
+    if ida_version() >= 900: # IDA 9.0 returns a tuple, IDA < 9.0 returns int
+        res = res[0]
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _idaapi_get_encoding_bpu_by_name(arg_encoding_name: str) -> int:
     ''' Wrapper around ida_nalt.get_encoding_bpu_by_name().
-    Take a human readable string and get the width of each element. e.g. "UTF-8" -> 1, "UTF-16" -> 2, "UTF-32" -> 2
+    Take a human readable string and get the width of each element. e.g. "utf-8" -> 1, "utf-16" -> 2, "utf-32" -> 4
     However, ida_nalt.get_encoding_bpu_by_name() actually returns 1 even for encodings IDA does NOT recognize which is unexpected
     Some encodings seems to be wrong, like Big5 <https://en.wikipedia.org/wiki/Big5> which should return 2 (I think?)
 
-    Read more: <https://hex-rays.com/blog/igor-tip-of-the-week-13-string-literals-and-custom-encodings>
+    [Read more at Hex-Rays blog](https://hex-rays.com/blog/igor-tip-of-the-week-13-string-literals-and-custom-encodings)
     OBS! There is a part where they write "On Linux or macOS, run iconv -l to see the available encodings. Note: some encodings are not supported on all systems so your IDB may become system-specific."
-
-    Tags: Community fix, IDA bug(?)
     '''
-    # TODO: Make some basic validation on the arg_encoding_name?
-    l_encoding: str =_validate_encoding_name(arg_encoding_name)
-    return _ida_nalt.get_encoding_bpu_by_name(l_encoding) # TODO: the encoding is not validated, if you send in a weird string, the function returns 1. Why?
+    l_debug = False
+    l_encoding: str =_normalize_encoding_name(arg_encoding_name, arg_debug=l_debug)
+    return _ida_nalt.get_encoding_bpu_by_name(l_encoding)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def search_binary(arg_pattern: BufferType,
@@ -3781,13 +3788,12 @@ def search_binary(arg_pattern: BufferType,
     @param arg_max_ea end search if we pass this address, if None then we end from the last byte we can reach
     @param arg_use_idas_parser IDA has a special format that is used in the GUI and in their internal API. If you want to use that search type, set this to True
     If this flag is set, then I won't parse the input and just pass it to ida_bytes.parse_binpat_str(). See help(ida_bytes.parse_binpat_str)
-    <https://python.docs.hex-rays.com/namespaceida__bytes.html#:~:text=bool%20parse_binpat_str>
     Use this flag if you like to search for byte sequences like "FF ?? ?? 13" (using wildcards)
 
     @param arg_flags Default: ida_bytes.BIN_SEARCH_FORWARD See ida_bytes.BIN_SEARCH_* for different flags
     @param radix The radix the numerical values in the search pattern is parsed as. Default: 0x10 (hex)
     @param arg_strlits_encoding Default: ida_bytes.PBSENC_DEF1BPU. This is used to parse the literals in the string. e.g. '"CreateFileA"'
-    Other values that can be used: ida_bytes.PBSENC_ALL (all encodings IDA know of) or if you send in a string like 'UTF-16', then I translate that with ida_nalt.get_encoding_bpu_by_name('UTF-16')
+    Other values that can be used: ida_bytes.PBSENC_ALL (all encodings IDA know of) or if you send in a string like 'utf-16', then I translate that with ida_nalt.get_encoding_bpu_by_name('utf-16')
     @param arg_max_hits After we found this many hits, we return. Set to 0 for all hits
 
     @return List[address: int]: List of ints where the search matched or [] if not found, returns None if something failed
@@ -3828,16 +3834,16 @@ def search_binary(arg_pattern: BufferType,
         log_print(f"ida_bytes.parse_binpat_str() failed to parse your input. You gave me {' '.join(hex_parse(arg_pattern))} which I converted to {search_pattern}", arg_type="ERROR")
         return None
 
-    l_min_ea = _ida_ida.inf_get_min_ea() if arg_min_ea is None else address(arg_min_ea, arg_debug=arg_debug)
+    l_min_ea = input_file.min_ea if arg_min_ea is None else address(arg_min_ea, arg_debug=arg_debug)
     if l_min_ea == _ida_idaapi.BADADDR:
-        l_min_ea = _ida_ida.inf_get_min_ea()
+        l_min_ea = input_file.min_ea
 
     if isinstance(arg_max_ea, _ida_segment.segment_t):
         l_max_ea = arg_max_ea.end_ea - 1
     else:
-        l_max_ea = _ida_ida.inf_get_max_ea() if arg_max_ea is None else address(arg_max_ea, arg_debug=arg_debug)
+        l_max_ea = input_file.max_ea if arg_max_ea is None else address(arg_max_ea, arg_debug=arg_debug)
     if l_max_ea == _ida_idaapi.BADADDR:
-        l_max_ea = _ida_ida.inf_get_max_ea()
+        l_max_ea = input_file.max_ea
 
     res = []
     l_start_next_search_at = l_min_ea
@@ -3911,8 +3917,6 @@ def plugin_load_and_run(arg_plugin_name: str, arg_optional_argument_to_plugin: i
     @param arg_optional_argument_to_plugin: Each plugin has it's own way to handle arguments but often it's just 0.
 
     @return: Returns True or False depening on what the plugin returns. Returns None if the plugin cannot be found.
-
-    Read more at <https://python.docs.hex-rays.com/namespaceida__loader.html#:~:text=run_plugin()>
     '''
 
     if _os.path.sep not in arg_plugin_name:
@@ -4060,7 +4064,7 @@ def file_write_patches_to_file(arg_validate_input_file: bool = True, arg_make_ba
             return False
 
     if arg_make_backup:
-        l_backup_file_path: str = input_file.filename + '.' + _time.strftime("%Y%m%d_%H%M%S", _datetime.timetuple(_datetime.now())) + '.bak'
+        l_backup_file_path: str = input_file.filename + '.' + _time.strftime(_G_DEFAULT_TIME_FORMAT.replace('-','_').replace(' ','_').replace(':','_').replace('/','_'), _datetime.timetuple(_datetime.now())) + '.bak'
         log_print(f"Backing up to: {l_backup_file_path}", arg_type="INFO")
         import shutil
         shutil.copyfile(input_file.filename, l_backup_file_path, follow_symlinks=True)
@@ -4241,7 +4245,7 @@ def get_type(arg_name_or_ea: Union[EvaluateType, _ida_hexrays.lvar_t, _ida_typei
                 return res
 
         res = _ida_typeinf.tinfo_t()
-        _ida_nalt.get_tinfo(res, l_addr)
+        _ = _ida_nalt.get_tinfo(res, l_addr)
         if res.empty():
             log_print(f"Resolved to address: 0x{l_addr:x} but ida_nalt.get_tinfo() found no type there.", arg_type="ERROR")
             return None
@@ -4258,11 +4262,15 @@ def get_type(arg_name_or_ea: Union[EvaluateType, _ida_hexrays.lvar_t, _ida_typei
     if not o:
         log_print(f"ida_typeinf.get_named_type('{arg_name_or_ea}') failed with both NTF_TYPE and NTF_SYMU", arg_type="ERROR")
         return None
-    t = _ida_typeinf.tinfo_t()
-    _code, type_str, fields_str, _cmt, field_cmts, _sclass, _value = o
-    if t.deserialize(None, type_str, fields_str, field_cmts):
+    res = _ida_typeinf.tinfo_t()
+    l_code, l_type_str, l_fields_str, l_cmt, l_field_cmts, l_sclass, l_value = o
+    del l_code # never used but I want to keep the local names for the future
+    del l_cmt
+    del l_sclass
+    del l_value
+    if res.deserialize(None, l_type_str, l_fields_str, l_field_cmts):
         log_print("t.deserialize() OK from a TIL", arg_debug)
-        return t
+        return res
 
     log_print("t.deserialize() failed", arg_type="ERROR")
     return None
@@ -4370,11 +4378,11 @@ def _display_type_at_as_dict(arg_ea: EvaluateType,
 
         if str(l_array_details.elem_type) in ("char", "const char"):
             log_print("char[] should be printed as 1 string", arg_debug)
-            return {l_addr: ("", str(l_type), string(l_addr, arg_encoding="UTF-8", arg_len=l_array_details.nelems, arg_debug=arg_debug))}
+            return {l_addr: ("", str(l_type), string(l_addr, arg_encoding="utf-8", arg_len=l_array_details.nelems, arg_debug=arg_debug))}
 
         if str(l_array_details.elem_type) in ("wchar_t", "const wchar_t"):
             log_print("wchar_t[] should be printed as 1 string", arg_debug)
-            return {l_addr: ("", str(l_type), string(l_addr, arg_encoding="UTF-16LE", arg_len=l_array_details.nelems, arg_debug=arg_debug))}
+            return {l_addr: ("", str(l_type), string(l_addr, arg_encoding="utf-16LE", arg_len=l_array_details.nelems, arg_debug=arg_debug))}
 
         for i in range(0, l_array_details.nelems):
             l_member_name = arg_member_name
@@ -4428,7 +4436,7 @@ dt = display_type_at # Windbg <3
 def debugger_refresh_memory_WARNING_VERY_EXPENSIVE() -> None:
     ''' Force a refresh of IDAs view on the targets memory.
     WARNING! This is a VERY expensive function if the debugger is active, if not--> fast
-    Read more on refresh_debugger_memory: <https://python.docs.hex-rays.com/namespaceida__dbg.html#:~:text=refresh_debugger_memory()>
+    Read more on [refresh_debugger_memory](https://python.docs.hex-rays.com/ida_dbg/index.html#ida_dbg.refresh_debugger_memory)
     '''
     _ida_dbg.refresh_debugger_memory()
     return
@@ -4460,7 +4468,7 @@ def _step_synchronous(arg_num_step_to_take: int = 1, arg_step_into: bool = True,
     @return: event_id_t (if > 0) or dbg_event_code_t (if <= 0) of the LAST step
     See ida_dbg.wait_for_next_event() for the return value help.
 
-    read more: ida_dbg.wait_for_next_event(): <https://python.docs.hex-rays.com/namespaceida__dbg.html#:~:text=wait_for_next_event()>
+    read more: [ida_dbg.wait_for_next_event()](https://python.docs.hex-rays.com/ida_dbg/index.html#ida_dbg.wait_for_next_event)
     AllThingsIDA: <https://www.youtube.com/watch?v=vS_xjnKW21I>
     '''
     if not process_is_suspended():
@@ -4484,8 +4492,8 @@ def debugger_step_into_synchronous(arg_num_step_to_take: int = 1, arg_seconds_ma
     @return: event_id_t (if > 0) or dbg_event_code_t (if <= 0) of the LAST step
     See ida_dbg.wait_for_next_event() for the return value help.
 
-    read more: ida_dbg.wait_for_next_event(): <https://python.docs.hex-rays.com/namespaceida__dbg.html#:~:text=wait_for_next_event()>
-    AllThingsIDA: <https://www.youtube.com/watch?v=vS_xjnKW21I>
+    read more: [ida_dbg.wait_for_next_event()](https://python.docs.hex-rays.com/ida_dbg/index.html#ida_dbg.wait_for_next_event)
+    [AllThingsIDA on Youtube](https://www.youtube.com/watch?v=vS_xjnKW21I)
     '''
 
     return _step_synchronous(arg_num_step_to_take=arg_num_step_to_take, arg_step_into=True, arg_seconds_max_wait=arg_seconds_max_wait, arg_debug=arg_debug)
@@ -4498,8 +4506,8 @@ def debugger_step_over_synchronous(arg_num_step_to_take: int = 1, arg_seconds_ma
     @return: event_id_t (if > 0) or dbg_event_code_t (if <= 0) of the LAST step
     See ida_dbg.wait_for_next_event() for the return value help.
 
-    read more: ida_dbg.wait_for_next_event(): <https://python.docs.hex-rays.com/namespaceida__dbg.html#:~:text=wait_for_next_event()>
-    AllThingsIDA: <https://www.youtube.com/watch?v=vS_xjnKW21I>
+    read more: [ida_dbg.wait_for_next_event()](https://python.docs.hex-rays.com/ida_dbg/index.html#ida_dbg.wait_for_next_event)
+    [AllThingsIDA on Youtube](https://www.youtube.com/watch?v=vS_xjnKW21I)
     '''
     return _step_synchronous(arg_num_step_to_take=arg_num_step_to_take, arg_step_into=False, arg_seconds_max_wait=arg_seconds_max_wait, arg_debug=arg_debug)
 
@@ -4636,7 +4644,7 @@ def debugger_select(arg_debugger: str = "win32", arg_use_remote: bool = False, a
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def debugger_process_start(arg_path: str = "", arg_args: str = "", arg_start_dir: str = "") -> int:
     ''' Passthru ida_dbg.start_process()
-    ida_dbg.start_process() official docs: <https://python.docs.hex-rays.com/namespaceida__dbg.html#:~:text=start_process()>
+    Read more: [ida_dbg.start_process()](https://python.docs.hex-rays.com/ida_dbg/index.html#ida_dbg.start_process)
     '''
     return _ida_dbg.start_process(arg_path, arg_args, arg_start_dir)
 
@@ -5111,7 +5119,7 @@ def win_GetCommandLineW(arg_debug: bool = False) -> Optional[str]:
     if not l_GetCommandLineW:
         log_print("Failed to find kernel32_GetCommandLineW", arg_type="ERROR")
         return None
-    res = l_GetCommandLineW().decode('UTF-16')
+    res = l_GetCommandLineW().decode('utf-16')
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -5254,32 +5262,32 @@ if _G_QT_IS_AVAILABLE:
         def __init__(self, arg_TWidget: Any) -> None:
             ''' Create a wrapper object around what IDA calls TWidget*
 
-            @param arg_TWidget can be either the window name (type str), the SwigPyObject that is returned from the IDA APIs, a QtWidget or a (community_base) TWidget
+            @param arg_TWidget can be either the window name (type str), the SwigPyObject that is returned from the IDA APIs, a QtWidget or a community_base TWidget
 
             E.g. l_functions_TWidget = TWidget("Functions")
             l_functions_TWidget = TWidget(ida_kernwin.find_widget("Functions"))
             l_last_used_TWidget = TWidget(ida_kernwin.get_last_widget())
             '''
             if isinstance(arg_TWidget, str):
-                self.m_IDAs_TWidget_ptr = _ida_kernwin.find_widget(arg_TWidget)  # m_TWidget is Optional[PySwigObj]
-                if self.m_IDAs_TWidget_ptr is None:
+                self._m_IDAs_TWidget_ptr = _ida_kernwin.find_widget(arg_TWidget)  # m_TWidget is Optional[PySwigObj]
+                if self._m_IDAs_TWidget_ptr is None:
                     log_print(f"No widget named '{arg_TWidget}' found. OBS! The window titles are case sensitive", arg_type="ERROR")
             elif _is_TWidget_TWidget_ptr_or_QtWidget(arg_TWidget) == "IDA_TWidget_ptr":
-                self.m_IDAs_TWidget_ptr = arg_TWidget
+                self._m_IDAs_TWidget_ptr = arg_TWidget
             elif _is_TWidget_TWidget_ptr_or_QtWidget(arg_TWidget) == "QtWidget":
-                self.m_IDAs_TWidget_ptr = _ida_kernwin.PluginForm.QtWidgetToTWidget(arg_TWidget)
+                self._m_IDAs_TWidget_ptr = _ida_kernwin.PluginForm.QtWidgetToTWidget(arg_TWidget)
             elif _is_TWidget_TWidget_ptr_or_QtWidget(arg_TWidget) == "TWidget":
-                self.m_IDAs_TWidget_ptr = arg_TWidget.m_IDAs_TWidget_ptr
+                self._m_IDAs_TWidget_ptr = arg_TWidget._m_IDAs_TWidget_ptr
             else:
                 log_print("arg_TWidget should be either window title (type: str) or the twidget* object (type: SwigPyObject) or a QtWidget (type: .QtWidgets.*)", arg_type="ERROR")
-                self.m_IDAs_TWidget_ptr = None
+                self._m_IDAs_TWidget_ptr = None
 
-            if not self.m_IDAs_TWidget_ptr is None:
+            if not self._m_IDAs_TWidget_ptr is None:
                 l_PyQTWidget = self.as_PyQtWidget()
                 if l_PyQTWidget is None:
-                    self.m_original_window_title = "<<< invalid TWidget >>>"
+                    self._m_original_window_title = "<<< invalid TWidget >>>"
                     return
-                self.m_original_window_title = l_PyQTWidget.windowTitle()
+                self._m_original_window_title = l_PyQTWidget.windowTitle()
 
         @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
         def as_PyQtWidget(self) -> Optional[QWidget]:
@@ -5288,18 +5296,18 @@ if _G_QT_IS_AVAILABLE:
 
             Convert from QtWidget --> TWidget* use: TWidget(my_QtWidget).as_TWidget_ptr()
             '''
-            if self.m_IDAs_TWidget_ptr is None:
-                log_print("m_TWidget is not a valid TWidget", arg_type="ERROR")
+            if self._m_IDAs_TWidget_ptr is None:
+                log_print("_m_TWidget is not a valid TWidget", arg_type="ERROR")
                 return None
-            return _ida_kernwin.PluginForm.TWidgetToPyQtWidget(self.m_IDAs_TWidget_ptr)
+            return _ida_kernwin.PluginForm.TWidgetToPyQtWidget(self._m_IDAs_TWidget_ptr)
 
         @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
         def as_TWidget_ptr(self) -> Optional[Any]:
             ''' For the IDA APIs that takes a TWidget* (e.g. ida_kernwin.attach_action_to_popup()) you can use this to get the correct type '''
-            if self.m_IDAs_TWidget_ptr is None:
-                log_print("m_TWidget is not a valid TWidget", arg_type="ERROR")
+            if self._m_IDAs_TWidget_ptr is None:
+                log_print("_m_TWidget is not a valid TWidget", arg_type="ERROR")
                 return None
-            return self.m_IDAs_TWidget_ptr
+            return self._m_IDAs_TWidget_ptr
 
         @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
         def activate(self, arg_take_focus: bool = True) -> None:
@@ -5316,9 +5324,9 @@ if _G_QT_IS_AVAILABLE:
         @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
         def display(self, arg_options: int = _ida_kernwin.WOPN_NOT_CLOSED_BY_ESC, arg_dest_ctrl: Optional[str] = None) -> None:
             ''' Display this TWidget. This function is used to place the windows (TWidget) at different locations such as floating or in a tab next to some given tab and so on
-                ida_kernwin.display_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=display_widget()>
+                Read more: [ida_kernwin.display_widget()](https://python.docs.hex-rays.com/ida_kernwin/index.html#ida_kernwin.display_widget)
 
-                @param arg_options: int Flags from ida_kernwin.WOPN_* Read more: <https://cpp.docs.hex-rays.com/group___w_i_d_g_e_t___o_p_e_n.html>
+                @param arg_options: int Flags from ida_kernwin.WOPN_* Read more at [the official docs](https://cpp.docs.hex-rays.com/group___w_i_d_g_e_t___o_p_e_n.html)
                 @param arg_dest_ctrl: Optional[str] TODO: I don't know what what this is, something to do with another control that can be used with arg_options? Read more: <https://cpp.docs.hex-rays.com/group___w_i_d_g_e_t___o_p_e_n.html>
 
                 WARNING! Calling this on a window that has been closed crashes IDA. IDA Bug
@@ -5327,14 +5335,14 @@ if _G_QT_IS_AVAILABLE:
 
         @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
         def window_title(self, arg_new_window_title: Optional[str] = "") -> str:
-            ''' Get/set the window title
-            @param arg_new_window_title Optional[str] Set to None to get the original window title, otherwise set to this. If set to "" then just get the current window title
+            ''' Get / set the window title
+            @param arg_new_window_title Optional[str] Set to None to get the original window title, otherwise set to this. If set to empty string then just get the current window title
             '''
             if arg_new_window_title is None:
                 l_PyQtWidget = self.as_PyQtWidget()
                 if l_PyQtWidget is None:
                     return "<<< Invalid TWidget >>>"
-                l_PyQtWidget.setWindowTitle(self.m_original_window_title)
+                l_PyQtWidget.setWindowTitle(self._m_original_window_title)
             elif arg_new_window_title:
                 l_PyQtWidget = self.as_PyQtWidget()
                 if l_PyQtWidget is None:
@@ -5345,70 +5353,60 @@ if _G_QT_IS_AVAILABLE:
 
         @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
         def __repr__(self) -> str:
-            if self.m_IDAs_TWidget_ptr is None:
+            if self._m_IDAs_TWidget_ptr is None:
                 log_print("m_TWidget is not a valid TWidget", arg_type="ERROR")
                 return "<<< Invalid TWidget >>>"
             return f"{type(self)} Window title: {_idaapi_get_widget_title(self)}"
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def _idaapi_find_widget(arg_window_title: str) -> TWidget:
-        ''' Replacement for ida_kernwin.find_widget()
-        ida_kernwin.find_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=find_widget()>
-        '''
+        ''' Replacement for ida_kernwin.find_widget() '''
         return TWidget(arg_window_title)
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def _idaapi_get_widget_title(arg_TWidget: TWidget) -> str:
-        ''' Replacement for ida_kernwin.get_widget_title()
-        ida_kernwin.get_widget_title() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=get_widget_title()>
-        '''
-        if arg_TWidget.m_IDAs_TWidget_ptr is None:
+    def _idaapi_get_widget_title(arg_widget: TWidget) -> str:
+        ''' Replacement for ida_kernwin.get_widget_title() '''
+        if arg_widget._m_IDAs_TWidget_ptr is None:
             log_print("arg_TWidget.m_TWidget is None", arg_type="ERROR")
             return "<<< Invalid TWidget >>>"
-        return _ida_kernwin.get_widget_title(arg_TWidget.m_IDAs_TWidget_ptr)
+        return _ida_kernwin.get_widget_title(arg_widget._m_IDAs_TWidget_ptr)
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def _idaapi_activate_widget(arg_TWidget: Union[TWidget, str], arg_take_focus: bool = True) -> None:
-        ''' Replacement for ida_kernwin.activate_widget()
-        ida_kernwin.activate_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=activate_widget()>
-        '''
-        if isinstance(arg_TWidget, str):
-            arg_TWidget = TWidget(arg_TWidget)
+    def _idaapi_activate_widget(arg_widget: Union[TWidget, str], arg_take_focus: bool = True) -> None:
+        ''' Replacement for ida_kernwin.activate_widget() '''
+        if isinstance(arg_widget, str):
+            arg_widget = TWidget(arg_widget)
 
-        if arg_TWidget.m_IDAs_TWidget_ptr is None:
-            log_print("arg_TWidget.m_TWidget is None", arg_type="ERROR")
-            return
-        return _ida_kernwin.activate_widget(arg_TWidget.m_IDAs_TWidget_ptr, arg_take_focus)
+        if arg_widget.as_TWidget_ptr() is None:
+            return 
+        return _ida_kernwin.activate_widget(arg_widget._m_IDAs_TWidget_ptr, arg_take_focus)
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def _idaapi_display_widget(arg_TWidget: TWidget, arg_options: int = _ida_kernwin.WOPN_NOT_CLOSED_BY_ESC, arg_dest_ctrl: Optional[str] = None) -> None:
+    def _idaapi_display_widget(arg_widget: TWidget, arg_options: int = _ida_kernwin.WOPN_NOT_CLOSED_BY_ESC, arg_dest_ctrl: Optional[str] = None) -> None:
         '''Replacement for ida_kernwin.display_widget()
-        ida_kernwin.display_widget() official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=display_widget()>
-
+        
         @param arg_options Flags from ida_kernwin.WOPN_* Read more: <https://cpp.docs.hex-rays.com/group___w_i_d_g_e_t___o_p_e_n.html>
 
         WARNING! Calling this on a window that has been closed crashes IDA. IDA Bug
         '''
-        if arg_TWidget.m_IDAs_TWidget_ptr is None:
+        if arg_widget._m_IDAs_TWidget_ptr is None:
             log_print("Cannot display TWidget, arg_widget.m_TWidget is None", arg_type="ERROR")
             return
-        _ida_kernwin.display_widget(arg_TWidget.as_TWidget_ptr(), options=arg_options, dest_ctrl=arg_dest_ctrl)
+        _ida_kernwin.display_widget(arg_widget._m_IDAs_TWidget_ptr, options=arg_options, dest_ctrl=arg_dest_ctrl)
         return
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def _idaapi_close_widget(arg_widget: TWidget, arg_options: bool = False) -> None:
         ''' Replacement for ida_kernwin.close_widget()
 
-        ida_kernwin.close_widget official docs: <https://python.docs.hex-rays.com/namespaceida__kernwin.html#:~:text=close_widget()>
-
         @param arg_options True --> form is closed normally as if the user pressed Enter. False --> form is closed abnormally as if the user pressed Esc.
-        Source: <https://python.docs.hex-rays.com/classida__kernwin_1_1_form.html#:~:text=Close()>
+        [arg_options at official docs](https://python.docs.hex-rays.com/ida_kernwin/index.html#ida_kernwin.Form.Close)
         '''
-        if arg_widget.m_IDAs_TWidget_ptr is None:
-            log_print("Cannot close TWidget, arg_widget.m_TWidget is None", arg_type="ERROR")
+        if arg_widget._m_IDAs_TWidget_ptr is None:
+            log_print("Cannot close TWidget, arg_widget._m_IDAs_TWidget_ptr is None", arg_type="ERROR")
             return
-        _ida_kernwin.close_widget(arg_widget.as_TWidget_ptr(), 1 if arg_options else 0)
-        arg_widget.m_IDAs_TWidget_ptr = None
+        _ida_kernwin.close_widget(arg_widget._m_IDAs_TWidget_ptr, 1 if arg_options else 0)
+        arg_widget._m_IDAs_TWidget_ptr = None
         return
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -5428,6 +5426,37 @@ if _G_QT_IS_AVAILABLE:
         @param arg_mask an OR'ed set of ida_kernwin.IWID_* to limit the search to
         '''
         return TWidget(_ida_kernwin.get_last_widget(arg_mask))
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def _idaapi_get_widget_type(arg_widget: TWidget) -> int:
+        ''' replacement for ida_kernwin.get_widget_type()
+
+        @ return one of ida_kernwin.BWN_* ints on OK, -1 on errror
+
+        my_pseudocode_widget = community_base.TWidget("Pseudocode-A")
+        widget_type = community_base._idaapi_get_widget_type(my_pseudocode_widget)
+        if widget_type == ida_kernwin.BWN_PSEUDOCODE:
+            print("We have a pseudocode window")
+
+        '''
+        if arg_widget._m_IDAs_TWidget_ptr is None:
+            log_print("Cannot get the type since arg_widget._m_IDAs_TWidget_ptr is None", arg_type="ERROR")
+            return -1
+        return _ida_kernwin.get_widget_type(arg_widget.as_TWidget_ptr())
+
+    @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+    def _idaapi_get_widget_vdui(arg_widget: TWidget) -> Optional[_ida_hexrays.vdui_t]:
+        ''' replacement for ida_hexrays.get_widget_vdui()
+        vdui is the Visual Decompiler User Interface. i.e. the pseudocode window.
+        
+        [Read more at the official docs](https://cpp.docs.hex-rays.com/structvdui__t.html)
+
+        @ return ida_hexrays.vdui_t of the pseudocode window if OK, None otherwise
+        '''
+        if arg_widget._m_IDAs_TWidget_ptr is None:
+            log_print("Cannot get the vdui_t since arg_widget._m_IDAs_TWidget_ptr is None", arg_type="ERROR")
+            return None
+        return _ida_hexrays.get_widget_vdui(arg_widget.as_TWidget_ptr())
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
     def _idaapi_read_range_selection(arg_TWidget: Optional[TWidget] = None, arg_allow_one_line: bool = True) -> Tuple[bool, int, int]:
@@ -5590,7 +5619,7 @@ def ui_quick_view() -> None:
     ida_kernwin.process_ui_action("community_base:copy_current_address")
     ida_kernwin.process_ui_action("HelpPythonAPI") --> Will open a browser window at <https://python.docs.hex-rays.com/>
 
-    There is also execute_ui_requests. Read more <https://github.com/HexRaysSA/IDAPython/blob/9.0sp1/examples/ui/trigger_actions_programmatically.py>
+    There is also execute_ui_requests(). [Read more at Github](https://github.com/HexRaysSA/IDAPython/blob/9.0sp1/examples/ui/trigger_actions_programmatically.py)
     '''
     _ida_kernwin.process_ui_action('QuickView')
 
@@ -6169,6 +6198,8 @@ setattr(_ida_hexrays.lvar_t, 'register', property(fget=lambda self: registers._a
 setattr(_ida_hexrays.lvars_t, "__repr__", lambda self: "[" +  "\n".join([repr(var) for var in self]) + "]")
 setattr(_ida_hexrays.var_ref_t, '__str__', lambda self: str(self.getv())) # self.getv() returns a _ida_hexrays.lvar_t
 setattr(_ida_hexrays.var_ref_t, '__repr__', __repr__type_str)
+setattr(_ida_hexrays.vdui_t, '__str__', lambda self: f"Window title: {TWidget(self.ct).window_title()}, function name: {name(self.cfunc)}")
+setattr(_ida_hexrays.vdui_t, '__repr__', __repr__type_str)
 setattr(_ida_hexrays.ctree_items_t, '__repr__', lambda self: f"{type(self)} which looks like:\n[{', '.join([str(citem) for citem in self])}]")
 setattr(_ida_idd.Appcall_callable__, '__str__', lambda self: str(function(self)))
 setattr(_ida_idd.Appcall_callable__, '__repr__', __repr__type_address_str)
@@ -6226,13 +6257,13 @@ def _test_mem_alloc_write_read(arg_debug: bool = False) -> bool:
 
     l_input_test_string_wide: bytes = b"T\x00e\x00s\x00t\x00\x00\x00"
     write_bytes(l_memory, l_input_test_string_wide, arg_debug=arg_debug)
-    l_wide_string_res = string(l_memory, arg_encoding="UTF-16LE", arg_debug=arg_debug)
+    l_wide_string_res = string(l_memory, arg_encoding="utf-16LE", arg_debug=arg_debug)
     res &= ("Test" == l_wide_string_res)
     log_print(f"simple wide string test: {res}", arg_debug)
     log_print(f"<<< FAILED >>> cstring test: {res}", arg_actually_print=not res, arg_type="ERROR")
 
     l_non_english_char_test_string: str = "åäö"
-    l_encoding = "UTF-8"
+    l_encoding = "utf-8"
     write_bytes(l_memory, "00" * 32, arg_debug=arg_debug)
     write_bytes(l_memory, l_non_english_char_test_string.encode(l_encoding), arg_debug=arg_debug)
     l_nonenglish_res = string(l_memory, arg_encoding=l_encoding, arg_debug=arg_debug)
@@ -6245,7 +6276,7 @@ def _test_mem_alloc_write_read(arg_debug: bool = False) -> bool:
     log_print(f"non english string test: {res}", arg_debug)
     log_print(f"<<< FAILED >>> {l_encoding} test: {res}", arg_actually_print=not res, arg_type="ERROR")
 
-    l_encoding = "UTF-16LE"
+    l_encoding = "utf-16LE"
     write_bytes(l_memory, "00" * 32, arg_debug=arg_debug)
     write_bytes(l_memory, l_non_english_char_test_string.encode(l_encoding), arg_debug=arg_debug)
     l_nonenglish_res = string(l_memory, arg_encoding=l_encoding, arg_debug=arg_debug)
