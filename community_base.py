@@ -58,9 +58,10 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 
 | OS | IDA | Python | Comment
 |--|--|--|--|
-| Windows 10 | 8.4 | 3.8  | Should be OK
+| Windows 10 | 8.4 | 3.8  | OK
 | Windows 10 | 9.1 | 3.12 | OK
 | Windows 10 | 9.2 | 3.12 | OK
+| Windows 10 | 9.3 BETA 1 | 3.10 | OK
 
 # Future
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!
@@ -68,7 +69,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-11-15 03:00:13"
+__version__ = "2025-12-30 23:31:14"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2025"
@@ -525,7 +526,7 @@ def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, D
     ''' Various information to help you develop your own scripts.
 
         Read more: <https://python.docs.hex-rays.com/>
-       '''
+    '''
     
 
     res = {}
@@ -688,7 +689,7 @@ def ida_is_running_in_batch_mode() -> bool:
     ida.exe -A -Smy_script.py (before the GUI is painted) --> True
     ida_domain (lib-mode) --> True
     '''
-    return _ida_kernwin.cvar.batch
+    return _bool(_ida_kernwin.cvar.batch)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_arguments() -> List[str]:
@@ -746,7 +747,7 @@ def ida_save_database(arg_new_filename: str = "",
     '''
     # TODO: Check how this plays with ida_domain
     # TODO: How does this work with the flags? Like compressiong and so on? Should the user be able to set that in this function?
-    l_new_filename = arg_new_filename or None
+    l_new_filename: str = arg_new_filename or ""
     l_my_extension = _os.path.splitext(input_file.idb_path)[1] # IDA 8.4 can have IDB, otherwise its always I64
     if l_new_filename and not l_new_filename.endswith(l_my_extension):
         l_new_filename += l_my_extension
@@ -875,10 +876,9 @@ def _python_load_module(arg_filepath: str, arg_name: Optional[str] = None) -> Op
     try:
         from IPython import get_ipython as _get_ipython
         l_ipython = _get_ipython()
-    except NameError:
-        l_ipython = None
-    if l_ipython is not None:
         l_ipython.user_ns[arg_name] = l_module
+    except ModuleNotFoundError:
+        pass
 
     return l_module
 
@@ -2925,7 +2925,7 @@ def write_bytes(arg_ea: EvaluateType, arg_buf: Union[BufferType, int], arg_debug
     _ida_bytes.patch_bytes(l_addr, l_buf)
     l_written_bytes = read_bytes(l_addr, len(l_buf), arg_debug=arg_debug)
     res = l_written_bytes == l_buf
-    _ida_kernwin.request_refresh(_ida_kernwin.IWID_ALL, res) # Update the GUI if we actually managed to write something
+    _ida_kernwin.request_refresh(_ida_kernwin.IWID_ALL) # Update the GUI if we actually managed to write something
     return res
 
 bytes_write = set_bytes = patch_bytes = write_bytes
@@ -4328,7 +4328,7 @@ def set_type(arg_original_type_name_or_ea: EvaluateType, arg_new_type: Union[str
         return False
 
     res = _ida_typeinf.TERR_OK == res
-    _ida_kernwin.request_refresh(_ida_kernwin.IWID_ALL, res)
+    _ida_kernwin.request_refresh(_ida_kernwin.IWID_ALL) # TODO: IDA 9.3 BETA 1 changed protoype of request_refresh(), test if this makes sense
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})

@@ -37,7 +37,7 @@ import community_base; print("\n".join([wrapper.replace("_idaapi_","") for wrapp
 - - delete --> smart delete. If the selected bytes are in code then make then NOPS (Intel only!) and if you press delete again (or if you are in data) then write 0x00
 
 # Installation
-There are 2 ways to use this script, the recommended way is to download this file and put it in the plugins folder. That way you get access to the library and you get the new hotkeys. The plugins folder can be found like this:
+There are 2 ways to use this script, the recommended way is to download this file and put it in the plugins directory. That way you get access to the library and you get the new hotkeys. The plugins directory can be found like this:
 ```python
 import idaapi; print(idaapi.get_ida_subdirs("plugins")[0])
 ```
@@ -53,9 +53,10 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 
 | OS | IDA | Python | Comment
 |--|--|--|--|
-| Windows 10 | 8.4 | 3.8  | Should be OK
+| Windows 10 | 8.4 | 3.8  | OK
 | Windows 10 | 9.1 | 3.12 | OK
 | Windows 10 | 9.2 | 3.12 | OK
+| Windows 10 | 9.3 BETA 1 | 3.10 | OK
 
 # Future
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!
