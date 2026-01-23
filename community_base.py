@@ -69,10 +69,10 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2025-12-30 23:31:14"
+__version__ = "2026-01-24 00:01:47"
 __author__ = "Harding"
 __description__ = __doc__
-__copyright__ = "Copyright 2025"
+__copyright__ = "Copyright 2026"
 __credits__ = ["https://www.youtube.com/@allthingsida",
                "https://github.com/grayhatacademy/ida/blob/master/plugins/shims/ida_shims.py",
                "https://github.com/arizvisa/ida-minsc",
@@ -168,7 +168,7 @@ if _G_QT_IS_AVAILABLE:
 BufferType = Union[str, bytes, bytearray, List[str], List[bytes], List[bytearray]]
 BoolishType = Union[bool, int, str] # Can be evaluted by my function named _bool()
 # EvaluateType is anything that can be evalutad to an int. E.g. the address() function can take this type and then try to resolve an adress. Give it a str (a label) and it will work, give it a ida_segment.segment_t object and it will give the address to the start of the segment
-EvaluateType = Union[str, int, _ida_idp.reg_info_t, _ida_ua.insn_t, _ida_hexrays.cinsn_t, _ida_hexrays.cfuncptr_t, _ida_funcs.func_t, _ida_idaapi.PyIdc_cvt_int64__, _ida_segment.segment_t, _ida_ua.op_t, _ida_typeinf.funcarg_t, _idautils.Strings.StringItem, _ida_dbg.bpt_t, _ida_idd.modinfo_t, _ida_hexrays.carg_t, _ida_hexrays.cexpr_t, _ida_range.range_t]
+EvaluateType = Union[str, int, _ida_idp.reg_info_t, _ida_ua.insn_t, _ida_hexrays.cinsn_t, _ida_hexrays.cfuncptr_t, _ida_hexrays.cfunc_t, _ida_funcs.func_t, _ida_idaapi.PyIdc_cvt_int64__, _ida_segment.segment_t, _ida_ua.op_t, _ida_typeinf.funcarg_t, _idautils.Strings.StringItem, _ida_dbg.bpt_t, _ida_idd.modinfo_t, _ida_hexrays.carg_t, _ida_hexrays.cexpr_t, _ida_range.range_t]
 _G_LOG_EVERYTHING = False # If this is set to True, then all calls to log_print() will be printed, this can cause massive logs but good for hard to find bugs
 _G_DEFAULT_ENCODING: str = "utf-8"
 _G_DEFAULT_TIME_FORMAT: str = "%Y-%m-%d %H:%M:%S"
@@ -213,6 +213,7 @@ def _send_text_to_jupyter(arg_text: str) -> None:
                 )
     except Exception as e:
         print(f"Error sending to Jupyter: {e}")
+    return
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _send_text_to_ida_output(arg_text: str) -> None:
@@ -222,6 +223,7 @@ def _send_text_to_ida_output(arg_text: str) -> None:
         @return: None
     '''
     _ida_kernwin.msg(_strip_ansi(arg_text.rstrip()+'\n'))
+    return
 
 # Global regex for stripping ANSI/terminal escape sequences.
 # Matches: ESC[ followed by parameters and a command letter (CSI sequences)
@@ -1291,6 +1293,7 @@ def ida_licence_info(arg_delete_user_info_from_IDB: bool = False) -> Dict[str, s
 
     @return {serial_number: str, name_info: str}
     '''
+    # TODO: Replace with the extended version that reads the whole license info
     if arg_delete_user_info_from_IDB:
         _ = _ida_licence_info_delete()
 
@@ -1326,7 +1329,7 @@ def _compiler_info() -> _ida_ida.compiler_info_t:
     ''' Replacement for ida_ida.inf_get_cc()
 
     Official docs: <https://cpp.docs.hex-rays.com/structcompiler__info__t.html>
-    more info: <https://youtu.be/2w8LdSCPUQc?t=1369>
+    [See more at AllthingsIDA: IDAPython: Retrieving global database information] <https://youtu.be/2w8LdSCPUQc?t=1369>
     '''
     res = _ida_ida.compiler_info_t() # Create empty objext
     _ida_ida.inf_get_cc(res) # Fill the object with info
@@ -1337,7 +1340,7 @@ def _compiler_str() -> str:
     ''' What compiler was used according to IDA?
 
     Official docs for compiler id: <https://cpp.docs.hex-rays.com/group___c_o_m_p__.html>
-    more info: <https://youtu.be/2w8LdSCPUQc?t=1369>
+    [See more at AllthingsIDA: IDAPython: Retrieving global database information] <https://youtu.be/2w8LdSCPUQc?t=1369>
     '''
     l_compiler_info: _ida_ida.compiler_info_t = _compiler_info()
     l_compiler_id: int = l_compiler_info.id & _ida_typeinf.COMP_MASK
@@ -2554,7 +2557,7 @@ def _comment_set_decompiler(arg_ea: EvaluateType,
         return False
 
     l_c_instruction = _ea_to_hexrays_insn(l_addr, arg_cached_cfunc=arg_cached_cfunc, arg_debug=arg_debug)
-    if not l_c_instruction:
+    if l_c_instruction is None:
         log_print(f"_ea_to_hexrays_insn(0x{l_addr:x}) returned None", arg_type="ERROR")
         return False
 
@@ -2600,12 +2603,16 @@ def _comment_set_decompiler(arg_ea: EvaluateType,
     for l_itp in l_dict_of_types_of_comments:
         log_print(f"testing: arg_cached_cfunc.set_user_cmt(_addr = 0x{l_tree_location.ea:x}, itp = {l_dict_of_types_of_comments[l_itp]}, comment = '{arg_comment}')", arg_debug)
         l_tree_location.itp = l_itp
-        arg_cached_cfunc.set_user_cmt(l_tree_location, arg_comment)
-        arg_cached_cfunc.save_user_cmts()
+        arg_cached_cfunc.set_user_cmt(l_tree_location, arg_comment) # type: ignore[union-attr]
+        arg_cached_cfunc.save_user_cmts() # type: ignore[union-attr]
         arg_cached_cfunc = decompile(l_addr, arg_force_fresh_decompilation=True) # Forced refresh
-        if not arg_cached_cfunc.has_orphan_cmts():
+        if arg_cached_cfunc is None:
+            log_print("Decompilation failed", arg_type="ERROR")
+            return False
+
+        if not arg_cached_cfunc.has_orphan_cmts(): # type: ignore[union-attr]
             l_decompiler_comment_set_ok = True
-            arg_cached_cfunc.save_user_cmts()
+            arg_cached_cfunc.save_user_cmts() # type: ignore[union-attr]
             log_print(f"arg_cached_cfunc.set_user_cmt(_addr = 0x{l_tree_location.ea:x}, itp = {l_dict_of_types_of_comments[l_itp]}, comment = '{arg_comment}') worked!", arg_debug)
             break
         arg_cached_cfunc.del_orphan_cmts()
@@ -2774,7 +2781,7 @@ def byte(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, arg
             return None
 
         if l_value > 0xFF:
-            log_print("arg_set_value is too large for BYTE: 0x{l_value:x}", arg_type="ERROR")
+            log_print(f"arg_set_value is too large for BYTE: 0x{l_value:x}", arg_type="ERROR")
             return None
 
         _ida_bytes.patch_byte(l_addr, l_value)
@@ -2801,7 +2808,7 @@ def word(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, arg
             return None
 
         if l_value > 0xFFFF:
-            log_print("arg_set_value is too large for WORD: 0x{l_value:x}", arg_type="ERROR")
+            log_print(f"arg_set_value is too large for WORD: 0x{l_value:x}", arg_type="ERROR")
             return None
 
         _ida_bytes.patch_word(l_addr, l_value)
@@ -2828,7 +2835,7 @@ def dword(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, ar
             return None
 
         if l_value > 0xFFFFFFFF:
-            log_print("arg_set_value is too large for DWORD: 0x{l_value:x}", arg_type="ERROR")
+            log_print(f"arg_set_value is too large for DWORD: 0x{l_value:x}", arg_type="ERROR")
             return None
 
         _ida_bytes.patch_dword(l_addr, l_value)
@@ -2855,7 +2862,7 @@ def qword(arg_ea: EvaluateType, arg_set_value: Optional[EvaluateType] = None, ar
             return None
 
         if l_value > 0xFFFFFFFFFFFFFFFF:
-            log_print("arg_set_value is too large for QWORD: 0x{l_value:x}", arg_type="ERROR")
+            log_print(f"arg_set_value is too large for QWORD: 0x{l_value:x}", arg_type="ERROR")
             return None
 
         _ida_bytes.patch_qword(l_addr, l_value)
@@ -4769,7 +4776,7 @@ class _registers_object():
         ''' Returns a dict that containts all registers in this processor module.
         The dict looks like: Dict[register_name: str] = register_info: _ida_idp.reg_info_t
 
-        OBS! This function is realtively slow and if you just want a list of strings to check register names against then use
+        OBS! This function is relatively slow and if you just want a list of strings to check register names against then use
         'rax' in community_base.registers._as_dict
 
         Replacement for idautils.GetRegisterList() and _ida_idp.ph_get_regnames() which do NOT return a complete list. RAX is missing among many.
@@ -4781,25 +4788,25 @@ class _registers_object():
         if isinstance(arg_reg_sizes, int):
             arg_reg_sizes = [arg_reg_sizes]
 
-        for reg_index in range(0, 500):
-            for reg_size_in_bytes in arg_reg_sizes:
-                reg_name: str = _ida_idp.get_reg_name(reg_index, reg_size_in_bytes) or "<no register name>"
-                if reg_name in ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'mxcsr', 'bnd0', 'bnd1', 'bnd2', 'bnd3', 'fpctrl', 'fpstat', 'fptags']: # Ignore these special registers
+        for l_reg_index in range(0, 500):
+            for l_reg_size_in_bytes in arg_reg_sizes:
+                l_reg_name: str = _ida_idp.get_reg_name(l_reg_index, l_reg_size_in_bytes) or "<no register name>"
+                if l_reg_name in ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'mxcsr', 'bnd0', 'bnd1', 'bnd2', 'bnd3', 'fpctrl', 'fpstat', 'fptags']: # Ignore these special registers
                     continue
                 # log_print(f"_ida_idp.get_reg_name({reg_index}, {reg_size_in_bytes}): {reg_name}", arg_debug)
-                reg_info = _ida_idp.reg_info_t()
-                if _ida_idp.parse_reg_name(reg_info, reg_name) and reg_info.size == reg_size_in_bytes:
-                    reg_name = reg_name.replace('$', '').lower() # MIPS
-                    self._as_dict[reg_name] = reg_info
-                    _add_property_to_registers_object(reg_name, arg_debug=arg_debug)
+                l_reg_info = _ida_idp.reg_info_t()
+                if _ida_idp.parse_reg_name(l_reg_info, l_reg_name) and l_reg_info.size == l_reg_size_in_bytes:
+                    l_reg_name = l_reg_name.replace('$', '').lower() # MIPS
+                    self._as_dict[l_reg_name] = l_reg_info
+                    _add_property_to_registers_object(l_reg_name, arg_debug=arg_debug)
         return self._as_dict
 
-    def __str__(self):
-        _regs = [reg for reg in self._as_dict]
-        _regs.sort()
-        return ", ".join(_regs)
+    def __str__(self) -> str:
+        l_regs = [reg for reg in self._as_dict]
+        l_regs.sort()
+        return ", ".join(l_regs)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{type(self)} with the following registers:\n{str(self)}"
 
 registers = _registers_object() # Recreated in the "_new_file_opened_notification_callback" function
@@ -5049,7 +5056,7 @@ def modules(arg_name_filter_regex: str = ".*",  arg_debug: bool = False) -> Opti
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def module(arg_module_name_or_address: Union[str, EvaluateType] = None, arg_debug: bool = False) -> Optional[_ida_idd.modinfo_t]:
+def module(arg_module_name_or_address: Optional[EvaluateType] = None, arg_debug: bool = False) -> Optional[_ida_idd.modinfo_t]:
     ''' Find a module based on the name or an address
     OBS! Module in this context refers to a DLL loaded in the target process while it is running '''
 
@@ -5292,7 +5299,7 @@ if _G_QT_IS_AVAILABLE:
         @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
         def as_PyQtWidget(self) -> Optional[QWidget]:
             ''' TWidget is IDAs own type, if you want to use Qt functions, then you need to convert to a PyQtWidget
-            Official example: <https://github.com/HexRaysSA/IDAPython/blob/d12e31eae9d678f647013527596a715dd378f989/examples/ui/pyqt/inject_command.py#L76>
+            [Official example](https://github.com/HexRaysSA/IDAPython/blob/d12e31eae9d678f647013527596a715dd378f989/examples/ui/pyqt/inject_command.py#L76)
 
             Convert from QtWidget --> TWidget* use: TWidget(my_QtWidget).as_TWidget_ptr()
             '''
@@ -5468,7 +5475,7 @@ if _G_QT_IS_AVAILABLE:
 
         Replacement for ida_kernwin.read_range_selection()
         '''
-        l_widget = arg_TWidget.as_TWidget_ptr() if arg_TWidget else None
+        l_widget = arg_TWidget.as_TWidget_ptr() if isinstance(arg_TWidget, TWidget) else None
         l_valid_selection, l_start_address, l_end_address = _ida_kernwin.read_range_selection(l_widget)
         if not l_valid_selection:
 
@@ -5621,6 +5628,7 @@ def ui_quick_view() -> None:
 
     There is also execute_ui_requests(). [Read more at Github](https://github.com/HexRaysSA/IDAPython/blob/9.0sp1/examples/ui/trigger_actions_programmatically.py)
     '''
+    # TODO: Does this work with ida_domain?
     _ida_kernwin.process_ui_action('QuickView')
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -5932,7 +5940,7 @@ def file_generate(arg_outfile_type: Union[str, int],
     return l_outfile_path
 
 
-# New members/functions of IDA pythons objects -------------------------------------------------------------------------------------------------------------------------------------------- New members/functions of IDA pythons objects
+# New members/functions of IDA pythons objects -------------------------------------------------------------------------------------------------------------------------- New members/functions of IDA pythons objects
 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -6218,7 +6226,7 @@ setattr(_idautils.Strings.StringItem, "__repr__", __repr__type_address_str)
 setattr(_idautils.Strings.StringItem, "encoding", property(fget=lambda self: _idaapi_encoding_from_strtype(self.strtype)))
 
 
-# TESTS ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- TESTS
+# TESTS ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ TESTS
 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -6384,7 +6392,8 @@ def _test_decompiler(arg_debug: bool = False) -> bool:
     ''' Tests: decompiler '''
     l_pseudocode = decompiler_pseudocode(input_file.entry_point, arg_debug=arg_debug)
     log_print(f"pseudocode of entrypoint: {l_pseudocode}", arg_debug)
-    return l_pseudocode != ""
+    res = len(l_pseudocode) > 10 and not l_pseudocode.startswith("<<<")
+    return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_licence(arg_debug: bool = False) -> bool:
@@ -6521,7 +6530,11 @@ def _test_imports_and_exports(arg_debug: bool = False) -> bool:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_all(arg_debug: bool = False) -> bool:
-    ''' Tests all tests we have. This is NOT complete and needs to be extended '''
+    ''' Tests all tests we have so far. This is NOT complete and needs to be extended. 
+    Every time I have to fix something in an update, I add a test for that.
+    '''
+    log_print("To make the tests work, you need to be on Windows, open notepad.exe and set at breakpoint at the start, start the debugger and when RIP is on WinMain. Then run these tests.", arg_type="INFO")
+    
     l_test_functions = {'_test_appcall_on_Windows': _test_appcall_on_Windows(arg_debug=arg_debug),
                         '_test_mem_alloc_write_read': _test_mem_alloc_write_read(arg_debug=arg_debug),
                         '_test_modules_on_Windows': _test_modules_on_Windows(arg_debug=arg_debug),
@@ -6558,7 +6571,7 @@ def _test_all(arg_debug: bool = False) -> bool:
     return res
 
 
-# EXPERIMENTAL --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- EXPERIMENTAL
+# EXPERIMENTAL ---------------------------------------------------------------------------------------------------------------------------------------------------------- EXPERIMENTAL
 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
