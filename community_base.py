@@ -62,6 +62,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 | Windows 10 | 9.1 | 3.12 | OK
 | Windows 10 | 9.2 | 3.12 | OK
 | Windows 10 | 9.3 BETA 1 | 3.10 | OK
+| Windows 10 | 9.3 | 3.10 | OK
 
 # Future
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!
@@ -69,7 +70,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2026-01-24 00:01:47"
+__version__ = "2026-02-21 00:27:14"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2026"
@@ -266,7 +267,6 @@ class ColoredFormatter(_logging.Formatter):
         "magenta": "\x1b[35m",
         "cyan": "\x1b[36m",
         "grey": "\x1b[37m",
-        "reset": "\x1b[0m",
         "bold": "\x1b[1m",
         "underline": "\x1b[4m",
         "reverse": "\x1b[7m",
@@ -529,8 +529,6 @@ def links(arg_open_browser_at_official_python_docs: bool = False) -> Dict[str, D
 
         Read more: <https://python.docs.hex-rays.com/>
     '''
-    
-
     res = {}
     res["links"] = _g_links
     res["abbreviations"] = _g_abbreviations
@@ -546,7 +544,7 @@ def _official_python_doc_url(arg_function: Callable) -> str:
     ''' Create an URL to the IDA Python docs '''
     l_module: str = arg_function.__module__
     l_function: str =  arg_function.__name__
-    return f"https://python.docs.hex-rays.com/{l_module}/index.html#{l_module}.{l_function}"
+    return f"{_g_links['official_python_documentation']}/{l_module}/index.html#{l_module}.{l_function}"
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def open_url(arg_text_blob_with_urls_in_it_or_function: Union[str, Callable]) -> None:
@@ -593,7 +591,7 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
     l_bug_report: Dict[str, str] = {}
     l_bug_report["bug_in_module"] = _python_module_to_str(arg_module_to_blame)
     l_bug_report["IDA_version"] = str(ida_version())
-    l_bug_report["decompiler_version"] = _decompiler_version_deprecated()
+    l_bug_report["decompiler_version"] = _ida_hexrays.get_hexrays_version() or "<<< No decompiler >>>"
     l_bug_report["community_base_version"] = __version__
     l_bug_report["python_version"] = _sys.version
     l_bug_report["os_version"] = f"{_platform.uname().system} {_platform.uname().version} {_platform.uname().machine}"
@@ -611,7 +609,7 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
 
     l_github_issues: str = __url__ + "/issues/new"
     # First argument is the default button that will be pressed if the user press ENTER as soon as the box popups
-    if _ida_kernwin.ask_yn(_ida_kernwin.ASKBTN_YES , f"Open a new issue on Github? ( {l_github_issues} )") == _ida_kernwin.ASKBTN_YES: # TODO: Maybe use from IPython import get_ipython; get_ipython().ask_yes_no("yes or no")
+    if _ida_kernwin.ask_yn(_ida_kernwin.ASKBTN_YES , f"Open a new issue on Github? ( {l_github_issues} )") == _ida_kernwin.ASKBTN_YES:
         _ida_kernwin.open_url(l_github_issues + f"?title=bug&body={l_bug_report_as_str}")
 
     return l_bug_report_file
@@ -703,6 +701,7 @@ def ida_arguments() -> List[str]:
     '''
     # TODO: Delete this function?
     # TODO: check idc.ARGV? idc.ARGV is writeable, maybe use that?
+    # TODO: IDA 9.3 added: plugins/idapython: make ida's -S command line arguments accessible from sys.argv  https://docs.hex-rays.com/release-notes/9_3#idapython
     if _G_QT_IS_AVAILABLE:
         return QApplication.arguments()
     log_print("QT is not available, atm we cannot get the program arguments", arg_type="ERROR")
@@ -749,11 +748,16 @@ def ida_save_database(arg_new_filename: str = "",
     '''
     # TODO: Check how this plays with ida_domain
     # TODO: How does this work with the flags? Like compressiong and so on? Should the user be able to set that in this function?
-    l_new_filename: str = arg_new_filename or ""
+    l_new_filename: str = arg_new_filename or input_file.idb_path
     l_my_extension = _os.path.splitext(input_file.idb_path)[1] # IDA 8.4 can have IDB, otherwise its always I64
     if l_new_filename and not l_new_filename.endswith(l_my_extension):
         l_new_filename += l_my_extension
-
+    
+    if ida_version() >= 930: 
+        if arg_database_flags == -1: # IDA 9.3 have changed the default database flags
+            arg_database_flags = 0
+        
+        return _ida_loader.save_database(l_new_filename, arg_database_flags, arg_snapshot_root, arg_snapshot_attribute)
     return _ida_loader.save_database(l_new_filename, _ida_idaapi.as_uint32(arg_database_flags), arg_snapshot_root, arg_snapshot_attribute) # IDA 8.4 does not have keyword parameters
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -800,19 +804,19 @@ def notepad_text(arg_text: Optional[str] = None) -> str:
 
     return _idaapi_get_ida_notepad_text()
 
-@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _decompiler_version_deprecated() -> str:
-    ''' What version of Hexrays decompiler we are running '''
-    l_arch = f"{input_file.format}, {input_file.bits} bits, {input_file.endian} endian"
-    l_error_str: str = f"<<< No decompiler for {l_arch} is loaded >>>"
-    if not _ida_hexrays.init_hexrays_plugin():
-        log_print(l_error_str, arg_type="ERROR")
-        return l_error_str
-    l_temp: Optional[str] = _ida_hexrays.get_hexrays_version()
-    if l_temp is None:
-        log_print(l_error_str, arg_type="ERROR")
-        return l_error_str
-    return l_temp
+# @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+# def _decompiler_version_deprecated() -> str:
+#     ''' What version of Hexrays decompiler we are running '''
+#     l_arch = f"{input_file.format}, {input_file.bits} bits, {input_file.endian} endian"
+#     l_error_str: str = f"<<< No decompiler for {l_arch} is loaded >>>"
+#     if not _ida_hexrays.init_hexrays_plugin():
+#         log_print(l_error_str, arg_type="ERROR")
+#         return l_error_str
+#     res = _ida_hexrays.get_hexrays_version() or ""
+#     if not res:
+#         log_print(l_error_str, arg_type="ERROR")
+#         return l_error_str
+#     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _python_module_to_str(arg_module: Union[str, ModuleType, None] = None) -> str:
@@ -856,7 +860,7 @@ def _python_load_module(arg_filepath: str, arg_name: Optional[str] = None) -> Op
         # ensure it's a package (has __init__.py)
         l_init_path = _os.path.join(arg_filepath, "__init__.py")
         if not _os.path.exists(l_init_path):
-            log_print(f"Directory '{arg_filepath}' is not a package (missing __init.py)", arg_type="ERROR")
+            log_print(f"Directory '{arg_filepath}' is not a package (missing __init__.py)", arg_type="ERROR")
             return None
         loader = _importlib_machinery.SourceFileLoader(arg_name, l_init_path)
         spec = _importlib_util.spec_from_loader(arg_name, loader, origin=l_init_path, is_package=True)
@@ -965,7 +969,7 @@ def hex_dump(arg_ea: Union[EvaluateType, bytes, bytearray], arg_len: Optional[Ev
         l_temp.append(f"{l_addr+buf_offset:08X}  {hexa}   {text}")
 
     print('\n'.join(l_temp))
-    _ida_kernwin.request_refresh(_ida_kernwin.IWID_ALL)
+    _idaapi_request_refresh()
     return
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -1129,6 +1133,18 @@ def _lnot(arg_expression: _ida_hexrays.cexpr_t) -> _ida_hexrays.cexpr_t:
     return _ida_hexrays.lnot(_ida_hexrays.cexpr_t(arg_expression))
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _idaapi_request_refresh(arg_mask: int = _ida_kernwin.IWID_ALL, arg_dirty: bool = True) -> None:
+    ''' Wrapper around ida_kernwin.request_refresh() and mark_builtin_widgets() 
+    @param arg_mask bit masks of windows. see ida_kernwin.IWID_* for windows you can ask to refresh
+    '''
+    if ida_version() >= 930:
+        _ida_kernwin.mark_builtin_widgets(mask=arg_mask, dirty=arg_dirty)
+        return
+    
+    _ida_kernwin.request_refresh(arg_mask)
+    return 
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _idaapi_retrieve_input_file_md5() -> bytes:
     ''' Wrapper around ida_nalt.retrieve_input_file_md5() but this we honor the type hints '''
     return _ida_nalt.retrieve_input_file_md5() or bytes()
@@ -1197,20 +1213,16 @@ if not _is_running_as_plugin():
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _add_link_to_docstring(arg_function: Callable, arg_link: str = "") -> None:
-    ''' If there is no link the official documentation for the given function, add a link to to the official documentation '''
+    ''' If there is no link the official documentation for the given function then add a link to to the official documentation '''
 
-    l_docstring: Optional[str] = getattr(arg_function, "__doc__")
-    if l_docstring is None:
-        l_docstring = ""
-
-    if "python.docs.hex-rays.com" in l_docstring:
+    l_docstring: str = getattr(arg_function, "__doc__") or ""
+    if _g_links["official_python_documentation"] in l_docstring:
         # log_print(f"Function already has a link, ignoring", arg_type="WARNING")
         return
 
     l_link = arg_link or _official_python_doc_url(arg_function)
 
-    l_new_doc_string = l_docstring + "\nRead more: " + l_link
-    l_new_doc_string = l_new_doc_string.strip()
+    l_new_doc_string = l_docstring.strip() + "\n\nRead more: " + l_link
     setattr(arg_function, "__doc__", l_new_doc_string)
     return
 
@@ -1244,8 +1256,14 @@ for l_name, l_function in _inspect.getmembers(_ida_ua, _inspect.isfunction): _ad
 for l_name, l_function in _inspect.getmembers(_ida_xref, _inspect.isfunction): _add_link_to_docstring(l_function)
 for l_name, l_function in _inspect.getmembers(_idautils, _inspect.isfunction): _add_link_to_docstring(l_function)
 for l_name, l_function in _inspect.getmembers(_ida_diskio, _inspect.isfunction): _add_link_to_docstring(l_function)
+
 if ida_version() >= 920:
-    _add_link_to_docstring(_ida_typeinf.func_type_data_t.set_cc, "https://python.docs.hex-rays.com/ida_typeinf/index.html#ida_typeinf.func_type_data_t.set_cc")
+    _add_link_to_docstring(_ida_typeinf.func_type_data_t.set_cc, f"{_g_links['official_python_documentation']}/ida_typeinf/index.html#ida_typeinf.func_type_data_t.set_cc")
+
+if ida_version() >= 930:
+    import ida_lumina as _ida_lumina # type: ignore[import-untyped, import-not-found]
+    for l_name, l_function in _inspect.getmembers(_ida_lumina, _inspect.isfunction): _add_link_to_docstring(l_function)
+
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _time_since(arg_timestamp_str: str, arg_now: str = "") -> str:
@@ -1290,10 +1308,10 @@ def _hotkey_str_fixer(arg_hotkey_str: str) -> str:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_licence_info(arg_delete_user_info_from_IDB: bool = False) -> Dict[str, str]:
     ''' Gets the license info. This function serves as example of 2 things: 1. How to get info that is not easy to get in a real way. 2. That your name is in every IDB, privacy warning!
+        For a very extensive information about the user, see ida_licence_info_ex()
 
     @return {serial_number: str, name_info: str}
     '''
-    # TODO: Replace with the extended version that reads the whole license info
     if arg_delete_user_info_from_IDB:
         _ = _ida_licence_info_delete()
 
@@ -1314,6 +1332,28 @@ def ida_licence_info(arg_delete_user_info_from_IDB: bool = False) -> Dict[str, s
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def ida_licence_info_ex() -> Optional[str]:
+    ''' Gets all info about the users licenses.
+    To remove all this, see use ida_licence_info(arg_delete_user_info_from_IDB=True)
+    
+    @returns a JSON string with all the info about the users license. (everything except the signature) ''' 
+    l_json_text = ""
+    l_node = _ida_netnode.netnode("$ original user")
+    if l_node == _ida_netnode.BADNODE:
+        log_print("Something went wrong", arg_type="ERROR")
+        return None
+    
+    for i in range(16, 30):
+        if l_node.supval(i):
+            l_json_text += l_node.supstr(i)
+        else:
+            break
+    
+    l_json_dict = _json.loads(l_json_text)
+    res = _json.dumps(l_json_dict, ensure_ascii=False, indent=4, default=str)
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _ida_licence_info_delete() -> bool:
     ''' Deletes the user info in the IDB, if you do not want your licence info to be in the database for NEW databases then edit ida.cfg and set STORE_USER_INFO = NO '''
 
@@ -1329,7 +1369,7 @@ def _compiler_info() -> _ida_ida.compiler_info_t:
     ''' Replacement for ida_ida.inf_get_cc()
 
     Official docs: <https://cpp.docs.hex-rays.com/structcompiler__info__t.html>
-    [See more at AllthingsIDA: IDAPython: Retrieving global database information] <https://youtu.be/2w8LdSCPUQc?t=1369>
+    [See more at AllthingsIDA: IDAPython: Retrieving global database information](https://youtu.be/2w8LdSCPUQc?t=1369)
     '''
     res = _ida_ida.compiler_info_t() # Create empty objext
     _ida_ida.inf_get_cc(res) # Fill the object with info
@@ -1340,7 +1380,7 @@ def _compiler_str() -> str:
     ''' What compiler was used according to IDA?
 
     Official docs for compiler id: <https://cpp.docs.hex-rays.com/group___c_o_m_p__.html>
-    [See more at AllthingsIDA: IDAPython: Retrieving global database information] <https://youtu.be/2w8LdSCPUQc?t=1369>
+    [See more at AllthingsIDA: IDAPython: Retrieving global database information](https://youtu.be/2w8LdSCPUQc?t=1369)
     '''
     l_compiler_info: _ida_ida.compiler_info_t = _compiler_info()
     l_compiler_id: int = l_compiler_info.id & _ida_typeinf.COMP_MASK
@@ -1387,10 +1427,10 @@ def pe_header_os_version() -> Tuple[int, int]:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pe_header_compiled_time() -> str:
-    ''' Reads the compiled from the PE header. Warning! In win10+, this is a hash so we can get [reproducable builds](https://devblogs.microsoft.com/oldnewthing/20180103-00/?p=97705) '''
+    ''' Reads "compile time" from the PE header. Warning! In Windows 10+, this is a hash so we can get [reproducible builds](https://devblogs.microsoft.com/oldnewthing/20180103-00/?p=97705) '''
     l_os_version = pe_header_os_version()
     if l_os_version >= (10, 0):
-        log_print(f"This is file from windows {l_os_version[0]}.{l_os_version[1]} which has reproducable builds so the timestamp is not valid", arg_type="ERROR")
+        log_print(f"This is file from windows {l_os_version[0]}.{l_os_version[1]} which has reproducible builds so the timestamp is not valid", arg_type="ERROR")
         return ""
 
     l_pe_header = pe_header()
@@ -1400,7 +1440,8 @@ def pe_header_compiled_time() -> str:
 
     l_timestamp_and_hash: bytes = l_pe_header[8:12]
     l_timestamp = int.from_bytes(l_timestamp_and_hash, byteorder="little")
-    l_datetime = _datetime.timetuple(_datetime.fromtimestamp(l_timestamp, tz=_timezone.utc))
+    l_datetime = _datetime.timetuple(_datetime.fromtimestamp(l_timestamp, tz=_timezone.utc)) 
+
     return _time.strftime(f"{_G_DEFAULT_TIME_FORMAT} (UTC)", l_datetime)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -1521,7 +1562,7 @@ class _input_file_object():
     bits = property(fget=lambda self: _ida_ida.inf_get_app_bitness() or 0, doc='64/32/16: int')
     compiler = property(fget=lambda self: _compiler_str(), doc="What compiler was used to compile this code")
     crc32 = property(fget=lambda self: ''.join(hex_parse(_ida_nalt.retrieve_input_file_crc32().to_bytes(4, 'big'))), doc='CRC-32 as ascii string')
-    endian = property(fget=lambda self: 'big' if _ida_ida.inf_is_be() else 'little' if self.filename else '<<< no file loaded >>>', doc='"big" or "little" (or "<<< no file loaded >>>" if no file is loaded)')
+    endian = property(fget=lambda self: '<<< no file loaded >>>' if not self.filename else ('big' if _ida_ida.inf_is_be() else 'little'), doc='"big" or "little" (or "<<< no file loaded >>>" if no file is loaded)')
     entry_point = property(fget=lambda self: _ida_ida.inf_get_start_ip(), doc='Address of the first instruction that is executed')
     filename = property(fget=lambda self: _ida_nalt.get_input_file_path() or "", doc='Full path and filename to the file WHEN IT WAS LOADED INTO IDA. The file might been moved by the user and this path might not be valid.')
     format = property(fget=lambda self: _ida_loader.get_file_type_name() if self.filename else "<<< no file loaded >>>", doc='Basically PE or ELF. e.g. PE gives "Portable executable for 80386 (PE)"')
@@ -2195,7 +2236,7 @@ def bookmarks(arg_debug: bool = False) -> Optional[List[Tuple[int, str]]]:
         l_ea = _ida_idc.get_marked_pos(bookmark_slot)
         if l_ea == _ida_idaapi.BADADDR:
             log_print(f"ida_idc.get_marked_pos({bookmark_slot}) returned BADADDR", arg_actually_print=arg_debug, arg_type="ERROR")
-            break
+            break # IDA does compress the list so the first empty is the marker for "no more bookmarks"
         res.append((l_ea, _ida_idc.get_mark_comment(bookmark_slot)))
 
     return res
@@ -2932,7 +2973,7 @@ def write_bytes(arg_ea: EvaluateType, arg_buf: Union[BufferType, int], arg_debug
     _ida_bytes.patch_bytes(l_addr, l_buf)
     l_written_bytes = read_bytes(l_addr, len(l_buf), arg_debug=arg_debug)
     res = l_written_bytes == l_buf
-    _ida_kernwin.request_refresh(_ida_kernwin.IWID_ALL) # Update the GUI if we actually managed to write something
+    _idaapi_request_refresh() # Update the GUI if we actually managed to write something
     return res
 
 bytes_write = set_bytes = patch_bytes = write_bytes
@@ -4323,7 +4364,7 @@ def set_type(arg_original_type_name_or_ea: EvaluateType, arg_new_type: Union[str
 
         arg_original_type_name_or_ea = _ida_name.get_name(l_addr)
         if not arg_original_type_name_or_ea: # There is no symbol name at that address, then our work is done
-            _ida_kernwin.request_refresh(_ida_kernwin.IWID_ALL)
+            _idaapi_request_refresh()
             return True
 
     if arg_original_type_name_or_ea and isinstance(arg_original_type_name_or_ea, str): # This if is here is you send in a string that is both a label and a function type. ex. You change "GetProcAddress", that is both an imported function and a known (function) type name (TIL)
@@ -4335,7 +4376,7 @@ def set_type(arg_original_type_name_or_ea: EvaluateType, arg_new_type: Union[str
         return False
 
     res = _ida_typeinf.TERR_OK == res
-    _ida_kernwin.request_refresh(_ida_kernwin.IWID_ALL) # TODO: IDA 9.3 BETA 1 changed protoype of request_refresh(), test if this makes sense
+    _idaapi_request_refresh()
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -4957,9 +4998,9 @@ def allocate_memory_in_target(arg_size: EvaluateType, arg_executable: bool = Fal
                 if l_syscall_already_in_code is None:
                     log_print("search_binary(SYSCALL_AS_BYTES) failed", arg_type="ERROR")
                     return None
-                if l_syscall_already_in_code != []:
+                if l_syscall_already_in_code:
                     log_print(f"Found SYSCALL at 0x{l_syscall_already_in_code[0]:x}", arg_debug)
-                    registers.rip.value = l_syscall_already_in_code  # type: ignore[attr-defined]
+                    registers.rip.value = l_syscall_already_in_code[0]  # type: ignore[attr-defined]
                     break
 
         if l_syscall_already_in_code == []:
@@ -5017,7 +5058,7 @@ def allocate_memory_in_target(arg_size: EvaluateType, arg_executable: bool = Fal
         return None
 
     debugger_refresh_memory_WARNING_VERY_EXPENSIVE()
-    _ida_kernwin.request_refresh(_ida_kernwin.IWID_ALL)
+    _idaapi_request_refresh()
     return eval_expression(res)
 
 malloc = allocate_memory_in_target
@@ -6158,7 +6199,7 @@ def _op_t_to_register(arg_operand: _ida_ua.op_t, arg_debug: bool = False) -> Opt
 setattr(_ida_ua.op_t, 'register', property(fget=_op_t_to_register))
 setattr(_ida_ua.op_t, 'name', property(fget=name))
 setattr(_ida_ua.op_t, 'as_dict', property(fget=_operand_parser))
-setattr(_ida_ua.op_t, '__eq__', lambda self, other: self.type == other.type and self.dtype == other.dtype and self.value == other.value and self.value64 == other.value64 and self.specflag1 == other.specflag1 and self.specflag2 == other.specflag2 and self.reg == other.reg and self.addr == other.addr)
+setattr(_ida_ua.op_t, '__eq__', lambda self, other: isinstance(other, _ida_ua.op_t) and self.type == other.type and self.dtype == other.dtype and self.value == other.value and self.value64 == other.value64 and self.specflag1 == other.specflag1 and self.specflag2 == other.specflag2 and self.reg == other.reg and self.addr == other.addr)
 setattr(_ida_idp.reg_info_t, '__str__', lambda self: f".name: {_ida_idp.get_reg_name(self.reg, self.size)}, .size: 0x{self.size:x}, .register_index: {self.reg}, .value: " + (_hex_str_if_int(_register(self)) if debugger_is_active() else "<value only available when debugger is active>") + "\n")
 setattr(_ida_idp.reg_info_t, '__repr__', __repr__type_str)
 setattr(_ida_idp.reg_info_t, '__len__', lambda self: self.size)
@@ -6358,6 +6399,8 @@ def _test_TWidget(arg_debug: bool = False) -> bool:
     test_2 = TWidget(test_1)
     test_3 = TWidget(test_2.as_PyQtWidget())
     test_4 = TWidget(test_3.window_title())
+
+    _idaapi_request_refresh()
 
     res = test_1.window_title() == test_2.window_title()
     log_print(f"Checkpoint 1: {res}", arg_debug)
