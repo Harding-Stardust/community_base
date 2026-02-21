@@ -70,7 +70,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2026-02-21 00:27:14"
+__version__ = "2026-02-21 02:08:55"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2026"
@@ -1349,7 +1349,7 @@ def ida_licence_info_ex() -> Optional[str]:
         else:
             break
     
-    l_json_dict = _json.loads(l_json_text)
+    l_json_dict = _json.loads(l_json_text or "{}")
     res = _json.dumps(l_json_dict, ensure_ascii=False, indent=4, default=str)
     return res
 
