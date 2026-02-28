@@ -70,7 +70,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2026-02-21 02:08:55"
+__version__ = "2026-02-27 21:47:01"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2026"
@@ -497,7 +497,7 @@ _g_abbreviations = {
     "udt" : "user-defined type : a structure or union - but not enums. Read more at [the official docs](https://python.docs.hex-rays.com/ida_typeinf/index.html#ida_typeinf.udt_type_data_t)",
     "udm" : "udt member : i.e., a structure or union member. See ida_typeinf.udm_t",
     "edm": "enum member : i.e., an enumeration member - i.e., an enumerator. See ida_typeinf.edm_t",
-    "vdui": "Visual Decompiler User Interface. vd prefix is the internal name for the decompiler."
+    "vdui": "Visual Decompiler User Interface. vd prefix is the internal name for the decompiler. (Visual Decompiler)"
     }
 
 _g_links = {}
@@ -586,6 +586,8 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
     @param arg_module_to_blame The name of the module that is buggy, usually it's the plugin name or "IDA Pro"
 
     @return The full path to the bug report '''
+    
+    # TODO: Add all running plugins and maybe all loaded python modules that are not standard?
     l_timestamp_for_filename: str = _time.strftime(_G_DEFAULT_TIME_FORMAT.replace('-','_').replace(' ','_').replace(':','_').replace('/','_'), _datetime.timetuple(_datetime.now()))
     l_bug_report_file: str = f"{input_file.idb_path}.{l_timestamp_for_filename}.bug_report.json"
     l_bug_report: Dict[str, str] = {}
@@ -5469,7 +5471,7 @@ if _G_QT_IS_AVAILABLE:
         return TWidget(_ida_kernwin.get_current_viewer())
 
     @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-    def _idaapi_get_last_widget(arg_mask: int = -1) -> TWidget:
+    def _idaapi_get_last_widget(arg_mask: int = _ida_kernwin.IWID_ALL) -> TWidget:
         ''' Replacement for ida_kernwin.get_last_widget()
         @param arg_mask an OR'ed set of ida_kernwin.IWID_* to limit the search to
         '''
@@ -6394,6 +6396,11 @@ def _test_TWidget(arg_debug: bool = False) -> bool:
     if not _G_QT_IS_AVAILABLE:
         log_print("Qt is not available, failing test", arg_type="ERROR")
         return False
+    
+    l_last_widget: TWidget = _idaapi_get_last_widget()
+    res = len(l_last_widget.window_title()) > 3
+    log_print(f"Checkpoint: l_last_widget: {l_last_widget}", arg_debug)
+    
     l_funcs_TWidget_ptr = _ida_kernwin.open_disasm_window("test_window")
     test_1 = TWidget(l_funcs_TWidget_ptr)
     test_2 = TWidget(test_1)
@@ -6402,12 +6409,12 @@ def _test_TWidget(arg_debug: bool = False) -> bool:
 
     _idaapi_request_refresh()
 
-    res = test_1.window_title() == test_2.window_title()
-    log_print(f"Checkpoint 1: {res}", arg_debug)
+    res &= test_1.window_title() == test_2.window_title()
+    log_print(f"Checkpoint: {res}", arg_debug)
     res &= test_2.window_title() == test_3.window_title()
-    log_print(f"Checkpoint 2: {res}", arg_debug)
+    log_print(f"Checkpoint: {res}", arg_debug)
     res &= test_3.window_title() == test_4.window_title()
-    log_print(f"Checkpoint 3: {res}", arg_debug)
+    log_print(f"Checkpoint: {res}", arg_debug)
     test_1.close()
     test_2.close()
     test_3.close()
@@ -6913,4 +6920,5 @@ def PLUGIN_ENTRY() -> _ida_idaapi.plugin_t:
 # End of file  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- End of file
 if not _is_running_as_plugin():
     log_print(f"Loaded {__name__} version: {__version__} by {__author__}. This version was released {_time_since(__version__)}", arg_type="INFO")
+
 
