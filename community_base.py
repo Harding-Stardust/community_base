@@ -63,6 +63,8 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 | Windows 10 | 9.2 | 3.12 | OK
 | Windows 10 | 9.3 BETA 1 | 3.10 | OK
 | Windows 10 | 9.3 | 3.10 | OK
+| Windows 10 | 9.3sp2 | 3.10 | OK
+| Windows 10 | 9.4 BETA 1 | 3.14 | OK
 
 # Future
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!
@@ -70,7 +72,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 - Need help with more testing
 - More of everything :-D
 '''
-__version__ = "2026-02-27 21:47:01"
+__version__ = "2026-06-13 02:59:21"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2026"
@@ -167,7 +169,7 @@ if _G_QT_IS_AVAILABLE:
             _G_QT_IS_AVAILABLE = False
 
 BufferType = Union[str, bytes, bytearray, List[str], List[bytes], List[bytearray]]
-BoolishType = Union[bool, int, str] # Can be evaluted by my function named _bool()
+BoolishType = Union[bool, int, str] # Can be evaluted to a bool by my function named _bool()
 # EvaluateType is anything that can be evalutad to an int. E.g. the address() function can take this type and then try to resolve an adress. Give it a str (a label) and it will work, give it a ida_segment.segment_t object and it will give the address to the start of the segment
 EvaluateType = Union[str, int, _ida_idp.reg_info_t, _ida_ua.insn_t, _ida_hexrays.cinsn_t, _ida_hexrays.cfuncptr_t, _ida_hexrays.cfunc_t, _ida_funcs.func_t, _ida_idaapi.PyIdc_cvt_int64__, _ida_segment.segment_t, _ida_ua.op_t, _ida_typeinf.funcarg_t, _idautils.Strings.StringItem, _ida_dbg.bpt_t, _ida_idd.modinfo_t, _ida_hexrays.carg_t, _ida_hexrays.cexpr_t, _ida_range.range_t]
 _G_LOG_EVERYTHING = False # If this is set to True, then all calls to log_print() will be printed, this can cause massive logs but good for hard to find bugs
@@ -609,10 +611,11 @@ def bug_report(arg_bug_description: str, arg_module_to_blame: Union[str, ModuleT
     log_print(f"Wrote bug report in {l_bug_report_file}", arg_type="INFO")
     log_print("Please post this bug report to the creator of the module so they can fix it. Thank you!", arg_type="INFO")
 
-    l_github_issues: str = __url__ + "/issues/new"
+    # deprecated, no one wants another popup
+    # l_github_issues: str = __url__ + "/issues/new"
     # First argument is the default button that will be pressed if the user press ENTER as soon as the box popups
-    if _ida_kernwin.ask_yn(_ida_kernwin.ASKBTN_YES , f"Open a new issue on Github? ( {l_github_issues} )") == _ida_kernwin.ASKBTN_YES:
-        _ida_kernwin.open_url(l_github_issues + f"?title=bug&body={l_bug_report_as_str}")
+    # if _ida_kernwin.ask_yn(_ida_kernwin.ASKBTN_YES , f"Open a new issue on Github? ( {l_github_issues} )") == _ida_kernwin.ASKBTN_YES:
+        # _ida_kernwin.open_url(l_github_issues + f"?title=bug&body={l_bug_report_as_str}")
 
     return l_bug_report_file
 
@@ -749,7 +752,7 @@ def ida_save_database(arg_new_filename: str = "",
     @return success
     '''
     # TODO: Check how this plays with ida_domain
-    # TODO: How does this work with the flags? Like compressiong and so on? Should the user be able to set that in this function?
+    # TODO: How does this work with the flags? Like compression and so on? Should the user be able to set that in this function?
     l_new_filename: str = arg_new_filename or input_file.idb_path
     l_my_extension = _os.path.splitext(input_file.idb_path)[1] # IDA 8.4 can have IDB, otherwise its always I64
     if l_new_filename and not l_new_filename.endswith(l_my_extension):
@@ -1508,7 +1511,7 @@ def pdb_load(arg_local_pdb_file: str = "",
         return False
     l_imagebase: int = l_temp_imagebase
 
-    l_local_symbol_cache: str = arg_local_symbol_cache if arg_local_symbol_cache else str(_os.path.dirname(input_file.idb_path))
+    l_local_symbol_cache: str = arg_local_symbol_cache or str(_os.path.dirname(input_file.idb_path))
     l_default_NT_SYMBOL_PATH = f"srv*{l_local_symbol_cache}*https://msdl.microsoft.com/download/symbols"
 
     if _os.environ.get('_NT_SYMBOL_PATH', None) is None:
@@ -3364,7 +3367,7 @@ def strings(arg_only_first: int = 100_000, arg_debug: bool = False) -> List[_ida
     # TODO: Add config to the arguments? Like arg_min_len = 10 ?
     res = []
     l_idx: int = 0
-    for string_item in _idautils.Strings(): # TODO: Investigate id ida_domain should be used
+    for string_item in _idautils.Strings(): # TODO: Investigate if ida_domain should be used
         res.append(string_item)
         log_print(f'Found string at: 0x{string_item.ea:x}', arg_debug)
         l_idx += 1
@@ -3593,7 +3596,7 @@ def xrefs_to(arg_ea: EvaluateType, arg_debug: bool = False) -> Dict[int, _ida_xr
     res = {}
     l_addr: int = address(arg_ea, arg_debug=arg_debug)
     for l_xref_to in _idautils.XrefsTo(l_addr):
-        l_xref_to.type_name = _idautils.XrefTypeName(l_xref_to.type) # Add the type as a human readable string also. There is some black magic going on in _ida_xref.xrefblk_t.refs_from() where there are copying done
+        l_xref_to.type_name = _idautils.XrefTypeName(l_xref_to.type) # Add the type as a human readable string also. There is some black magic going on in _ida_xref.xrefblk_t.refs_from()
         res[l_xref_to.frm] = l_xref_to
 
     log_print(f"len of dict: {len(res)}", arg_debug)
@@ -5151,16 +5154,31 @@ def win_PEB(arg_debug: bool = False) -> Optional[int]:
     if not debugger_is_active():
         log_print("This function can only be called in an active debugging session", arg_type="ERROR")
         return None
-
-    l_thread_id: int = _ida_dbg.get_current_thread()
-    teb_segm_name: str = f"TIB[{l_thread_id:08X}]"
-    log_print(f"Segment with TEB/TIB information: '{teb_segm_name}'", arg_debug)
-
-    l_TEB: Optional[_ida_segment.segment_t] = _ida_segment.get_segm_by_name(teb_segm_name)
-    if not l_TEB:
-        log_print(f"Could not find any segment with the name: '{teb_segm_name}'", arg_type="ERROR")
-        return None
-    return l_TEB.start_ea if input_file.bits == 64 else l_TEB.start_ea + 0x1000
+    
+    if ida_version() >= 940:
+        l_PEB: Optional[_ida_segment.segment_t] = None
+        for l_segment in segments():
+            if l_segment.name_as_str == "PEB":
+                l_PEB = l_segment
+                break
+        if l_PEB is None:
+            log_print(f"Could NOT find any segment named 'PEB', trying my hack with ntdll_RtlAreLongPathsEnabled", arg_type="ERROR")
+            l_ntdll_RtlAreLongPathsEnabled = appcall("ntdll_RtlAreLongPathsEnabled", "size_t ntdll_RtlAreLongPathsEnabled();")
+            if l_ntdll_RtlAreLongPathsEnabled is None:
+                return None
+            res = l_ntdll_RtlAreLongPathsEnabled() & 0xFFFFFFFFFFFFFF00
+            return res if input_file.bits == 64 else res - 0x1000
+        return l_PEB.start_ea
+    else:
+        l_thread_id: int = _ida_dbg.get_current_thread()
+        teb_segm_name: str = f"TIB[{l_thread_id:08X}]"
+        log_print(f"Segment with TEB/TIB information: '{teb_segm_name}'", arg_debug)
+        l_TEB: Optional[_ida_segment.segment_t] = _ida_segment.get_segm_by_name(teb_segm_name)
+    
+        if not l_TEB:
+            log_print(f"Could not find any segment with the name: '{teb_segm_name}'", arg_type="ERROR")
+            return None
+        return l_TEB.start_ea if input_file.bits == 64 else l_TEB.start_ea + 0x1000
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def win_GetCommandLineW(arg_debug: bool = False) -> Optional[str]:
@@ -6399,27 +6417,33 @@ def _test_TWidget(arg_debug: bool = False) -> bool:
     
     l_last_widget: TWidget = _idaapi_get_last_widget()
     res = len(l_last_widget.window_title()) > 3
-    log_print(f"Checkpoint: l_last_widget: {l_last_widget}", arg_debug)
+    if not res:
+        log_print("Failed: len(l_last_widget.window_title()) > 3", arg_type="ERROR")
+        return False
+    log_print(f"l_last_widget: {l_last_widget}", arg_debug)
     
     l_funcs_TWidget_ptr = _ida_kernwin.open_disasm_window("test_window")
     test_1 = TWidget(l_funcs_TWidget_ptr)
+    log_print(str(test_1), arg_debug)
     test_2 = TWidget(test_1)
+    log_print(str(test_2), arg_debug)
     test_3 = TWidget(test_2.as_PyQtWidget())
+    log_print(str(test_3), arg_debug)
     test_4 = TWidget(test_3.window_title())
+    log_print(str(test_4), arg_debug)
 
     _idaapi_request_refresh()
 
     res &= test_1.window_title() == test_2.window_title()
-    log_print(f"Checkpoint: {res}", arg_debug)
+    log_print(f"test_1.window_title() == test_2.window_title() -> {test_1.window_title()} == {test_2.window_title()}", arg_debug)
     res &= test_2.window_title() == test_3.window_title()
-    log_print(f"Checkpoint: {res}", arg_debug)
+    log_print(f"test_2.window_title() == test_3.window_title() -> {test_2.window_title()} == {test_3.window_title()}", arg_debug)
     res &= test_3.window_title() == test_4.window_title()
-    log_print(f"Checkpoint: {res}", arg_debug)
+    log_print(f"test_3.window_title() == test_4.window_title() -> {test_3.window_title()} == {test_4.window_title()}", arg_debug)
     test_1.close()
     test_2.close()
     test_3.close()
     test_4.close()
-
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -6579,12 +6603,81 @@ def _test_imports_and_exports(arg_debug: bool = False) -> bool:
     return len(l_imports) >= 1 and len(l_exports) >= 1
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_instruction(arg_debug: bool = False) -> bool:
+    ''' Test to decode bytes into an instruction '''
+    
+    l_ins = instruction(address("rip"))
+    if l_ins is None:
+        log_print("RIP is not at any instruction", arg_type="ERROR")
+        return False
+    log_print(str(l_ins), arg_debug)
+    l_next_ins = l_ins.next_instruction
+    if l_next_ins is None:
+        log_print("RIP is not at any instruction", arg_type="ERROR")
+        return False
+
+    log_print(str(l_next_ins), arg_debug)
+    l_first_instruction_again = l_next_ins.previous_instruction
+    if l_first_instruction_again is None:
+        log_print("RIP is not at any instruction", arg_type="ERROR")
+        return False
+    
+    log_print(str(l_first_instruction_again), arg_debug)
+    return str(l_ins) == str(l_first_instruction_again)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_bug_report(arg_debug: bool = False) -> bool:
+    ''' Test to create a bug report '''
+    l_bug_report = bug_report("TEST of bug report")
+    _os.remove(l_bug_report)
+    return True
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_ida_is_running_in_batch_mode(arg_debug: bool = False) -> bool:
+    ''' Test if reading from the cvar works '''
+    res = not ida_is_running_in_batch_mode()
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_notepad_text(arg_debug: bool = False) -> bool:
+    ''' Test if writing and reading from the internal notepad works '''
+    l_text_to_write = "This text is just a test!"
+    l_read = notepad_text(arg_text=l_text_to_write)
+    return l_text_to_write == l_read
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_hex_dump(arg_debug: bool = False) -> bool:
+    ''' Test if hexdump works '''
+    hex_dump(arg_ea=here(), arg_len=0x10, arg_width=0x20, arg_unprintable_char="-", arg_debug=arg_debug)
+    return True
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _test_licence_ex(arg_debug: bool = False) -> bool:
+    ''' Test if we can read the license info '''
+    l_license_info = ida_licence_info_ex()
+    if l_license_info is None:
+        log_print("l_license_info is None", arg_debug)
+    else:
+        log_print(l_license_info, arg_debug)
+    return True
+
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_all(arg_debug: bool = False) -> bool:
     ''' Tests all tests we have so far. This is NOT complete and needs to be extended. 
     Every time I have to fix something in an update, I add a test for that.
     '''
+    import coverage
+    import tempfile
+
     log_print("To make the tests work, you need to be on Windows, open notepad.exe and set at breakpoint at the start, start the debugger and when RIP is on WinMain. Then run these tests.", arg_type="INFO")
-    
+
+    l_this_file = _os.path.abspath(__file__)
+    l_report_dir = _os.path.join(tempfile.gettempdir(), "coverage_community_base")
+
+    cov = coverage.Coverage(include=[l_this_file])
+    cov.start()
+
     l_test_functions = {'_test_appcall_on_Windows': _test_appcall_on_Windows(arg_debug=arg_debug),
                         '_test_mem_alloc_write_read': _test_mem_alloc_write_read(arg_debug=arg_debug),
                         '_test_modules_on_Windows': _test_modules_on_Windows(arg_debug=arg_debug),
@@ -6602,7 +6695,13 @@ def _test_all(arg_debug: bool = False) -> bool:
                         '_test_save_database': _test_save_database(arg_debug=arg_debug),
                         '_test_python_load_module': _test_python_load_module(arg_debug=arg_debug),
                         '_test_pe_header_linker_version': _test_pe_header_linker_version(arg_debug=arg_debug),
-                        '_test_imports_and_exports': _test_imports_and_exports(arg_debug=arg_debug)
+                        '_test_imports_and_exports': _test_imports_and_exports(arg_debug=arg_debug),
+                        '_test_instruction': _test_instruction(arg_debug=arg_debug),
+                        '_test_bug_report' : _test_bug_report(arg_debug=arg_debug),
+                        '_test_ida_is_running_in_batch_mode': _test_ida_is_running_in_batch_mode(arg_debug=arg_debug),
+                        '_test_notepad_text': _test_notepad_text(arg_debug=arg_debug),
+                        '_test_hex_dump': _test_hex_dump(arg_debug=arg_debug),
+                        '_test_licence_ex': _test_licence_ex(arg_debug=arg_debug)
                         }
     log_print("---------------------------------------------------------------------------------------", arg_type="INFO")
     log_print("-------------------------------- Start of test results --------------------------------", arg_type="INFO")
@@ -6618,6 +6717,12 @@ def _test_all(arg_debug: bool = False) -> bool:
         log_print(f"All tests passed OK!", arg_type="INFO")
     else:
         log_print(f"Some tests failed!", arg_type="ERROR")
+    
+    cov.stop()
+    cov.save()
+    cov.html_report(directory=l_report_dir)
+    _os.system(f"start {l_report_dir}/index.html")    
+    
     return res
 
 
