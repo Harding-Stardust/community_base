@@ -13,7 +13,7 @@ I try to have a low cognitive load. "What matters is the amount of confusion dev
 - Type hints on everything!
 - Strong typing. I use [Pydantic](https://docs.pydantic.dev/latest/) to force types. This makes the code much easier to read since you get an idea what a function expects and what it returns. I try to follow [PEP 484](https://peps.python.org/pep-0484/) as much as I can. I also use [mypy](https://www.mypy-lang.org/) to check my code.
 - Full function/variable names. This makes variables and functions easy to read at a glance.
-- Properly documented. I try to document as extensive I can without making redundent comments.
+- Properly documented. I try to document as extensive I can without making redundant comments.
 - Easy to debug (hopefully!). All functions that are non-trivial have the last argument named ```arg_debug``` which is a bool that if set, prints out helpful information on what is happening in the code.
 - Good default values set. E.g. ```ida_idp.assemble(ea, 0, ea, True, 'mov eax, 1')``` have many arguments you don't know that they should be.
 - Understands what the user wants. I have type checks and treat input different depending on what you send in. E.g. addresses vs labels. In my script, everywhere you are expecting an address, you can send in a label (or register) that is then resolved. See ```address()``` and ```eval_expression()``` (same with where tinfo_t (type info) is expected, you can also send in a C-type string)
@@ -61,6 +61,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 | Windows 10 | 9.3sp2 | 3.10 | OK
 | Windows 10 | 9.4 BETA 1 | 3.14 | OK
 | Windows 10 | 9.4 | 3.14 | OK
+| Windows 10 | 9.4sp1 | 3.14 | OK
 
 # Future
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!
