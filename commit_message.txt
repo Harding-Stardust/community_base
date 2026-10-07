@@ -1,0 +1,39 @@
+IDA 9.5 BETA 1: support the clang type parser, header imports into Local Types folders, better PE timestamp checks
+
+IDA 9.5 changed the default type parser from "legacy" to "clang", which is
+stricter. This commit makes the type functions work with both parsers.
+
+Types
+- _fix_c_type(): function prototypes without a function name
+  (ex: "PVOID __stdcall(PVOID lpAddress)") get a dummy function name, the clang
+  parser can not parse them otherwise. The result still parses with the legacy
+  parser and keeps the argument names.
+- import_h_file(): new argument arg_folder. All types declared in the header
+  file are moved into a Local Types folder, default is the name of the header
+  file. Types that already existed are moved too, so the folder shows which
+  header file was the last one to write the type. arg_folder="" gives the old
+  behaviour.
+- New internal helpers _h_file_type_names() and _local_type_names().
+
+PE header
+- pe_header_compiled_time(): the "timestamp is in the future" check now uses
+  __version__ as the last known good date instead of time.time(), since the
+  clock is often wrong on malware analysis machines.
+- pe_header_compiled_time(): a timestamp that is older than the linker
+  (MajorLinkerVersion/MinorLinkerVersion) is reported as a hash (reproducible
+  build) or a forged timestamp. New helper _pe_linker_earliest_timestamp().
+
+Bug fixes
+- _python_load_module(): the loaded module now has __file__ set, and packages
+  that use relative imports ("from . import x") can be loaded.
+- demangle_string(): the default arg_disable_mask is now
+  MNG_IGN_JMP | MNG_IGN_ANYWAY so names with a '.' prefix ("._ZdaPvm") or a
+  "_0" suffix are demangled.
+
+Other
+- debugger_breakpoint_add(): full docstring for all arguments and the return
+  value.
+- Docstring links for ida_dirtree, and for ida_license on IDA 9.5+.
+- _test_all(): code coverage is now opt-in with arg_coverage=True.
+- New tests for nameless prototypes, import_h_file() folders and the linker
+  timestamp check.
