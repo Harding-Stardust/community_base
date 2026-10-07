@@ -64,6 +64,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 | Windows 10 | 9.4 BETA 1 | 3.14 | OK
 | Windows 10 | 9.4 | 3.14 | OK
 | Windows 10 | 9.4sp1 | 3.14 | OK
+| Windows 10 | 9.5 BETA 1 | 3.14 | OK
 
 # Future
 - I have not had the time to polish everything as much as I would have liked. Keep an eye on this repo and things will get updated!
@@ -74,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 
 from __future__ import annotations
 
-__version__ = "2026-09-29 22:19:55"
+__version__ = "2026-10-07 00:50:12"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2026"
@@ -757,7 +758,7 @@ def ida_config(arg_key: str, arg_value: str) -> bool:
     ''' in ida.cfg (and hexrays.cfg), there are many settings that one can set.
     There is no way to read what the settings are set to (more than parsing the file yourself)
 
-    OBS! There are some IDA settings saved in the registry, see ida_registy_read() on how to read them
+    OBS! There are some IDA settings saved in the registry, see ida_registry_read() on how to read them
 
     Replacement for ida_idp.process_config_directive()
 
@@ -1419,14 +1420,14 @@ def plugins() -> Dict[str, ModuleType]:
 
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_licence_info(arg_delete_user_info_from_IDB: bool = False) -> Dict[str, str]:
+def ida_license_info(arg_delete_user_info_from_IDB: bool = False) -> Dict[str, str]:
     ''' Gets the license info. This function serves as example of 2 things: 1. How to get info that is not easy to get in a real way. 2. That your name is in every IDB, privacy warning!
-        For a very extensive information about the user, see ida_licence_info_ex()
+        For a very extensive information about the user, see ida_license_info_ex()
 
     @return {serial_number: str, name_info: str}
     '''
     if arg_delete_user_info_from_IDB:
-        _ = _ida_licence_info_delete()
+        _ = _ida_license_info_delete()
 
     res = {"serial_number": "Unknown", "name_info": "Unknown"}
     l_lines: List[str] =_idaapi_generate_disassembly(input_file.min_original_ea, arg_max_lines=100, arg_as_stack=False, arg_notag=True)[1]
@@ -1445,9 +1446,9 @@ def ida_licence_info(arg_delete_user_info_from_IDB: bool = False) -> Dict[str, s
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_licence_info_ex() -> Optional[str]:
+def ida_license_info_ex() -> Optional[str]:
     ''' Gets all info about the users licenses.
-    To remove all this, see use ida_licence_info(arg_delete_user_info_from_IDB=True)
+    To remove all this, see use ida_license_info(arg_delete_user_info_from_IDB=True)
 
     @returns a JSON string with all the info about the users license. (everything except the signature) '''
     l_json_text = ""
@@ -1467,7 +1468,7 @@ def ida_licence_info_ex() -> Optional[str]:
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _ida_licence_info_delete() -> bool:
+def _ida_license_info_delete() -> bool:
     ''' Deletes the user info in the IDB, if you do not want your licence info to be in the database for NEW databases then edit ida.cfg and set STORE_USER_INFO = NO '''
 
     l_idc_return_value = _ida_expr.idc_value_t()
@@ -4556,7 +4557,7 @@ def file_write_patches_to_file(arg_validate_input_file: bool = True, arg_make_ba
 def _fix_c_type(arg_c_type: str, arg_debug: bool = False) -> Optional[str]:
     '''
     Internal function. Please use get_type() instead.
-    _ida_typeinf.parse_decl() is very strict on the format of the C type.
+    ida_typeinf.parse_decl() is very strict on the format of the C type.
 
     Ex: mangled name "._ZdaPvm" --> demangled name "operator delete[](void *, unsigned long)" This will _ida_typeinf.parse_decl() not take
     '''
@@ -5395,7 +5396,8 @@ def allocate_memory_in_target(arg_size: EvaluateType, arg_executable: bool = Fal
         MEM_COMMIT = 0x1000
         PAGE_READWRITE = 0x04
         PAGE_EXECUTE_READWRITE = 0x40
-        l_kernelbase_VirtualAlloc = appcall('kernelbase_VirtualAlloc', 'PVOID __stdcall(PVOID lpAddress, SIZE_T dwSize, __int32 flAllocationType, __int32 flProtect)', arg_debug=arg_debug)
+        # TODO: The next line fails in IDA 9.5 since they change the default type parser from legacy --> clang. Clang does NOT like: 'PVOID __stdcall(PVOID lpAddress, SIZE_T dwSize, __int32 flAllocationType, __int32 flProtect)'
+        l_kernelbase_VirtualAlloc = appcall('kernelbase_VirtualAlloc', 'PVOID __stdcall VirtualAlloc(PVOID lpAddress, SIZE_T dwSize, __int32 flAllocationType, __int32 flProtect)', arg_debug=arg_debug)
         if l_kernelbase_VirtualAlloc is None:
             log_print('Failed to find kernelbase_VirtualAlloc', arg_type="ERROR")
             return None
@@ -6250,9 +6252,9 @@ def _idaapi_reg_data_type(arg_key: str, arg_subkey: Optional[str] = None) -> int
     return l_temp if l_temp else -1
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def ida_registy_read(arg_key: str, arg_subkey: Optional[str] = None) -> Tuple[str, str]:
+def ida_registry_read(arg_key: str, arg_subkey: Optional[str] = None) -> Tuple[str, str]:
     r''' Read from IDAs registy, on Windows this is the Windows registry: Computer\HKEY_CURRENT_USER\SOFTWARE\Hex-Rays\IDA and on Linux/MAC IDA emulates a registry
-    e.g. print(ida_registy_read("AutoHighlight"))
+    e.g. print(ida_registry_read("AutoHighlight"))
 
     @ returns Tuple[reg_type: str, value: str]
     Read more <https://python.docs.hex-rays.com/namespaceida__registry.html>
@@ -6991,7 +6993,7 @@ def _test_decompiler(arg_debug: bool = False) -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_licence(arg_debug: bool = False) -> bool:
     ''' Tests: licence '''
-    l_licence = ida_licence_info(arg_delete_user_info_from_IDB=False)
+    l_licence = ida_license_info(arg_delete_user_info_from_IDB=False)
     log_print(f"licence: {l_licence}", arg_debug)
     return l_licence is not None
 
@@ -7180,7 +7182,7 @@ def _test_hex_dump(arg_debug: bool = False) -> bool:
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _test_licence_ex(arg_debug: bool = False) -> bool:
     ''' Test if we can read the license info '''
-    l_license_info = ida_licence_info_ex()
+    l_license_info = ida_license_info_ex()
     if l_license_info is None:
         log_print("l_license_info is None", arg_debug)
     else:
@@ -7596,12 +7598,12 @@ def _test_misc_wrappers(arg_debug: bool = False) -> bool:
     l_compiler = _compiler_str()
     res &= _test_check("_compiler_str()", l_compiler.endswith(("(sure)", "(unsure)")), l_compiler, arg_debug)
     # IDA only writes a setting to the registry when the user has changed it, so the value might not exist (e.g. a fresh IDA 8.4). Both cases must work.
-    l_registry = ida_registy_read("AutoHighlight")
+    l_registry = ida_registry_read("AutoHighlight")
     if _ida_registry.reg_exists("AutoHighlight"):
-        res &= _test_check("ida_registy_read('AutoHighlight') (exists)", l_registry == ("reg_dword", str(_ida_registry.reg_read_int("AutoHighlight", -12345))), l_registry, arg_debug)
+        res &= _test_check("ida_registry_read('AutoHighlight') (exists)", l_registry == ("reg_dword", str(_ida_registry.reg_read_int("AutoHighlight", -12345))), l_registry, arg_debug)
     else:
-        res &= _test_check("ida_registy_read('AutoHighlight') (does not exist) --> 'ERROR'", l_registry[0] == "ERROR", l_registry, arg_debug)
-    res &= _test_check("ida_registy_read('community_base_this_value_does_not_exist') --> 'ERROR'", ida_registy_read("community_base_this_value_does_not_exist")[0] == "ERROR", None, arg_debug)
+        res &= _test_check("ida_registry_read('AutoHighlight') (does not exist) --> 'ERROR'", l_registry[0] == "ERROR", l_registry, arg_debug)
+    res &= _test_check("ida_registry_read('community_base_this_value_does_not_exist') --> 'ERROR'", ida_registry_read("community_base_this_value_does_not_exist")[0] == "ERROR", None, arg_debug)
     l_os_version = pe_header_os_version()
     res &= _test_check("pe_header_os_version() >= (4, 0)", l_os_version >= (4, 0), l_os_version, arg_debug)
     l_compiled_time = pe_header_compiled_time() # Can be "" if it's a reproducible build, then we only test that it doesn't crash
