@@ -75,7 +75,7 @@ Read more: <https://hex-rays.com/blog/igors-tip-of-the-week-33-idas-user-directo
 
 from __future__ import annotations
 
-__version__ = "2026-10-07 00:50:12"
+__version__ = "2026-10-07 03:04:33"
 __author__ = "Harding"
 __description__ = __doc__
 __copyright__ = "Copyright 2026"
@@ -133,6 +133,7 @@ import ida_allins as _ida_allins # type: ignore[import-untyped]
 import ida_auto as _ida_auto # type: ignore[import-untyped]
 import ida_bytes as _ida_bytes # type: ignore[import-untyped]
 import ida_dbg as _ida_dbg # type: ignore[import-untyped]
+import ida_dirtree as _ida_dirtree # type: ignore[import-untyped]
 import ida_expr as _ida_expr # type: ignore[import-untyped]
 import ida_funcs as _ida_funcs # type: ignore[import-untyped]
 import ida_fpro as _ida_fpro # type: ignore[import-untyped]
@@ -176,6 +177,7 @@ BoolishType = Union[bool, int, str] # Can be evaluted to a bool by my function n
 # EvaluateType is anything that can be evaluated to an int. E.g. the address() function can take this type and then try to resolve an address. Give it a str (a label) and it will work, give it a ida_segment.segment_t object and it will give the address to the start of the segment
 _BaseEvaluateType = Union[str, int, _ida_idp.reg_info_t, _ida_ua.insn_t, _ida_hexrays.cinsn_t, _ida_hexrays.cfuncptr_t, _ida_hexrays.cfunc_t, _ida_funcs.func_t, _ida_idaapi.PyIdc_cvt_int64__, _ida_segment.segment_t, _ida_ua.op_t, _ida_typeinf.funcarg_t, _idautils.Strings.StringItem, _ida_dbg.bpt_t, _ida_idd.modinfo_t, _ida_hexrays.carg_t, _ida_hexrays.cexpr_t, _ida_range.range_t]
 try:
+    # TODO: Make sure the tests work without ida_domain, jupyter, qtconsole, jupyter-client
     import ida_domain as _ida_domain  # type: ignore[import-untyped, import-not-found]
     EvaluateType = Union[_BaseEvaluateType, _ida_domain.pseudocode.PseudocodeFunction, _ida_domain.microcode.MicroBlockArray, _ida_domain.microcode.MicroBlock, _ida_domain.strings.StringItem]
 except ImportError:
@@ -911,20 +913,25 @@ def _python_load_module(arg_filepath: str, arg_name: Optional[str] = None) -> Op
             log_print(f"Directory '{arg_filepath}' is not a package (missing __init__.py)", arg_type="ERROR")
             return None
         loader = _importlib_machinery.SourceFileLoader(arg_name, l_init_path)
-        spec = _importlib_util.spec_from_loader(arg_name, loader, origin=l_init_path, is_package=True)
+        # OBS! spec_from_file_location() and NOT spec_from_loader(origin=...), the latter does not set __file__ in the module
+        spec = _importlib_util.spec_from_file_location(arg_name, l_init_path, loader=loader, submodule_search_locations=[arg_filepath])
     else:
         if not arg_filepath.endswith(".py") or not _os.path.exists(arg_filepath): # assume it's a .py file
             log_print(f"File '{arg_filepath}' not found or not a .py file", arg_type="ERROR")
             return None
         loader = _importlib_machinery.SourceFileLoader(arg_name, arg_filepath)
-        spec = _importlib_util.spec_from_loader(arg_name, loader, origin=arg_filepath, is_package=False)
+        spec = _importlib_util.spec_from_file_location(arg_name, arg_filepath, loader=loader) # This sets __file__ in the module, spec_from_loader(origin=...) does not
 
     if spec is None:
         log_print(f"spec is None for '{arg_filepath}'", arg_type="ERROR")
         return None
     l_module = _importlib_util.module_from_spec(spec)
-    loader.exec_module(l_module)
-    _sys.modules[arg_name] = l_module
+    _sys.modules[arg_name] = l_module # Must be registered BEFORE exec_module(), a package that does "from . import x" looks itself up in sys.modules
+    try:
+        loader.exec_module(l_module)
+    except BaseException:
+        _sys.modules.pop(arg_name, None) # Don't leave a half loaded module behind
+        raise
 
     # If running inside IPython/Jupyter, also put into user namespace for tab-completion
     try:
@@ -945,7 +952,7 @@ def ida_is_64bit() -> bool:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _ida_DLL() -> Any: #  This used to be Union[_ctypes.CDLL, _ctypes.WinDLL] but WinDLL is not supported on Linux, I guess I can't do anything useful here.
-    ''' Load correct version of ida.dll. Works on IDA 8.4, 9.0, 9.1 and 9.2. Example of how to use ctypes.
+    ''' Load correct version of ida.dll. Works on IDA 8.4, 9.X  Example of how to use ctypes.
 
     [Read more at Hex-Rays blog about it (OBS! Outdated!)](https://hex-rays.com/blog/calling-ida-apis-from-idapython-with-ctypes)
     '''
@@ -1354,6 +1361,7 @@ for _t_name, _t_function in _inspect.getmembers(_ida_ua, _inspect.isfunction): _
 for _t_name, _t_function in _inspect.getmembers(_ida_xref, _inspect.isfunction): _add_link_to_docstring(_t_function)
 for _t_name, _t_function in _inspect.getmembers(_idautils, _inspect.isfunction): _add_link_to_docstring(_t_function)
 for _t_name, _t_function in _inspect.getmembers(_ida_diskio, _inspect.isfunction): _add_link_to_docstring(_t_function)
+for _t_name, _t_function in _inspect.getmembers(_ida_dirtree, _inspect.isfunction): _add_link_to_docstring(_t_function)
 
 if ida_version() >= 920:
     _add_link_to_docstring(_ida_typeinf.func_type_data_t.set_cc, f"{_g_links['official_python_documentation']}/ida_typeinf/index.html#ida_typeinf.func_type_data_t.set_cc")
@@ -1362,6 +1370,9 @@ if ida_version() >= 930:
     import ida_lumina as _ida_lumina # type: ignore[import-untyped, import-not-found]
     for _t_name, _t_function in _inspect.getmembers(_ida_lumina, _inspect.isfunction): _add_link_to_docstring(_t_function)
 
+if ida_version() >= 950:
+    import ida_license as _ida_license # type: ignore[import-untyped, import-not-found]
+    for _t_name, _t_function in _inspect.getmembers(_ida_license, _inspect.isfunction): _add_link_to_docstring(_t_function)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _time_since(arg_timestamp_str: str, arg_now: str = "") -> str:
@@ -1421,8 +1432,12 @@ def plugins() -> Dict[str, ModuleType]:
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def ida_license_info(arg_delete_user_info_from_IDB: bool = False) -> Dict[str, str]:
-    ''' Gets the license info. This function serves as example of 2 things: 1. How to get info that is not easy to get in a real way. 2. That your name is in every IDB, privacy warning!
-        For a very extensive information about the user, see ida_license_info_ex()
+    ''' Gets the license info. This function serves as example of 2 things:
+    1. How to get info that is not easy to get in a real way.
+    2. That your name is in every IDB, privacy warning!
+    For a very extensive information about the user, see ida_license_info_ex()
+    
+    Since IDA 9.5 there is also a module named ida_license that can be used
 
     @return {serial_number: str, name_info: str}
     '''
@@ -1575,10 +1590,48 @@ def _pe_is_reproducible_build(arg_debug: bool = False) -> Optional[bool]:
             return True
     return False
 
+# (MajorLinkerVersion, MinorLinkerVersion, year of the first release). Only linkers where the version is not shared with other toolchains:
+# GNU ld (2.x), Delphi (2.25), Go (3.0) and the old Microsoft linkers (< 6.0) are NOT in the list. lld-link always writes 14.0
+_G_PE_LINKER_FIRST_RELEASE_YEAR: List[Tuple[int, int, int]] = [
+    (6, 0, 1998),   # Visual Studio 6
+    (7, 0, 2002),   # Visual Studio .NET 2002
+    (7, 10, 2003),  # Visual Studio .NET 2003
+    (8, 0, 2005),   # Visual Studio 2005
+    (9, 0, 2007),   # Visual Studio 2008
+    (10, 0, 2010),  # Visual Studio 2010
+    (11, 0, 2012),  # Visual Studio 2012
+    (12, 0, 2013),  # Visual Studio 2013
+    (14, 0, 2015),  # Visual Studio 2015 (and lld-link)
+    (14, 10, 2017), # Visual Studio 2017
+    (14, 20, 2019), # Visual Studio 2019
+    (14, 30, 2021), # Visual Studio 2022
+    (14, 40, 2024), # Visual Studio 2022 17.10
+    (14, 50, 2025), # Visual Studio 2026
+    (48, 0, 2015),  # Roslyn (C#/VB.NET), deterministic builds also have a hash as timestamp
+]
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _pe_linker_earliest_timestamp(arg_major_version: int, arg_minor_version: int) -> Optional[int]:
+    ''' Internal function. A file can not be linked before its linker was released, so the linker version gives us the earliest valid TimeDateStamp.
+    OBS! The linker version in the PE header is easy to forge, so this is only a sanity check.
+
+    @param arg_major_version MajorLinkerVersion from the PE header, see pe_header_linker_version()
+    @param arg_minor_version MinorLinkerVersion from the PE header
+    @return The earliest valid timestamp (seconds since 1970, UTC), or None if we don't know the linker
+    '''
+    res: Optional[int] = None
+    for l_major, l_minor, l_year in _G_PE_LINKER_FIRST_RELEASE_YEAR: # The list is sorted, so the last match is the newest release that is not newer than our linker
+        if l_major == arg_major_version and l_minor <= arg_minor_version:
+            res = int(_datetime(l_year - 1, 1, 1, tzinfo=_timezone.utc).timestamp()) # - 1 year since previews and betas are out before the release
+    return res
+
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def pe_header_compiled_time() -> str:
-    ''' Reads "compile time" from the PE header. Warning! Files linked with /Brepro have a hash here instead so we can get [reproducible builds](https://devblogs.microsoft.com/oldnewthing/20180103-00/?p=97705)
+    ''' Reads "compile time" from the PE header. Warning! Files linked with repro have a hash here instead so we can get [reproducible builds](https://devblogs.microsoft.com/oldnewthing/20180103-00/?p=97705)
     That is detected by looking for an IMAGE_DEBUG_TYPE_REPRO entry in the debug directory.
+    If that entry is missing we sanity check the timestamp: it can not be after the last known good date (__version__) and not before the linker was released.
+
+    @return The compile time as a string in UTC, "" if there is no PE header or if the timestamp is not a valid time
     '''
     l_pe_header = pe_header()
     if l_pe_header is None:
@@ -1594,10 +1647,19 @@ def pe_header_compiled_time() -> str:
 
     l_timestamp_and_hash: bytes = l_pe_header[8:12]
     l_timestamp: int = int.from_bytes(l_timestamp_and_hash, byteorder="little")
-    if l_timestamp > _time.time(): # A compile time in the future can only be a hash (reproducible build even if we could not see the REPRO entry)
-        log_print(f"The timestamp 0x{l_timestamp:x} is in the future so it's a hash (reproducible build) and not a valid time", arg_type="ERROR")
+    # OBS! Do NOT use time.time() here, the clock is often changed on malware analysis machines. __version__ is the last known good date
+    l_last_known_good_timestamp: float = _datetime.strptime(__version__, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_timezone.utc).timestamp() + 24 * 60 * 60 # __version__ is in local time, + 1 day covers all timezones
+    if l_timestamp > l_last_known_good_timestamp: # A compile time in the future can only be a hash (reproducible build even if we could not see the REPRO entry)
+        log_print(f"The timestamp 0x{l_timestamp:x} is after the last known good date (__version__ = '{__version__}') so it's a hash (reproducible build) and not a valid time", arg_type="ERROR")
         return ""
-    l_datetime = _datetime.timetuple(_datetime.fromtimestamp(l_timestamp, tz=_timezone.utc))
+
+    (l_linker_major, l_linker_minor) = pe_header_linker_version()
+    l_earliest_timestamp: Optional[int] = _pe_linker_earliest_timestamp(l_linker_major, l_linker_minor)
+    if l_earliest_timestamp is not None and l_timestamp < l_earliest_timestamp: # A compile time before the linker existed, ex: linker 14.x and year 1971
+        log_print(f"The timestamp 0x{l_timestamp:x} is older than the linker (version {l_linker_major}.{l_linker_minor}) so it's a hash (reproducible build) or a forged timestamp and not a valid time", arg_type="ERROR")
+        return ""
+
+    l_datetime =_datetime.timetuple(_datetime.fromtimestamp(l_timestamp, tz=_timezone.utc))
 
     return _time.strftime(f"{_G_DEFAULT_TIME_FORMAT} (UTC)", l_datetime)
 
@@ -2712,14 +2774,14 @@ def _idaapi_demangle_name(arg_name: str, arg_disable_mask: int, arg_demreq=_ida_
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def demangle_string(arg_mangled_name: str,
-                  arg_disable_mask: int = 0,
+                  arg_disable_mask: int =  _ida_name.MNG_IGN_JMP | _ida_name.MNG_IGN_ANYWAY, # MNG_IGN_JMP accepts the '.' prefix ("._ZdaPvm"), MNG_IGN_ANYWAY accepts the '_0' suffix ("_ZdaPvm_0")
                   arg_demangle_type: int =_ida_name.DQT_FULL,
                   arg_allow_brute_force: bool = False,
                   arg_debug: bool = False
                   ) -> str:
     ''' Demangles a string. Can try to brute force demangle some names that IDA usually doesn't like.
     @param arg_mangled_name: str, the string to demangle
-    @param arg_disable_mask: int, extra flags to ida_name.demangle_name(). To he honest, I don't know what these flags are.
+    @param arg_disable_mask: int, ida_name.MNG_* flags to ida_name.demangle_name(). Most of them hide parts of the result (ex: MNG_NORETTYPE), the default flags make the demangler accept the '.' prefix and the '_0' suffix. Use ida_ida.inf_get_long_demnames() to get the same result as IDA shows
     @param arg_demangle_type: int, [How to demangle the name](https://cpp.docs.hex-rays.com/name_8hpp.html#afb78c30f35664f57311d5baa00360434)
     @param arg_allow_brute_force: If the name cannot be mangled as it is, I can try to "fuzzy" demangle it. Use on your own risk.
 
@@ -3342,23 +3404,144 @@ def write_string(arg_ea: EvaluateType, arg_string: str, arg_append_NULL_byte: bo
     return write_bytes(arg_ea=arg_ea, arg_buf=bytes(arg_string + ('\x00' if arg_append_NULL_byte else ''), encoding='utf-8'), arg_debug=arg_debug)
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def import_h_file(arg_h_file: str, arg_flags: int = _ida_typeinf.PT_FILE, arg_debug: bool = False) -> bool:
+def _local_type_names(arg_debug: bool = False) -> List[str]:
+    ''' Internal function. Get the names of all types in the local type library (the Local Types window)
+
+    @return A list with the names of all local types
+    '''
+    l_til = _ida_typeinf.get_idati()
+    # ida_typeinf.get_ordinal_limit() is IDA 9.0+, in IDA 8.4 the same function is named get_ordinal_qty()
+    l_ordinal_limit: int = _ida_typeinf.get_ordinal_limit(l_til) if hasattr(_ida_typeinf, "get_ordinal_limit") else _ida_typeinf.get_ordinal_qty(l_til)
+    if l_ordinal_limit in (0, 0xFFFFFFFF): # 0xFFFFFFFF == uint32(-1) --> failed
+        log_print(f"Could not get the number of local types, got 0x{l_ordinal_limit:x}", arg_debug)
+        return []
+
+    res: List[str] = []
+    for l_ordinal in range(1, l_ordinal_limit):
+        l_name = _ida_typeinf.get_numbered_type_name(l_til, l_ordinal)
+        log_print(f"ordinal {l_ordinal} --> '{l_name}'", arg_debug)
+        if l_name:
+            res.append(l_name)
+    return res
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def _h_file_type_names(arg_h_file: str, arg_debug: bool = False) -> List[str]:
+    ''' Internal function. Get the names of all types that a header file (.h file) declares, also the types that already exist in the IDB.
+    This does NOT change the IDB: the header file is parsed into a temporary copy of the local type library where all the types are deleted first,
+    so every type that is in the copy after the parsing comes from the header file. The copy has the same base type libraries (ex: mssdk64_win7) and compiler settings as the IDB.
+
+    OBS! Types in the header file that need a type that only exists in Local Types (not in the header file and not in a base type library) are missed
+
+    @param arg_h_file The path to the header file
+    @param arg_debug Print debug messages
+    @return A list with the names of the types in the header file. Empty list on failure
+    '''
+    import tempfile
+    with tempfile.TemporaryDirectory() as l_temp_dir:
+        l_til_file: str = _os.path.join(l_temp_dir, "community_base_temp.til")
+        if not _ida_typeinf.store_til(_ida_typeinf.get_idati(), None, l_til_file):
+            log_print(f"ida_typeinf.store_til() failed to write '{l_til_file}'", arg_type="WARNING")
+            return []
+        l_temp_til = _ida_typeinf.load_til(l_til_file)
+    if l_temp_til is None:
+        log_print(f"ida_typeinf.load_til('{l_til_file}') failed", arg_type="WARNING")
+        return []
+
+    try:
+        l_name = _ida_typeinf.first_named_type(l_temp_til, _ida_typeinf.NTF_TYPE)
+        while l_name: # Deleting the first type every time is OK, we want all of them gone
+            log_print(f"Deleting '{l_name}' from the temporary type library", arg_debug)
+            if not _ida_typeinf.del_named_type(l_temp_til, l_name, _ida_typeinf.NTF_TYPE):
+                log_print(f"Could not delete '{l_name}' from the temporary type library", arg_type="WARNING")
+                return []
+            l_name = _ida_typeinf.first_named_type(l_temp_til, _ida_typeinf.NTF_TYPE)
+
+        # OBS! ida_typeinf.parse_decls() wants HTI_FIL for a file, with PT_FILE it fails
+        l_errors: int = _ida_typeinf.parse_decls(l_temp_til, arg_h_file, None, _ida_typeinf.HTI_FIL | _ida_typeinf.PT_SIL)
+        log_print(f"Parsing '{arg_h_file}' into the temporary type library gave {l_errors} errors", arg_debug)
+
+        res: List[str] = []
+        l_name = _ida_typeinf.first_named_type(l_temp_til, _ida_typeinf.NTF_TYPE)
+        while l_name:
+            log_print(f"'{l_name}' is a type in the header file", arg_debug)
+            res.append(l_name)
+            l_name = _ida_typeinf.next_named_type(l_temp_til, l_name, _ida_typeinf.NTF_TYPE)
+        return res
+    finally:
+        _ida_typeinf.free_til(l_temp_til)
+
+@validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
+def import_h_file(arg_h_file: str, arg_flags: int = _ida_typeinf.PT_FILE, arg_folder: Optional[str] = None, arg_debug: bool = False) -> bool:
     ''' Import a header file (.h file) with types into IDA. Same as using the menu File -> Load file -> Parse C header file. Default keybinding for the menu is Ctrl + F9
     @param arg_h_file The path to the header file to import
     @param arg_flags The flags to pass to ida_typeinf.idc_parse_types()
-    @return True if the header file was imported successfully, False otherwise
+    @param arg_folder The folder in the Local Types window to put ALL the types from the header file in, the folder is created if needed.
+                      None (default) means use the name of the header file, ex: "C:/temp/default_types.h" --> "default_types.h". "" means don't move the types.
+                      Types that existed before the import are moved too (also from other folders), so the folder tells you which header file was the last one to write the type.
+                      The folder is only for display, the type names are still global
+    @param arg_debug Print debug messages
+    @return True if the header file was imported successfully, False otherwise. Problems with the folder only give a WARNING, they don't change the return value
 
     Replacement for ida_typeinf.idc_parse_types() and ida_typeinf.parse_decls() '''
     if not _os.path.exists(arg_h_file):
         log_print(f"File does not exists: '{arg_h_file}'", arg_type="ERROR")
         return False
 
+    if arg_folder is None:
+        arg_folder = _os.path.basename(arg_h_file) # The folder gets the same name as the header file
+    arg_folder = arg_folder.strip("/")
+
+    # OBS! Must be done BEFORE the import, _h_file_type_names() works on a copy of the local types as they are now
+    l_type_names_in_h_file: List[str] = _h_file_type_names(arg_h_file, arg_debug=arg_debug) if arg_folder else []
+    l_type_names_before: List[str] = _local_type_names(arg_debug=arg_debug) if arg_folder else []
     l_idc_parse_types_res = _ida_typeinf.idc_parse_types(arg_h_file, arg_flags)
     log_print(f"_ida_typeinf.idc_parse_types() result: {l_idc_parse_types_res}", arg_debug)
 
     res = 0 == l_idc_parse_types_res
     if not res:
         log_print(f"There where errors when trying to import the header file '{arg_h_file}'. Please make sure it's correct by manual load with Ctrl + F9", arg_type="ERROR")
+    if not arg_folder:
+        return res
+
+    # Also done if there were errors, the types before the error are imported.
+    # The new types are added in case _h_file_type_names() missed some, see the OBS! in that function
+    l_new_type_names: Set[str] = set(_local_type_names(arg_debug=arg_debug)) - set(l_type_names_before)
+    l_type_names_to_move: List[str] = sorted(set(l_type_names_in_h_file) | l_new_type_names)
+    log_print(f"{len(l_type_names_to_move)} types ({len(l_new_type_names)} new) to move into the folder '{arg_folder}'", arg_debug)
+    if not l_type_names_to_move:
+        return res
+
+    l_dirtree = _ida_dirtree.get_std_dirtree(_ida_dirtree.DIRTREE_LOCAL_TYPES)
+    if l_dirtree is None:
+        log_print(f"Could not get the dirtree for Local Types, the types are not moved into the folder '{arg_folder}'", arg_type="WARNING")
+        return res
+
+    if not l_dirtree.isdir(arg_folder):
+        l_mkdir_res: int = l_dirtree.mkdir(arg_folder)
+        if l_mkdir_res != _ida_dirtree.DTE_OK:
+            log_print(f"Could not create the folder '{arg_folder}' in Local Types: {_ida_dirtree.dirtree_t.errstr(l_mkdir_res)}", arg_type="WARNING")
+            return res
+
+    l_til = _ida_typeinf.get_idati()
+    for l_type_name in l_type_names_to_move:
+        log_print(f"Moving '{l_type_name}' into the folder '{arg_folder}'", arg_debug)
+        l_ordinal: int = _ida_typeinf.get_type_ordinal(l_til, l_type_name)
+        if not l_ordinal: # The type is in the header file but it did not end up in Local Types, ex: the import failed on that type
+            log_print(f"'{l_type_name}' is not in Local Types, skipping it", arg_debug)
+            continue
+
+        l_cursor = l_dirtree.find_entry(_ida_dirtree.direntry_t(l_ordinal, False)) # In the Local Types dirtree the inode is the ordinal. The type can be in any folder, ex: "/pdb/_GUID"
+        if not l_cursor.valid():
+            log_print(f"Could not find the type '{l_type_name}' (ordinal {l_ordinal}) in the Local Types dirtree", arg_type="WARNING")
+            continue
+
+        l_old_path: str = l_dirtree.get_abspath(l_cursor)
+        l_new_path: str = f"/{arg_folder}/{l_type_name}"
+        if l_old_path == l_new_path: continue # Already in the right folder
+
+        l_rename_res: int = l_dirtree.rename(l_old_path, l_new_path)
+        if l_rename_res != _ida_dirtree.DTE_OK:
+            log_print(f"Could not move the type '{l_old_path}' to '{l_new_path}': {_ida_dirtree.dirtree_t.errstr(l_rename_res)}", arg_type="WARNING")
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -4553,26 +4736,56 @@ def file_write_patches_to_file(arg_validate_input_file: bool = True, arg_make_ba
 # DATA TYPES ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- DATA TYPES
 
 
+_G_DUMMY_FUNCTION_NAME: str = "community_base_dummy_function_name" # Used by _fix_c_type() to give nameless function prototypes a name. OBS! The clang parser does NOT accept "_" as a name
+
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
 def _fix_c_type(arg_c_type: str, arg_debug: bool = False) -> Optional[str]:
     '''
     Internal function. Please use get_type() instead.
     ida_typeinf.parse_decl() is very strict on the format of the C type.
 
-    Ex: mangled name "._ZdaPvm" --> demangled name "operator delete[](void *, unsigned long)" This will _ida_typeinf.parse_decl() not take
+    Ex: mangled name "._ZdaPvm" --> demangled name "operator delete[](void *, unsigned long)" This will ida_typeinf.parse_decl() not take
+
+    The clang parser (default from IDA 9.5) is stricter than the legacy parser: it needs the ending ';' and it can NOT parse a function prototype without a function name
+    if the first argument is a typedef, ex: "PVOID __stdcall(PVOID lpAddress)". When it can parse a nameless prototype it drops the argument names.
+    So nameless prototypes get a dummy function name, that string is OK for both parsers: "PVOID __stdcall community_base_dummy_function_name(PVOID lpAddress);"
+
+    @param arg_c_type The C type as a string. Ex: "int", "void *", "PVOID __stdcall(PVOID lpAddress, SIZE_T dwSize)"
+    @return A string that ida_typeinf.parse_decl() can parse with both the legacy and the clang parser, None if we failed to fix the string
     '''
     if arg_c_type in ['byte', 'word', 'dword', 'qword']: # Some simple words that I use in lower case should be OK  # TODO: This is not true for things like MIPS
         return arg_c_type.upper() + ';'
 
     arg_c_type += ";"
     arg_c_type = arg_c_type.replace(";;", ";")
-    log_print(f"1st parse test is of: '{arg_c_type}'", arg_debug)
     _til = None
+
+    # A calling convention directly followed by '(' or '@<' means that the function name is missing. "(__stdcall *)" (function pointer) and "__stdcall f(" (has a name) do not match
+    l_named_c_type: str = _re.sub(r"\b(__stdcall|__cdecl|__thiscall|__fastcall|__vectorcall|__usercall|__userpurge|__golang|__pascalcall|__pascal)\s*(?=\(|@<)", r"\1 " + _G_DUMMY_FUNCTION_NAME, arg_c_type, count=1)
+    if l_named_c_type != arg_c_type:
+        log_print(f"Named parse test is of: '{l_named_c_type}'", arg_debug)
+        _t = _ida_typeinf.tinfo_t()
+        _ida_typeinf.parse_decl(_t, _til, l_named_c_type, _ida_typeinf.PT_SIL) # PT_SIL == SILENT, meaning no popup that there were any problems
+        if _t.is_well_defined():
+            log_print(f"Named parse test OK! Returning '{l_named_c_type}'", arg_debug)
+            return l_named_c_type
+
+    log_print(f"1st parse test is of: '{arg_c_type}'", arg_debug)
     _t = _ida_typeinf.tinfo_t()
     _ida_typeinf.parse_decl(_t, _til, arg_c_type, _ida_typeinf.PT_SIL) # PT_SIL == SILENT, meaning no popup that there were any problems
     if _t.is_well_defined():
         log_print(f"1st parse test OK! Returning '{arg_c_type}'", arg_debug)
         return arg_c_type
+
+    # Nameless prototype without calling convention, ex: "PVOID(PVOID lpAddress)". The legacy parser took it in the 1st test, the clang parser needs the name
+    l_named_c_type = _re.sub(r"^([^(]*?)\s*\((?!\s*\*)", r"\1 " + _G_DUMMY_FUNCTION_NAME + "(", arg_c_type, count=1) # (?!\s*\*) --> do not touch function pointers like "int (*)(int)"
+    if l_named_c_type != arg_c_type and _G_DUMMY_FUNCTION_NAME not in arg_c_type:
+        log_print(f"Named parse test without calling convention is of: '{l_named_c_type}'", arg_debug)
+        _t = _ida_typeinf.tinfo_t()
+        _ida_typeinf.parse_decl(_t, _til, l_named_c_type, _ida_typeinf.PT_SIL) # PT_SIL == SILENT, meaning no popup that there were any problems
+        if _t.is_well_defined() and _t.is_func(): # is_func() so we don't accept something that is not a function after we added a function name
+            log_print(f"Named parse test without calling convention OK! Returning '{l_named_c_type}'", arg_debug)
+            return l_named_c_type
 
     # Ex: mangled name "._ZdaPvm" --> demangled name "operator delete[](void *, unsigned long)" --> IDA decompiler: "void __fastcall operator delete[](void *a1, unsigned __int64 a2);" This will _ida_typeinf.parse_decl() not take
     # However, it WILL parse the string "void __fastcall operator_delete__(void *a1, unsigned __int64 a2)"
@@ -4594,7 +4807,6 @@ def _fix_c_type(arg_c_type: str, arg_debug: bool = False) -> Optional[str]:
     arg_c_type = arg_c_type.replace(";;", ";")
 
     log_print(f"2nd parse test is of: '{arg_c_type}'", arg_debug)
-    _til = None
     _t = _ida_typeinf.tinfo_t()
     _ida_typeinf.parse_decl(_t, _til, arg_c_type, _ida_typeinf.PT_SIL) # PT_SIL == SILENT, meaning no popup that there were any problems
     if _t.is_well_defined():
@@ -4983,7 +5195,22 @@ def debugger_breakpoint_add(arg_ea: EvaluateType,
                    arg_condition: str = '',
                    arg_debug: bool = False) -> Optional[_ida_dbg.bpt_t]:
     ''' Add (set) a breakpoint (Software or Hardware)
-        @param arg_breakpoint_type Set to ida_idd.BPT_WRITE, ida_idd.BPT_READ or ida_idd.BPT_EXEC to set hardware breakpoints (then arg_size is set to 1 if it is 0)
+
+    @param arg_ea Where to set the breakpoint. Anything that address() can resolve: an address (int), a name/label, a register name and so on
+    @param arg_size The number of bytes the breakpoint covers. Only used by hardware breakpoints, on x86/x64 the valid sizes are 1, 2, 4 and 8 (8 only on x64).
+                    Use 0 for software breakpoints. If it is 0 and arg_breakpoint_type is BPT_READ, BPT_WRITE or BPT_EXEC then it is set to 1
+    @param arg_breakpoint_type The type of the breakpoint, one of the ida_idd.BPT_* constants:
+                    ida_idd.BPT_DEFAULT (BPT_SOFT | BPT_EXEC) lets IDA choose the type automatically. This is the default
+                    ida_idd.BPT_SOFT    software breakpoint
+                    ida_idd.BPT_EXEC    hardware breakpoint on execute
+                    ida_idd.BPT_WRITE   hardware breakpoint on write
+                    ida_idd.BPT_READ    hardware breakpoint on read. OBS! x86/x64 CPUs can not break on read only, use BPT_RDWR there
+                    ida_idd.BPT_RDWR    hardware breakpoint on read or write. OBS! arg_size is NOT set to 1 for this type, you must give the size yourself
+    @param arg_condition A Python expression that is evaluated every time the breakpoint is hit, the debugger only stops if it is True. '' (default) means always stop
+    @param arg_debug Print debug messages
+
+    @return The new breakpoint as ida_dbg.bpt_t. None if arg_ea could not be resolved, if the breakpoint could not be added (ex: there is already a breakpoint at that address)
+            or if the breakpoint could not be read back or updated
     '''
     l_addr: int = address(arg_ea, arg_debug=arg_debug)
     if l_addr == _ida_idaapi.BADADDR:
@@ -7547,6 +7774,16 @@ def _test_get_type_and_parse_decl(arg_debug: bool = False) -> bool:
     # In notepad.exe the name CreateFileW is the import table slot, so the type there is a function POINTER. Both are OK.
     l_from_til = get_type("CreateFileW", arg_debug=arg_debug)
     res &= _test_check("get_type('CreateFileW') is a function or function pointer", l_from_til is not None and (l_from_til.is_func() or l_from_til.is_funcptr()), l_from_til, arg_debug)
+    # Function prototypes without a function name, the clang parser (default from IDA 9.5) can not parse these as they are, see _fix_c_type()
+    l_nameless = get_type("PVOID __stdcall(PVOID lpAddress, SIZE_T dwSize, __int32 flAllocationType, __int32 flProtect)", arg_debug=arg_debug)
+    res &= _test_check("get_type() on nameless __stdcall prototype is a function with 4 arguments", l_nameless is not None and l_nameless.is_func() and l_nameless.get_nargs() == 4, l_nameless, arg_debug)
+    res &= _test_check("get_type() on nameless __stdcall prototype keeps the argument names", l_nameless is not None and "lpAddress" in str(l_nameless), l_nameless, arg_debug)
+    l_nameless_no_cc = get_type("PVOID(PVOID lpAddress)", arg_debug=arg_debug)
+    res &= _test_check("get_type() on nameless prototype without calling convention is a function with 1 argument", l_nameless_no_cc is not None and l_nameless_no_cc.is_func() and l_nameless_no_cc.get_nargs() == 1, l_nameless_no_cc, arg_debug)
+    l_named = get_type("PVOID __stdcall VirtualAlloc(PVOID lpAddress, SIZE_T dwSize, __int32 flAllocationType, __int32 flProtect)", arg_debug=arg_debug)
+    res &= _test_check("get_type() on named __stdcall prototype is a function with 4 arguments", l_named is not None and l_named.is_func() and l_named.get_nargs() == 4, l_named, arg_debug)
+    l_function_pointer = get_type("PVOID (__stdcall *)(PVOID lpAddress, SIZE_T dwSize)", arg_debug=arg_debug)
+    res &= _test_check("get_type() on function pointer is still a function pointer", l_function_pointer is not None and l_function_pointer.is_funcptr(), l_function_pointer, arg_debug)
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
@@ -7554,7 +7791,10 @@ def _test_import_h_file(arg_debug: bool = False) -> bool:
     ''' Tests: import_h_file() (ida_typeinf.idc_parse_types()) and get_type() on the new struct. The struct is deleted afterwards. '''
     import tempfile
     l_struct_name = "community_base_test_struct"
+    l_folder = "community_base_test.h" # import_h_file() names the folder after the header file
+    l_folder_2 = "community_base_test_2.h"
     res = True
+    l_dirtree = _ida_dirtree.get_std_dirtree(_ida_dirtree.DIRTREE_LOCAL_TYPES)
     with tempfile.TemporaryDirectory() as l_temp_dir:
         l_h_file = _os.path.join(l_temp_dir, "community_base_test.h")
         with open(l_h_file, "w", encoding="utf-8", newline="\n") as f:
@@ -7563,7 +7803,23 @@ def _test_import_h_file(arg_debug: bool = False) -> bool:
             res &= _test_check("import_h_file()", import_h_file(l_h_file, arg_debug=arg_debug), l_h_file, arg_debug)
             l_type = get_type(l_struct_name, arg_debug=arg_debug)
             res &= _test_check(f"get_type('{l_struct_name}') is a struct of size 8", l_type is not None and l_type.is_struct() and l_type.get_size() == 8, l_type, arg_debug)
+            l_is_in_folder: bool = l_dirtree.isfile(f"{l_folder}/{l_struct_name}")
+            res &= _test_check(f"import_h_file() moved '{l_struct_name}' into the folder '{l_folder}'", l_is_in_folder, l_is_in_folder, arg_debug)
+
+            # A second header file with the same struct (unchanged, so we can't see it on the type itself), the struct must move to the folder of the last header file
+            l_h_file_2 = _os.path.join(l_temp_dir, l_folder_2)
+            with open(l_h_file_2, "w", encoding="utf-8", newline="\n") as f:
+                f.write(f"struct {l_struct_name} {{ int a; int b; }};\n")
+            res &= _test_check("import_h_file() of the second header file", import_h_file(l_h_file_2, arg_debug=arg_debug), l_h_file_2, arg_debug)
+            l_is_in_folder = l_dirtree.isfile(f"{l_folder_2}/{l_struct_name}") and not l_dirtree.isfile(f"{l_folder}/{l_struct_name}")
+            res &= _test_check(f"import_h_file() moved the existing '{l_struct_name}' from the folder '{l_folder}' to '{l_folder_2}'", l_is_in_folder, l_is_in_folder, arg_debug)
         finally:
+            # OBS! Move the struct out of the folder BEFORE it is deleted. If the struct is deleted inside the folder then rmdir() fails with "directory is not empty"
+            l_dirtree.rename(f"{l_folder}/{l_struct_name}", f"/{l_struct_name}")
+            l_dirtree.rename(f"{l_folder_2}/{l_struct_name}", f"/{l_struct_name}")
+            for l_folder_to_remove in (l_folder, l_folder_2):
+                l_rmdir_res: int = l_dirtree.rmdir(l_folder_to_remove)
+                res &= _test_check(f"The folder '{l_folder_to_remove}' is removed again", l_rmdir_res == _ida_dirtree.DTE_OK and not l_dirtree.isdir(l_folder_to_remove), _ida_dirtree.dirtree_t.errstr(l_rmdir_res), arg_debug)
             _ida_typeinf.del_named_type(None, l_struct_name, _ida_typeinf.NTF_TYPE)
     return res
 
@@ -7608,6 +7864,12 @@ def _test_misc_wrappers(arg_debug: bool = False) -> bool:
     res &= _test_check("pe_header_os_version() >= (4, 0)", l_os_version >= (4, 0), l_os_version, arg_debug)
     l_compiled_time = pe_header_compiled_time() # Can be "" if it's a reproducible build, then we only test that it doesn't crash
     res &= _test_check("pe_header_compiled_time() is '' or starts with a year", l_compiled_time == "" or l_compiled_time[0:2] in ("19", "20"), l_compiled_time, arg_debug)
+    l_earliest = _pe_linker_earliest_timestamp(14, 29) # Visual Studio 2019 --> 2018-01-01 (1 year before the release year)
+    res &= _test_check("_pe_linker_earliest_timestamp(14, 29) == 2018-01-01", l_earliest == 1514764800, l_earliest, arg_debug)
+    l_earliest = _pe_linker_earliest_timestamp(14, 0) # Visual Studio 2015 and lld-link --> 2014-01-01
+    res &= _test_check("_pe_linker_earliest_timestamp(14, 0) == 2014-01-01", l_earliest == 1388534400, l_earliest, arg_debug)
+    l_earliest = _pe_linker_earliest_timestamp(2, 25) # Delphi and GNU ld use 2.x, we don't know when those were released
+    res &= _test_check("_pe_linker_earliest_timestamp(2, 25) is None", l_earliest is None, l_earliest, arg_debug)
     # plugins() can be empty (e.g. no Python plugins loaded in this IDA), so only test that it finds exactly the "__plugins__*" modules
     l_plugins = plugins()
     l_expected_plugins = [l_name.replace("__plugins__", "") for l_name in list(_sys.modules) if "__plugins__" in l_name]
@@ -7778,7 +8040,7 @@ def _test_debugger_registers_modules_breakpoints(arg_debug: bool = False) -> boo
     return res
 
 @validate_call(config={"arbitrary_types_allowed": True, "strict": True, "validate_return": True})
-def _test_all(arg_slow_mode: bool = False, arg_debug: bool = False) -> bool:
+def _test_all(arg_slow_mode: bool = False, arg_coverage: bool = False, arg_debug: bool = False) -> bool:
     ''' Tests all tests we have so far. This is NOT complete and needs to be extended.
     Every time I have to fix something in an update, I add a test for that.
 
@@ -7789,29 +8051,25 @@ def _test_all(arg_slow_mode: bool = False, arg_debug: bool = False) -> bool:
     4. Start the debugger and when RIP is on WinMain
     5. Run these tests
     '''
-    import coverage
+    if arg_coverage:
+        import coverage
     import tempfile
     import time
 
     log_print("To make the tests work, you need to be on Windows, open notepad.exe and set at breakpoint at the start, start the debugger and when RIP is on WinMain. Then run these tests.", arg_type="INFO")
-    log_print(f"IDA version: {str(ida_version())}", arg_type="INFO")
-    log_print(f"Decompiler version: {_ida_hexrays.get_hexrays_version()}", arg_type="INFO")
-    log_print(f"Community_base version: {__version__}", arg_type="INFO")
-    log_print(f"Python version: {_sys.version}", arg_type="INFO")
-    log_print(f"OS: {_platform.uname().system} {_platform.uname().version} {_platform.uname().machine}", arg_type="INFO")
-    log_print(f"Datetime: {_timestamped_line('').strip()}", arg_type="INFO")
 
-    l_this_file = _os.path.abspath(__file__)
-    l_report_dir = _os.path.join(tempfile.gettempdir(), "coverage_community_base")
-    _os.makedirs(l_report_dir, exist_ok=True)
-    cov = coverage.Coverage(include=[l_this_file], data_file=l_report_dir + "/coverage.dat")
-    cov.start()
+    if arg_coverage:
+        l_this_file = _os.path.abspath(__file__)
+        l_report_dir = _os.path.join(tempfile.gettempdir(), "coverage_community_base")
+        _os.makedirs(l_report_dir, exist_ok=True)
+        cov = coverage.Coverage(include=[l_this_file], data_file=l_report_dir + "/coverage.dat")
+        cov.start()
 
     l_test_functions = {'_test_appcall_on_Windows': _test_appcall_on_Windows,
                         '_test_mem_alloc_write_read': _test_mem_alloc_write_read,
                         '_test_modules_on_Windows': _test_modules_on_Windows,
                         '_test_eval_expression': _test_eval_expression,
-                        # '_test_TWidget': _test_TWidget, # Crash IDA sometimes, need to investigate
+                        # '_test_TWidget': _test_TWidget, # Crash IDA, need to investigate
                         '_test_Qt_stuff': _test_Qt_stuff,
                         '_test_decompiler': _test_decompiler,
                         '_test_licence': _test_licence,
@@ -7883,9 +8141,16 @@ def _test_all(arg_slow_mode: bool = False, arg_debug: bool = False) -> bool:
             time.sleep(1) # Give time to read which test just ran before moving on
 
     log_print("\n-----------------------------------\n"
-                "----------  test results ----------\n"
+                "----------  Test results ----------\n"
                 "-----------------------------------"
                 , arg_type="INFO")
+    log_print(f"IDA version: {str(ida_version())}", arg_type="INFO")
+    log_print(f"Decompiler version: {_ida_hexrays.get_hexrays_version()}", arg_type="INFO")
+    log_print(f"Community_base version: {__version__}", arg_type="INFO")
+    log_print(f"Python version: {_sys.version}", arg_type="INFO")
+    log_print(f"OS: {_platform.uname().system} {_platform.uname().version} {_platform.uname().machine}", arg_type="INFO")
+    log_print(f"Timestamp: {_timestamped_line('').strip()}", arg_type="INFO")
+    
     for l_test_name, l_result in l_test_result.items():
         if l_result:
             log_print(f"{l_test_name}: {l_result}", arg_type="INFO")
@@ -7898,10 +8163,11 @@ def _test_all(arg_slow_mode: bool = False, arg_debug: bool = False) -> bool:
     else:
         log_print("Some tests failed!", arg_type="ERROR")
 
-    cov.stop()
-    cov.save()
-    cov.html_report(directory=l_report_dir)
-    # _os.system(f"start {l_report_dir}/index.html") # TODO: During debugging, I dont want a new window popping up
+    if arg_coverage:
+        cov.stop()
+        cov.save()
+        cov.html_report(directory=l_report_dir)
+        _os.system(f"start {l_report_dir}/index.html") # TODO: During debugging, I dont want a new window popping up
 
     return res
 
@@ -8264,7 +8530,6 @@ def PLUGIN_ENTRY() -> _ida_idaapi.plugin_t:
 # "from community_base import *" exports everything public EXCEPT help(), which would shadow Python's builtin help(). Use community_base.help() for that one.
 __all__ = [_t_name for _t_name, _t_value in list(globals().items()) if not _t_name.startswith('_') and _t_name != 'help' and not isinstance(_t_value, ModuleType)]
 
-# End of file  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- End of file
 if not _is_running_as_plugin():
     log_print(f"Loaded {__name__} version: {__version__} by {__author__}. This version was released {_time_since(__version__)}", arg_type="INFO")
 
